@@ -1,0 +1,19 @@
+/* Historical Data page */
+.hist-card {
+  margin-bottom: 24px;
+}
+.hist-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.hist-chart-wrap {
+  height: 300px;
+}
+.hist-chart-wrap canvas {
+  width: 100% !important;
+  height: 100% !important;
+}

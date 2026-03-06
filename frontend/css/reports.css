@@ -1,0 +1,56 @@
+/* Reports page: tabs, report entries, templates */
+.reports-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+.report-tabs .tabs {
+  margin-bottom: 20px;
+}
+.report-entry {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  margin-bottom: 12px;
+  background: var(--panel);
+}
+.report-entry .report-title {
+  font-weight: 600;
+  flex: 1;
+}
+.report-entry .report-meta {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+.report-entry .report-actions {
+  display: flex;
+  gap: 8px;
+}
+.report-entry .btn-dl {
+  padding: 6px 12px;
+  font-size: 0.8rem;
+}
+.template-list .template-item {
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  margin-bottom: 8px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.template-list .template-item:hover,
+.template-list .template-item.active {
+  background: var(--blue-light);
+  border-color: var(--blue);
+}
+.template-list .template-item .sub {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin-top: 4px;
+}

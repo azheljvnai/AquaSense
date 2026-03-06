@@ -1,0 +1,17 @@
+# Dependencies
+node_modules/
+
+# Environment (private APIs and secrets)
+.env
+
+# OS / editor
+.DS_Store
+Thumbs.db
+*.log
+.idea
+.vscode
+
+# Optional
+dist/
+build/
+*.local
