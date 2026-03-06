@@ -1,7 +1,7 @@
 /* Dashboard page: metrics grid, chart, recent alerts, feeding panel */
 .dash-metrics {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 20px;
   margin-bottom: 24px;
 }
@@ -215,15 +215,7 @@
 }
 
 @media (max-width: 1024px) {
-  .dash-metrics {
-    grid-template-columns: repeat(2, 1fr);
-  }
   .dash-layout-bottom {
-    grid-template-columns: 1fr;
-  }
-}
-@media (max-width: 600px) {
-  .dash-metrics {
     grid-template-columns: 1fr;
   }
 }

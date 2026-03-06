@@ -16,6 +16,23 @@ import { init as initReports } from './features/reports.js';
 import { init as initConfiguration } from './features/configuration.js';
 
 let deviceId = 'device001';
+let connectStarted = false;
+
+const STORAGE_FB_URL = 'aquasense.fbUrl.v1';
+const STORAGE_AUTO_CONNECT = 'aquasense.autoConnect.v1';
+
+function badgeClassFromKey(key) {
+  if (key === 'ok') return 'status-normal';
+  if (key === 'warn') return 'status-warning';
+  return 'status-critical';
+}
+
+function formatSensorValue(key, val) {
+  if (key === 'temp') return `${val.toFixed(1)}°C`;
+  if (key === 'do') return `${val.toFixed(1)} mg/L`;
+  if (key === 'turb') return `${val.toFixed(1)} NTU`;
+  return val.toFixed(1);
+}
 
 function setStatus(lbl, online) {
   const lblEl = document.getElementById('fb-lbl');
@@ -52,9 +69,20 @@ export function updateCard(key, val) {
   const wqPh = document.getElementById('wq-avg-ph');
   const wqTemp = document.getElementById('wq-avg-temp');
   const wqDo = document.getElementById('wq-avg-do');
+  const wqTurb = document.getElementById('wq-avg-turb');
   if (key === 'ph' && wqPh) wqPh.textContent = val.toFixed(1);
   if (key === 'temp' && wqTemp) wqTemp.textContent = val.toFixed(1) + '°C';
   if (key === 'do' && wqDo) wqDo.textContent = val.toFixed(1) + ' mg/L';
+  if (key === 'turb' && wqTurb) wqTurb.textContent = val.toFixed(1) + ' NTU';
+
+  // Water Quality (Pond 1) live values + badges
+  const pondVal = document.getElementById('wq-pond-' + key);
+  if (pondVal) pondVal.textContent = formatSensorValue(key, val);
+  const pondBadge = document.getElementById('wq-pond-b-' + key);
+  if (pondBadge) {
+    pondBadge.textContent = b.l;
+    pondBadge.className = `badge-pill ${badgeClassFromKey(b.c)}`;
+  }
 }
 
 function setupNavigation() {
@@ -67,7 +95,25 @@ function setupNavigation() {
       document.querySelectorAll('.page-section').forEach((s) => s.classList.remove('active'));
       const el = document.getElementById('page-' + page);
       if (el) el.classList.add('active');
+
+      // Close mobile nav after navigation
+      document.body.classList.remove('sidebar-open');
     });
+  });
+}
+
+function setupHamburger() {
+  const btn = document.getElementById('nav-toggle');
+  const backdrop = document.getElementById('sidebar-backdrop');
+  if (!btn || !backdrop) return;
+
+  const close = () => document.body.classList.remove('sidebar-open');
+  const toggle = () => document.body.classList.toggle('sidebar-open');
+
+  btn.addEventListener('click', toggle);
+  backdrop.addEventListener('click', close);
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') close();
   });
 }
 
@@ -80,19 +126,43 @@ function setupClock() {
 
 async function loadConfigAndPrefill() {
   const config = await getConfig();
+  const input = document.getElementById('fb-url');
   if (config.firebaseDatabaseUrl) {
-    const input = document.getElementById('fb-url');
     if (input) input.value = config.firebaseDatabaseUrl;
+    try {
+      localStorage.setItem(STORAGE_FB_URL, config.firebaseDatabaseUrl);
+    } catch {
+      // ignore
+    }
   }
   if (config.deviceId) deviceId = config.deviceId;
+  // Fallback: if backend isn't running, use last saved URL (if any)
+  if (input && !input.value) {
+    try {
+      const saved = localStorage.getItem(STORAGE_FB_URL);
+      if (saved) input.value = saved;
+    } catch {
+      // ignore
+    }
+  }
+
+  return !!config.firebaseDatabaseUrl;
 }
 
 function connectFirebase() {
+  if (connectStarted) return;
   const input = document.getElementById('fb-url');
   const url = input ? input.value.trim() : '';
   if (!url) {
     alert('Enter Firebase URL or set FIREBASE_DATABASE_URL in .env and run the backend.');
     return;
+  }
+  connectStarted = true;
+  try {
+    localStorage.setItem(STORAGE_FB_URL, url);
+    localStorage.setItem(STORAGE_AUTO_CONNECT, 'true');
+  } catch {
+    // ignore
   }
   connect(url, deviceId, {
     onStatus: setStatus,
@@ -113,6 +183,7 @@ window.saveSchedules = () => saveSchedules(deviceId);
 
 function init() {
   setupNavigation();
+  setupHamburger();
   setupClock();
   initDashboard();
   initWaterQuality();
@@ -122,8 +193,24 @@ function init() {
   initFarmProfile();
   initReports();
   initConfiguration();
-  loadConfigAndPrefill();
-  log('Dashboard ready. Click Connect to start.');
+  loadConfigAndPrefill().then((hadBackendConfig) => {
+    let wantsAuto = hadBackendConfig;
+    if (!wantsAuto) {
+      try {
+        wantsAuto = localStorage.getItem(STORAGE_AUTO_CONNECT) === 'true';
+      } catch {
+        wantsAuto = false;
+      }
+    }
+    const input = document.getElementById('fb-url');
+    const url = input ? input.value.trim() : '';
+    if (wantsAuto && url) {
+      log('Auto-connecting to Firebase...');
+      connectFirebase();
+    } else {
+      log('Dashboard ready. Click Connect to start.');
+    }
+  });
 }
 
 init();

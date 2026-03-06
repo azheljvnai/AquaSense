@@ -90,7 +90,20 @@ Edit `.env`:
 
 ### 2. Backend
 
-From the project root:
+From the project root (recommended):
+
+```bash
+npm start
+```
+
+If this is your first run, install backend dependencies first:
+
+```bash
+npm run install:backend
+npm start
+```
+
+Or run directly inside the backend folder:
 
 ```bash
 cd backend
@@ -129,10 +142,11 @@ The app will load `frontend/index.html`. If `FIREBASE_DATABASE_URL` is set in `.
 5. **Navigation**: Use the sidebar to open Water Quality, Historical Data, Feeding, Alerts, Farm & Profile, Reports, Configuration. No “ML & Analytics”; Reports has Daily/Weekly/Monthly Water Quality Report and Feeding Report tabs.
 6. **Firebase**: Ensure your Realtime Database has the expected structure under `/devices/device001/` (or your `DEVICE_ID`): e.g. `sensors` (ph, do, turb, temp) and `feeding` (schedule1, schedule2, manualFeed). The app does not create these; it only reads/writes the same paths as before.
 
-### Without backend (standalone / legacy)
+### Notes about `dashboard.html` (legacy)
 
-- **Option A**: Use the legacy single-file app: open **`dashboard.html`** in the browser (e.g. double-click or `file:///.../dashboard.html`). You must paste the Firebase URL and click Connect; there is no `/api/config`.
-- **Option B**: Serve the **frontend** with any static server (e.g. `npx serve frontend`). The app will run, but `GET /api/config` will fail (e.g. 404), so the Firebase URL will not be pre-filled; paste it manually and connect. All Firebase behavior is unchanged.
+`dashboard.html` is a legacy single-file version kept for reference. When running the backend, visiting `dashboard.html` will redirect to the SPA entry (`/`) to prevent outdated UI from showing.
+
+If you want a standalone run without the backend, serve `frontend/` using any static server (e.g. `npx serve frontend`). `GET /api/config` will fail (e.g. 404), so the Firebase URL will not be pre-filled; paste it manually and connect.
 
 **Note:** Do not open `frontend/index.html` as a file (`file://`) in the browser. ES modules and `fetch('/api/config')` require a real origin; use the backend or a static server.
 

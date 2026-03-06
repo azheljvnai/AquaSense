@@ -14,7 +14,16 @@ const PORT = process.env.PORT || 3000;
 
 // Frontend static files (parent dir / frontend)
 const frontendPath = path.join(__dirname, '..', 'frontend');
-app.use(express.static(frontendPath));
+// Disable caching during development so changes reflect immediately on localhost.
+app.use((_req, res, next) => {
+  res.setHeader('Cache-Control', 'no-store');
+  next();
+});
+
+// Avoid confusion: legacy file should always load the SPA entry.
+app.get('/dashboard.html', (_req, res) => res.redirect('/'));
+
+app.use(express.static(frontendPath, { etag: false, lastModified: false, maxAge: 0 }));
 
 /**
  * Public config endpoint — returns only what the client needs to connect.
