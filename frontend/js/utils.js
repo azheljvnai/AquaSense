@@ -79,6 +79,68 @@ export function getBadge(key, val) {
 export const spkData = { ph: [], do: [], turb: [], temp: [] };
 export const spkCol = { ph: '#22c55e', do: '#3b82f6', turb: '#eab308', temp: '#ef4444' };
 
+// ---------------------------------------------------------------------------
+// Sensor History — persists timestamped readings to localStorage
+// Each entry: { ts: number (ms), ph: number, do: number, turb: number, temp: number }
+// Keeps up to MAX_HISTORY entries; prunes entries older than MAX_AGE_DAYS days.
+// ---------------------------------------------------------------------------
+const STORAGE_KEY_HISTORY = 'aquasense.sensorHistory.v1';
+const MAX_HISTORY = 5000;
+const MAX_AGE_DAYS = 35; // keep ~5 weeks so monthly reports always have data
+
+let _history = [];
+
+function loadHistory() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_HISTORY);
+    if (raw) _history = JSON.parse(raw);
+  } catch {
+    _history = [];
+  }
+}
+
+function pruneHistory() {
+  const cutoff = Date.now() - MAX_AGE_DAYS * 24 * 60 * 60 * 1000;
+  _history = _history.filter((e) => e.ts >= cutoff);
+  if (_history.length > MAX_HISTORY) _history = _history.slice(-MAX_HISTORY);
+}
+
+function saveHistory() {
+  try {
+    localStorage.setItem(STORAGE_KEY_HISTORY, JSON.stringify(_history));
+  } catch {
+    // quota exceeded — trim aggressively and retry once
+    _history = _history.slice(-Math.floor(MAX_HISTORY / 2));
+    try { localStorage.setItem(STORAGE_KEY_HISTORY, JSON.stringify(_history)); } catch { /* ignore */ }
+  }
+}
+
+loadHistory();
+
+/**
+ * Record a full sensor snapshot. Called from app.js whenever all four
+ * sensor values are available (after each Firebase update cycle).
+ */
+export function recordSensorReading(ph, doVal, turb, temp) {
+  pruneHistory();
+  _history.push({ ts: Date.now(), ph, do: doVal, turb, temp });
+  saveHistory();
+}
+
+/**
+ * Returns all stored readings within [fromMs, toMs] (inclusive).
+ */
+export function getHistoryRange(fromMs, toMs) {
+  return _history.filter((e) => e.ts >= fromMs && e.ts <= toMs);
+}
+
+/**
+ * Returns the full history array (read-only copy).
+ */
+export function getAllHistory() {
+  return [..._history];
+}
+
 export function drawSpark(id, data, color) {
   const svg = document.getElementById('sp-' + id);
   if (!svg || data.length < 2) return;

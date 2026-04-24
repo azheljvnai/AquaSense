@@ -15,7 +15,7 @@ import {
 } from './firebase-client.js';
 import { connect, triggerFeed, saveSchedules, initRoleTracking } from './firebase.js';
 import { log } from './utils.js';
-import { getBadge, spkData, spkCol, drawSpark } from './utils.js';
+import { getBadge, spkData, spkCol, drawSpark, recordSensorReading } from './utils.js';
 import { pushChart } from './charts.js';
 import { init as initDashboard } from './features/dashboard.js';
 import { init as initWaterQuality } from './features/water-quality.js';
@@ -264,6 +264,7 @@ export function updateCard(key, val) {
   }
   spkData[key].push(val);
   if (spkData[key].length > 30) spkData[key].shift();
+  window._spkData = spkData; // expose for reports module
   drawSpark(key, spkData[key], spkCol[key]);
   if (b.c === 'danger') log(`${key.toUpperCase()} CRITICAL: ${val.toFixed(1)}`, 'err');
   else if (b.c === 'warn') log(`${key.toUpperCase()} WARNING: ${val.toFixed(1)}`, 'warn');
@@ -393,6 +394,7 @@ function connectFirebase() {
       updateCard('turb', turb);
       updateCard('temp', temp);
       pushChart(ph, doV, turb, temp);
+      recordSensorReading(ph, doV, turb, temp);
     },
     enableFeedBtn,
   });
