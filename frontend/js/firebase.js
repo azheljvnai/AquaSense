@@ -1,13 +1,44 @@
 /**
  * Firebase Realtime Database integration.
- * API paths and logic unchanged from original (DEVICE, sensors, feeding).
+ * Uses the shared Firebase app instance from firebase-client.js.
  */
-import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
-import { getDatabase, ref, onValue, set } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js';
+import { fbDatabase, fbRef as ref, fbOnValue as onValue, fbSet as set } from './firebase-client.js';
+import { fbOnAuthStateChanged, fbFirestore, fbDoc, fbGetDoc } from './firebase-client.js';
 import { log } from './utils.js';
 
 let fbDb = null;
 let feedUnsubscribe = null;
+let role = 'farmer';
+
+// Called by app.js after Firebase is initialized to track the user's role.
+export function initRoleTracking() {
+  try {
+    fbOnAuthStateChanged(async (u) => {
+      if (!u) {
+        role = 'farmer';
+        return;
+      }
+      try {
+        const fs = fbFirestore();
+        const snap = await fbGetDoc(fbDoc(fs, 'users', u.uid));
+        const raw = (snap.exists() ? (snap.data()?.role || 'farmer') : 'farmer').toString().toLowerCase();
+        // Migrate legacy role names
+        if (raw === 'manager') role = 'owner';
+        else if (raw === 'viewer') role = 'farmer';
+        else role = raw;
+      } catch {
+        role = 'farmer';
+      }
+    });
+  } catch {
+    // auth not initialized yet; role stays farmer
+  }
+}
+
+function canControlFeeding() {
+  // All roles can trigger manual feed
+  return role === 'admin' || role === 'owner' || role === 'farmer';
+}
 
 export function getDevicePath(deviceId = 'device001') {
   return `/devices/${deviceId}`;
@@ -45,8 +76,8 @@ export async function connect(firebaseUrl, deviceId, { onStatus, onSensorData, e
     return;
   }
   try {
-    const fbApp = initializeApp({ databaseURL: url }, 'aq-' + Date.now());
-    fbDb = getDatabase(fbApp);
+    // The RTDB URL comes from Firebase app config; we still accept the provided URL for UI/back-compat.
+    fbDb = fbDatabase();
     const DEVICE = getDevicePath(deviceId);
 
     onStatus('CONNECTING', false);
@@ -87,6 +118,10 @@ export async function connect(firebaseUrl, deviceId, { onStatus, onSensorData, e
 export function triggerFeed(deviceId = 'device001') {
   if (!fbDb) {
     log('Not connected to Firebase', 'err');
+    return;
+  }
+  if (!canControlFeeding()) {
+    log('Permission denied: Owner/Admin required to trigger feeding.', 'warn');
     return;
   }
   const btn = document.getElementById('feed-btn');
@@ -141,6 +176,10 @@ export function triggerFeed(deviceId = 'device001') {
 export function saveSchedules(deviceId = 'device001') {
   if (!fbDb) {
     log('Not connected to Firebase', 'err');
+    return;
+  }
+  if (!canControlFeeding()) {
+    log('Permission denied: Owner/Admin required to change schedules.', 'warn');
     return;
   }
   const s1 = document.getElementById('sched1')?.value;

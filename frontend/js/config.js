@@ -10,8 +10,17 @@ export async function getConfig() {
     if (!res.ok) return {};
     const data = await res.json();
     return {
-      firebaseDatabaseUrl: data.firebaseDatabaseUrl || '',
+      firebaseDatabaseUrl: data.firebaseDatabaseUrl || data.firebase?.databaseURL || '',
       deviceId: data.deviceId || 'device001',
+      firebase: {
+        apiKey: data.firebase?.apiKey || '',
+        authDomain: data.firebase?.authDomain || '',
+        projectId: data.firebase?.projectId || '',
+        storageBucket: data.firebase?.storageBucket || '',
+        messagingSenderId: data.firebase?.messagingSenderId || '',
+        appId: data.firebase?.appId || '',
+        databaseURL: data.firebase?.databaseURL || data.firebaseDatabaseUrl || '',
+      },
     };
   } catch {
     return {};

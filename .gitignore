@@ -4,6 +4,10 @@ node_modules/
 # Environment (private APIs and secrets)
 .env
 
+# Firebase service account key (never commit this)
+serviceAccountKey.json
+*serviceAccount*.json
+
 # OS / editor
 .DS_Store
 Thumbs.db

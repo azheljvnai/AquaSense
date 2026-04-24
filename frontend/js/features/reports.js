@@ -1,5 +1,6 @@
 /**
  * Reports feature: Daily/Weekly/Monthly Water Quality and Feeding Report tabs.
+ * Download/generate is restricted to admin and owner roles.
  */
 export function init() {
   document.querySelectorAll('.tab-btn[data-report-tab]').forEach((btn) => {
@@ -138,6 +139,11 @@ export function init() {
 
   document.querySelectorAll('.report-entry [data-report-format]').forEach((btn) => {
     btn.addEventListener('click', () => {
+      const perms = window._rbacPerms;
+      if (perms && !perms.canDownloadReports) {
+        alert('Access denied: Owner or Admin required to download reports.');
+        return;
+      }
       const entry = btn.closest('.report-entry');
       if (!entry) return;
       const format = btn.getAttribute('data-report-format') || 'csv';
@@ -148,6 +154,11 @@ export function init() {
   // Custom: generate a CSV from selected type/range
   const gen = document.getElementById('btn-custom-generate');
   gen?.addEventListener('click', () => {
+    const perms = window._rbacPerms;
+    if (perms && !perms.canDownloadReports) {
+      alert('Access denied: Owner or Admin required to generate reports.');
+      return;
+    }
     const typeSel = document.getElementById('custom-report-type');
     const from = document.getElementById('custom-from');
     const to = document.getElementById('custom-to');

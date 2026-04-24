@@ -1,7 +1,13 @@
 /**
  * Configuration feature: persist UI settings locally (no API changes).
+ * Editing is restricted to admin and owner roles.
  */
 import { getThresholds, resetThresholds, saveThresholds } from '../utils.js';
+
+function canEditConfig() {
+  const perms = window._rbacPerms;
+  return !perms || perms.canEditConfig; // default allow if perms not yet set
+}
 
 export function init() {
   const els = {
@@ -70,6 +76,9 @@ export function init() {
     if (els.thPhMax) els.thPhMax.value = String(t.ph.ok[1]);
     if (els.thDoMin) els.thDoMin.value = String(t.do.ok[0]);
     if (els.thTurbMax) els.thTurbMax.value = String(t.turb.ok[1]);
+    // Sync temp range inputs from thresholds too
+    if (els.tempMin) els.tempMin.value = String(t.temp.ok[0]);
+    if (els.tempMax) els.tempMax.value = String(t.temp.ok[1]);
   }
 
   function saveThresholdInputs() {
@@ -79,17 +88,22 @@ export function init() {
     };
 
     const t = getThresholds();
-    const phMin = toNum(els.thPhMin, t.ph.ok[0]);
-    const phMax = toNum(els.thPhMax, t.ph.ok[1]);
-    const doMin = toNum(els.thDoMin, t.do.ok[0]);
+    const phMin  = toNum(els.thPhMin,  t.ph.ok[0]);
+    const phMax  = toNum(els.thPhMax,  t.ph.ok[1]);
+    const doMin  = toNum(els.thDoMin,  t.do.ok[0]);
     const turbMax = toNum(els.thTurbMax, t.turb.ok[1]);
+    const tempMin = toNum(els.tempMin, t.temp.ok[0]);
+    const tempMax = toNum(els.tempMax, t.temp.ok[1]);
 
-    // Keep the warn bands as-is; only update the values this UI exposes.
     saveThresholds({
-      ph: { ok: [phMin, phMax] },
-      do: { ok: [doMin, t.do.ok[1]] },
+      ph:   { ok: [phMin, phMax] },
+      do:   { ok: [doMin, t.do.ok[1]] },
       turb: { ok: [t.turb.ok[0], turbMax] },
+      temp: { ok: [tempMin, tempMax] },
     });
+
+    // Notify any listeners that thresholds changed
+    window.dispatchEvent(new CustomEvent('thresholds-changed'));
   }
 
   function readState() {
@@ -174,13 +188,20 @@ export function init() {
     }
     resetThresholds();
     populateThresholdInputs();
+    window.dispatchEvent(new CustomEvent('thresholds-changed'));
   }
 
   applyState(load());
   populateThresholdInputs();
 
   // Save button
-  els.save.addEventListener('click', save);
+  els.save.addEventListener('click', () => {
+    if (!canEditConfig()) {
+      alert('Access denied: Owner or Admin required to save configuration.');
+      return;
+    }
+    save();
+  });
 
   // Auto-save on changes when enabled
   const watch = [

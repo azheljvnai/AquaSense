@@ -1,8 +1,14 @@
 /**
  * Historical Data feature: weekly chart and range selector.
+ * Threshold editing is restricted to admin and owner roles.
  */
 import { initHistoricalChart } from '../charts.js';
 import { getThresholds, saveThresholds, resetThresholds } from '../utils.js';
+
+function canEditThresholds() {
+  const perms = window._rbacPerms;
+  return !perms || perms.canEditThresholds;
+}
 
 export function init() {
   const histEl = document.getElementById('hist-chart');
@@ -56,6 +62,10 @@ export function init() {
   }
 
   btn.addEventListener('click', () => {
+    if (!canEditThresholds()) {
+      alert('Access denied: Owner or Admin required to edit thresholds.');
+      return;
+    }
     populate();
     if (typeof dlg.showModal === 'function') dlg.showModal();
     else alert('Your browser does not support this dialog UI.');
@@ -66,10 +76,12 @@ export function init() {
   document.getElementById('btn-thresh-reset')?.addEventListener('click', () => {
     resetThresholds();
     populate();
+    window.dispatchEvent(new CustomEvent('thresholds-changed'));
   });
 
   document.getElementById('btn-thresh-save')?.addEventListener('click', () => {
     saveThresholds(readForm());
+    window.dispatchEvent(new CustomEvent('thresholds-changed'));
     dlg.close();
   });
 }
