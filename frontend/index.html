@@ -270,29 +270,98 @@
     <!-- Historical Data -->
     <section id="page-historical-data" class="page-section">
       <h1 class="page-title">Historical Data</h1>
+
+      <!-- Summary stat cards -->
+      <div class="hist-stat-row">
+        <div class="hist-stat-card" id="hstat-ph">
+          <div class="hist-stat-icon" style="background:rgba(59,130,246,0.1);color:#3b82f6"><svg class="icon icon-16"><use href="#icon-droplet"/></svg></div>
+          <div class="hist-stat-body">
+            <div class="hist-stat-label">pH — Avg</div>
+            <div class="hist-stat-val" id="hstat-ph-avg">—</div>
+            <div class="hist-stat-range"><span id="hstat-ph-min">—</span> – <span id="hstat-ph-max">—</span></div>
+          </div>
+          <div class="hist-stat-badge" id="hstat-ph-badge"></div>
+        </div>
+        <div class="hist-stat-card" id="hstat-do">
+          <div class="hist-stat-icon" style="background:rgba(34,197,94,0.1);color:#22c55e"><svg class="icon icon-16"><use href="#icon-activity"/></svg></div>
+          <div class="hist-stat-body">
+            <div class="hist-stat-label">DO — Avg (mg/L)</div>
+            <div class="hist-stat-val" id="hstat-do-avg">—</div>
+            <div class="hist-stat-range"><span id="hstat-do-min">—</span> – <span id="hstat-do-max">—</span></div>
+          </div>
+          <div class="hist-stat-badge" id="hstat-do-badge"></div>
+        </div>
+        <div class="hist-stat-card" id="hstat-turb">
+          <div class="hist-stat-icon" style="background:rgba(245,158,11,0.1);color:#f59e0b"><svg class="icon icon-16"><use href="#icon-activity"/></svg></div>
+          <div class="hist-stat-body">
+            <div class="hist-stat-label">Turbidity — Avg (NTU)</div>
+            <div class="hist-stat-val" id="hstat-turb-avg">—</div>
+            <div class="hist-stat-range"><span id="hstat-turb-min">—</span> – <span id="hstat-turb-max">—</span></div>
+          </div>
+          <div class="hist-stat-badge" id="hstat-turb-badge"></div>
+        </div>
+        <div class="hist-stat-card" id="hstat-temp">
+          <div class="hist-stat-icon" style="background:rgba(239,68,68,0.1);color:#ef4444"><svg class="icon icon-16"><use href="#icon-thermometer"/></svg></div>
+          <div class="hist-stat-body">
+            <div class="hist-stat-label">Temperature — Avg (°C)</div>
+            <div class="hist-stat-val" id="hstat-temp-avg">—</div>
+            <div class="hist-stat-range"><span id="hstat-temp-min">—</span> – <span id="hstat-temp-max">—</span></div>
+          </div>
+          <div class="hist-stat-badge" id="hstat-temp-badge"></div>
+        </div>
+      </div>
+
+      <!-- Main chart card -->
       <div class="card hist-card">
-        <h3 class="card-title">Historical Data Analysis</h3>
-        <p style="font-size:0.875rem;color:var(--text-muted);margin-bottom:16px;">View trends and patterns over time</p>
         <div class="hist-toolbar">
-          <select id="hist-range" style="padding:8px 14px;border:1px solid var(--border);border-radius:8px;font-size:0.875rem;">
-            <option>Last Week</option>
-            <option>Last Month</option>
-          </select>
+          <div class="hist-toolbar-left">
+            <div class="hist-metric-tabs" role="tablist">
+              <button type="button" class="hist-metric-btn active" data-metric="all">All</button>
+              <button type="button" class="hist-metric-btn" data-metric="ph">pH</button>
+              <button type="button" class="hist-metric-btn" data-metric="do">DO</button>
+              <button type="button" class="hist-metric-btn" data-metric="turb">Turbidity</button>
+              <button type="button" class="hist-metric-btn" data-metric="temp">Temp</button>
+            </div>
+          </div>
           <div class="hist-actions">
+            <select id="hist-range">
+              <option value="24h">Last 24 Hours</option>
+              <option value="week" selected>This Week</option>
+              <option value="month">This Month</option>
+              <option value="custom">Custom Range</option>
+            </select>
+            <div id="hist-custom-range" style="display:none;align-items:center;gap:6px;">
+              <input type="date" id="hist-from" class="hist-date-input" />
+              <span style="color:var(--text-muted);font-size:0.8rem">to</span>
+              <input type="date" id="hist-to" class="hist-date-input" />
+              <button type="button" class="btn btn-primary" id="btn-hist-apply" style="padding:6px 12px;font-size:0.8rem">Apply</button>
+            </div>
             <button type="button" class="btn btn-outline" id="btn-edit-thresholds">
               <svg class="icon icon-16" style="vertical-align:middle"><use href="#icon-edit"/></svg>
-              Edit Thresholds
+              Thresholds
             </button>
-            <button type="button" class="btn btn-outline">
+            <button type="button" class="btn btn-outline" id="btn-hist-download">
               <svg class="icon icon-16" style="vertical-align:middle"><use href="#icon-download"/></svg>
-              Download
+              Export CSV
             </button>
           </div>
         </div>
-        <div class="hist-chart-wrap">
+        <div id="hist-no-data" class="hist-no-data" style="display:none">
+          <svg class="icon icon-24" style="color:var(--text-muted)"><use href="#icon-clock"/></svg>
+          <p>No readings recorded for this period yet.<br><span style="font-size:0.8rem">Data is collected automatically when the device is connected.</span></p>
+        </div>
+        <div class="hist-chart-wrap" id="hist-chart-wrap">
           <canvas id="hist-chart"></canvas>
         </div>
+        <div class="chart-legend">
+          <div class="chart-legend-item"><div class="chart-legend-dot" style="background:var(--ph-c)"></div>pH</div>
+          <div class="chart-legend-item"><div class="chart-legend-dot" style="background:var(--do-c)"></div>Dissolved O₂</div>
+          <div class="chart-legend-item"><div class="chart-legend-dot" style="background:var(--turb-c)"></div>Turbidity</div>
+          <div class="chart-legend-item"><div class="chart-legend-dot" style="background:var(--temp-c)"></div>Temperature</div>
+        </div>
       </div>
+
+
 
       <dialog id="thresh-dlg" class="thresh-dlg">
         <form method="dialog" class="thresh-form" id="thresh-form">

@@ -115,43 +115,53 @@ export function pushChart(ph, doV, turb, temp) {
 }
 
 export function initHistoricalChart(canvasEl) {
-  if (!canvasEl || typeof Chart === 'undefined') return;
-  const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-  new Chart(canvasEl.getContext('2d'), {
+  if (!canvasEl || typeof Chart === 'undefined') return null;
+  const chart = new Chart(canvasEl.getContext('2d'), {
     type: 'line',
     data: {
-      labels: days,
+      labels: [],
       datasets: [
         {
-          label: 'O₂ (mg/L)',
-          data: [8.2, 8.4, 8.3, 8.5, 8.4, 8.6, 8.6],
-          borderColor: '#22c55e',
-          backgroundColor: 'rgba(34,197,94,0.08)',
-          tension: 0.4,
-          pointRadius: 4,
-          pointBackgroundColor: '#22c55e',
-          borderWidth: 2,
-          fill: true,
-        },
-        {
-          label: 'Temp (°C)',
-          data: [22.2, 22.5, 22.4, 22.8, 22.6, 22.6, 22.6],
-          borderColor: '#ef4444',
-          backgroundColor: 'rgba(239,68,68,0.08)',
-          tension: 0.4,
-          pointRadius: 4,
-          pointBackgroundColor: '#ef4444',
-          borderWidth: 2,
-          fill: true,
-        },
-        {
           label: 'pH',
-          data: [7.0, 7.1, 7.2, 7.1, 7.2, 7.2, 7.2],
+          data: [],
           borderColor: '#3b82f6',
-          backgroundColor: 'rgba(59,130,246,0.08)',
-          tension: 0.4,
-          pointRadius: 4,
-          pointBackgroundColor: '#3b82f6',
+          backgroundColor: 'rgba(59,130,246,0.06)',
+          tension: 0.45,
+          pointRadius: 0,
+          pointHoverRadius: 4,
+          borderWidth: 2,
+          fill: true,
+        },
+        {
+          label: 'DO',
+          data: [],
+          borderColor: '#22c55e',
+          backgroundColor: 'rgba(34,197,94,0.06)',
+          tension: 0.45,
+          pointRadius: 0,
+          pointHoverRadius: 4,
+          borderWidth: 2,
+          fill: true,
+        },
+        {
+          label: 'Turb',
+          data: [],
+          borderColor: '#f59e0b',
+          backgroundColor: 'rgba(245,158,11,0.06)',
+          tension: 0.45,
+          pointRadius: 0,
+          pointHoverRadius: 4,
+          borderWidth: 2,
+          fill: true,
+        },
+        {
+          label: 'Temp',
+          data: [],
+          borderColor: '#ef4444',
+          backgroundColor: 'rgba(239,68,68,0.06)',
+          tension: 0.45,
+          pointRadius: 0,
+          pointHoverRadius: 4,
           borderWidth: 2,
           fill: true,
         },
@@ -160,12 +170,10 @@ export function initHistoricalChart(canvasEl) {
     options: {
       responsive: true,
       maintainAspectRatio: false,
+      animation: { duration: 350, easing: 'easeInOutQuart' },
       interaction: { mode: 'index', intersect: false },
       plugins: {
-        legend: {
-          position: 'bottom',
-          labels: { color: TICK_COLOR, font: FONT, usePointStyle: true, pointStyleWidth: 8, padding: 16 },
-        },
+        legend: { display: false },
         tooltip: {
           backgroundColor: 'rgba(15,23,42,0.9)',
           titleColor: '#e2e8f0',
@@ -174,14 +182,56 @@ export function initHistoricalChart(canvasEl) {
           borderWidth: 1,
           padding: 10,
           cornerRadius: 8,
+          titleFont: { ...FONT, weight: '600' },
+          bodyFont: FONT,
         },
       },
       scales: {
-        x: { ticks: { color: TICK_COLOR, font: FONT }, grid: { color: GRID_COLOR }, border: { color: GRID_COLOR } },
-        y: { ticks: { color: TICK_COLOR, font: FONT }, grid: { color: GRID_COLOR }, border: { color: GRID_COLOR } },
+        x: {
+          ticks: { color: TICK_COLOR, font: FONT, maxTicksLimit: 8 },
+          grid: { color: GRID_COLOR },
+          border: { color: GRID_COLOR },
+        },
+        y: {
+          ticks: { color: TICK_COLOR, font: FONT },
+          grid: { color: GRID_COLOR },
+          border: { color: GRID_COLOR },
+        },
       },
     },
   });
+  return chart;
+}
+
+/**
+ * Update the historical chart with bucketed data.
+ * @param {Chart} chart - Chart.js instance returned by initHistoricalChart
+ * @param {string[]} labels - x-axis labels
+ * @param {{ ph: number[], do: number[], turb: number[], temp: number[] }} data - per-metric arrays
+ * @param {string} activeMetric - 'all' | 'ph' | 'do' | 'turb' | 'temp'
+ */
+export function updateHistoricalChart(chart, labels, data, activeMetric) {
+  if (!chart) return;
+  const visibility = {
+    ph:   activeMetric === 'all' || activeMetric === 'ph',
+    do:   activeMetric === 'all' || activeMetric === 'do',
+    turb: activeMetric === 'all' || activeMetric === 'turb',
+    temp: activeMetric === 'all' || activeMetric === 'temp',
+  };
+  const keys = ['ph', 'do', 'turb', 'temp'];
+
+  // If labels/data are null, only toggle visibility (metric tab switch)
+  if (labels !== null && data !== null) {
+    chart.data.labels = labels;
+    keys.forEach((k, i) => {
+      chart.data.datasets[i].data = data[k] || [];
+    });
+  }
+
+  keys.forEach((k, i) => {
+    chart.data.datasets[i].hidden = !visibility[k];
+  });
+  chart.update('active');
 }
 
 export function initFeedingChart(canvasEl) {

@@ -395,6 +395,7 @@ function connectFirebase() {
       updateCard('temp', temp);
       pushChart(ph, doV, turb, temp);
       recordSensorReading(ph, doV, turb, temp);
+      window.dispatchEvent(new CustomEvent('sensor-reading-recorded'));
     },
     enableFeedBtn,
   });
