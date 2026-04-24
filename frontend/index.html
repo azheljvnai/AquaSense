@@ -674,13 +674,24 @@
               <button class="btn btn-outline btn-dl" type="button" data-report-format="csv">CSV</button>
             </div>
           </div>
+          <div class="report-entry report-entry-combined" data-report-period="daily" data-report-type="combined">
+            <div>
+              <div class="report-title">Daily Combined Report <span class="badge-pill" style="background:#ede9fe;color:#6d28d9;font-size:0.65rem;vertical-align:middle;margin-left:6px">Water + Feeding</span></div>
+              <div class="report-meta">Today · Water Quality & Feeding in one report</div>
+            </div>
+            <span class="badge-pill status-normal">ready</span>
+            <div class="report-actions">
+              <button class="btn btn-outline btn-dl" type="button" data-report-format="pdf">PDF</button>
+              <button class="btn btn-outline btn-dl" type="button" data-report-format="csv">CSV</button>
+            </div>
+          </div>
         </div>
 
         <div id="tab-weekly" class="tab-content">
           <div class="report-entry" data-report-period="weekly" data-report-type="water-quality">
             <div>
               <div class="report-title">Weekly Water Quality Report</div>
-              <div class="report-meta">Last 7 days · Generated on demand</div>
+              <div class="report-meta">Mon – Sun · Generated on demand</div>
             </div>
             <span class="badge-pill status-normal">ready</span>
             <div class="report-actions">
@@ -692,12 +703,23 @@
           <div class="report-entry" data-report-period="weekly" data-report-type="feeding">
             <div>
               <div class="report-title">Weekly Feeding Report</div>
-              <div class="report-meta">Last 7 days · Generated on demand</div>
+              <div class="report-meta">Mon – Sun · Generated on demand</div>
             </div>
             <span class="badge-pill status-normal">ready</span>
             <div class="report-actions">
               <button class="btn btn-outline btn-dl" type="button" data-report-format="pdf">PDF</button>
               <button class="btn btn-outline btn-dl" type="button" data-report-format="xlsx">Excel</button>
+              <button class="btn btn-outline btn-dl" type="button" data-report-format="csv">CSV</button>
+            </div>
+          </div>
+          <div class="report-entry report-entry-combined" data-report-period="weekly" data-report-type="combined">
+            <div>
+              <div class="report-title">Weekly Combined Report <span class="badge-pill" style="background:#ede9fe;color:#6d28d9;font-size:0.65rem;vertical-align:middle;margin-left:6px">Water + Feeding</span></div>
+              <div class="report-meta">Mon – Sun · Water Quality & Feeding in one report</div>
+            </div>
+            <span class="badge-pill status-normal">ready</span>
+            <div class="report-actions">
+              <button class="btn btn-outline btn-dl" type="button" data-report-format="pdf">PDF</button>
               <button class="btn btn-outline btn-dl" type="button" data-report-format="csv">CSV</button>
             </div>
           </div>
@@ -707,7 +729,7 @@
           <div class="report-entry" data-report-period="monthly" data-report-type="water-quality">
             <div>
               <div class="report-title">Monthly Water Quality Report</div>
-              <div class="report-meta">Last 30 days · Generated on demand</div>
+              <div class="report-meta">This month · Generated on demand</div>
             </div>
             <span class="badge-pill status-normal">ready</span>
             <div class="report-actions">
@@ -719,12 +741,23 @@
           <div class="report-entry" data-report-period="monthly" data-report-type="feeding">
             <div>
               <div class="report-title">Monthly Feeding Report</div>
-              <div class="report-meta">Last 30 days · Generated on demand</div>
+              <div class="report-meta">This month · Generated on demand</div>
             </div>
             <span class="badge-pill status-normal">ready</span>
             <div class="report-actions">
               <button class="btn btn-outline btn-dl" type="button" data-report-format="pdf">PDF</button>
               <button class="btn btn-outline btn-dl" type="button" data-report-format="xlsx">Excel</button>
+              <button class="btn btn-outline btn-dl" type="button" data-report-format="csv">CSV</button>
+            </div>
+          </div>
+          <div class="report-entry report-entry-combined" data-report-period="monthly" data-report-type="combined">
+            <div>
+              <div class="report-title">Monthly Combined Report <span class="badge-pill" style="background:#ede9fe;color:#6d28d9;font-size:0.65rem;vertical-align:middle;margin-left:6px">Water + Feeding</span></div>
+              <div class="report-meta">This month · Water Quality & Feeding in one report</div>
+            </div>
+            <span class="badge-pill status-normal">ready</span>
+            <div class="report-actions">
+              <button class="btn btn-outline btn-dl" type="button" data-report-format="pdf">PDF</button>
               <button class="btn btn-outline btn-dl" type="button" data-report-format="csv">CSV</button>
             </div>
           </div>
@@ -738,8 +771,9 @@
               <div class="field">
                 <label>Report Type</label>
                 <select id="custom-report-type">
-                  <option value="wq">Water Quality</option>
+                  <option value="water-quality">Water Quality</option>
                   <option value="feeding">Feeding</option>
+                  <option value="combined">Combined (Water + Feeding)</option>
                 </select>
               </div>
               <div class="field">
@@ -757,6 +791,20 @@
               </div>
             </div>
           </div>
+        </div>
+      </div>
+
+      <!-- Report History -->
+      <div class="card rpt-history-card">
+        <div class="rpt-history-header">
+          <div>
+            <div class="card-title" style="margin:0"><svg class="icon icon-16"><use href="#icon-clock"/></svg> Report History</div>
+            <p style="font-size:0.78rem;color:var(--text-muted);margin-top:4px;margin-bottom:0">Reports generated this session and from previous sessions.</p>
+          </div>
+          <button type="button" class="btn btn-outline" id="btn-clear-report-history" style="font-size:0.78rem;padding:6px 12px;">Clear History</button>
+        </div>
+        <div id="report-history-list" class="rpt-history-list">
+          <div class="rpt-history-empty">No reports generated yet.</div>
         </div>
       </div>
     </section>

@@ -595,6 +595,22 @@ dialog::backdrop { background: rgba(0,0,0,0.45); backdrop-filter: blur(4px); }
 .report-entry .btn-dl { padding: 6px 12px; font-size: 0.75rem; }
 .custom-report-card { padding: 20px; }
 .custom-report-grid { display: grid; grid-template-columns: 1.2fr 1fr 1fr 160px; gap: 14px; align-items: end; }
+
+/* Combined report entry accent */
+.report-entry-combined { border-left: 3px solid #7c3aed; }
+
+/* Report History */
+.rpt-history-card { margin-top: 24px; }
+.rpt-history-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
+.rpt-history-list { display: flex; flex-direction: column; gap: 8px; }
+.rpt-history-empty { font-size: 0.82rem; color: var(--text-muted); padding: 12px 0; }
+.rpt-history-row { display: flex; align-items: center; gap: 12px; padding: 10px 14px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--panel); transition: box-shadow var(--transition); }
+.rpt-history-row:hover { box-shadow: var(--shadow-sm); }
+.rpt-history-icon { width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.rpt-history-body { flex: 1; min-width: 0; }
+.rpt-history-name { font-size: 0.82rem; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rpt-history-meta { font-size: 0.72rem; color: var(--text-muted); margin-top: 2px; }
+.rpt-history-actions { display: flex; gap: 6px; flex-shrink: 0; }
 .custom-report-actions button { width: 100%; }
 
 /* ── 17. Configuration ──────────────────────────────────────────────────── */
