@@ -457,30 +457,121 @@
     <!-- Feeding -->
     <section id="page-feeding" class="page-section">
       <h1 class="page-title">Feeding</h1>
-      <div class="feed-metrics">
-        <div class="metric-card"><div class="value">86 kg</div><div class="label">Today's Total</div><div class="trend up">98% of target</div></div>
-        <div class="metric-card"><div class="value">86.4 kg</div><div class="label">Weekly Average</div><div class="trend" style="color:var(--blue)">Per day</div></div>
-        <div class="metric-card"><div class="value">93%</div><div class="label">Feed Efficiency</div><div class="trend up">↑ 5% from last week</div></div>
-        <div class="metric-card"><div class="value">1,250 kg</div><div class="label">Stock Remaining</div><div class="trend" style="color:#ea580c">~14 days left</div></div>
+
+      <!-- No-pond placeholder -->
+      <div id="feed-no-pond" style="display:none" class="empty-state">
+        No pond selected. Choose a pond from the topbar to view feeding data.
       </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;">
-        <div class="card">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
-            <h3 class="card-title" style="margin:0">Today's Feeding Schedule</h3>
-            <button class="btn btn-primary"><svg class="icon icon-16" style="vertical-align:middle"><use href="#icon-plus"/></svg> Add Schedule</button>
+
+      <!-- Main content -->
+      <div id="feed-content">
+
+        <!-- Metric Cards -->
+        <div class="feed-metrics">
+          <div class="metric-card">
+            <div class="value" id="feed-metric-today">—</div>
+            <div class="label">Feeds Today</div>
           </div>
-          <ul class="feed-schedule-list">
-            <li><span style="width:32px;height:32px;border-radius:50%;background:var(--green);color:white;display:flex;align-items:center;justify-content:center;"><svg class="icon icon-20"><use href="#icon-check"/></svg></span><span class="time">06:00 AM</span><span class="tag">Auto</span><span class="detail">Pond 1 • 25 kg</span><span class="status-done">completed</span></li>
-            <li><span style="width:32px;height:32px;border-radius:50%;background:var(--green);color:white;display:flex;align-items:center;justify-content:center;"><svg class="icon icon-20"><use href="#icon-check"/></svg></span><span class="time">12:00 PM</span><span class="tag">Auto</span><span class="detail">Pond 1 • 30 kg</span><span class="status-done">completed</span></li>
-            <li><span style="width:32px;height:32px;border-radius:50%;background:var(--blue);color:white;display:flex;align-items:center;justify-content:center;"><svg class="icon icon-20"><use href="#icon-clock"/></svg></span><span class="time">06:00 PM</span><span class="tag">Auto</span><span class="detail">Pond 1 • 25 kg</span><span class="status-pending">pending</span></li>
-            <li><span style="width:32px;height:32px;border-radius:50%;background:var(--blue);color:white;display:flex;align-items:center;justify-content:center;"><svg class="icon icon-20"><use href="#icon-clock"/></svg></span><span class="time">10:00 PM</span><span class="tag">Auto</span><span class="detail">—</span><span class="status-pending">scheduled</span></li>
-          </ul>
+          <div class="metric-card">
+            <div class="value" id="feed-metric-last">—</div>
+            <div class="label">Last Fed</div>
+          </div>
+          <div class="metric-card">
+            <div class="value" id="feed-metric-active">—</div>
+            <div class="label">Schedules Active</div>
+          </div>
+          <div class="metric-card">
+            <div class="value" id="feed-metric-next">—</div>
+            <div class="label">Next Feed</div>
+          </div>
         </div>
-        <div class="card">
-          <h3 class="card-title">Weekly Feed Consumption</h3>
-          <div class="feed-chart-wrap"><canvas id="feed-chart"></canvas></div>
+
+        <!-- Schedule + Chart row -->
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;">
+
+          <!-- Schedule List card -->
+          <div class="card">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+              <h3 class="card-title" style="margin:0">Today's Feeding Schedule</h3>
+              <button id="feed-add-schedule-btn" class="btn btn-primary" style="display:none">
+                <svg class="icon icon-16"><use href="#icon-plus"/></svg> Add Schedule
+              </button>
+            </div>
+            <!-- Inline add/edit form -->
+            <div id="feed-schedule-form" style="display:none;margin-bottom:12px;">
+              <div style="margin-bottom:10px;">
+                <label style="font-size:0.75rem;font-weight:600;color:var(--text-muted);display:block;margin-bottom:6px;">Time</label>
+                <input id="feed-schedule-input" type="time" class="input-field" style="margin-right:0;" />
+              </div>
+              <div style="margin-bottom:12px;">
+                <label style="font-size:0.75rem;font-weight:600;color:var(--text-muted);display:block;margin-bottom:8px;">Repeat on</label>
+                <div class="feed-day-selector">
+                  <label class="feed-day-checkbox">
+                    <input type="checkbox" id="feed-day-0" value="0" />
+                    <span>Sun</span>
+                  </label>
+                  <label class="feed-day-checkbox">
+                    <input type="checkbox" id="feed-day-1" value="1" />
+                    <span>Mon</span>
+                  </label>
+                  <label class="feed-day-checkbox">
+                    <input type="checkbox" id="feed-day-2" value="2" />
+                    <span>Tue</span>
+                  </label>
+                  <label class="feed-day-checkbox">
+                    <input type="checkbox" id="feed-day-3" value="3" />
+                    <span>Wed</span>
+                  </label>
+                  <label class="feed-day-checkbox">
+                    <input type="checkbox" id="feed-day-4" value="4" />
+                    <span>Thu</span>
+                  </label>
+                  <label class="feed-day-checkbox">
+                    <input type="checkbox" id="feed-day-5" value="5" />
+                    <span>Fri</span>
+                  </label>
+                  <label class="feed-day-checkbox">
+                    <input type="checkbox" id="feed-day-6" value="6" />
+                    <span>Sat</span>
+                  </label>
+                </div>
+              </div>
+              <div style="display:flex;gap:8px;">
+                <button id="feed-schedule-confirm" class="btn btn-primary btn-sm">Save</button>
+                <button id="feed-schedule-cancel" class="btn btn-outline btn-sm">Cancel</button>
+              </div>
+              <div id="feed-schedule-error" style="color:var(--red-dark);font-size:0.8rem;display:none;margin-top:8px;"></div>
+            </div>
+            <ul id="feed-schedule-list" class="feed-schedule-list"></ul>
+          </div>
+
+          <!-- Weekly Chart card -->
+          <div class="card">
+            <h3 class="card-title">Weekly Feed Activity</h3>
+            <div class="feed-chart-wrap"><canvas id="feed-chart"></canvas></div>
+          </div>
         </div>
-      </div>
+
+        <!-- Manual Feed + Feed Log row -->
+        <div style="display:grid;grid-template-columns:auto 1fr;gap:24px;margin-top:24px;align-items:start;">
+
+          <!-- Manual Feed card -->
+          <div class="card" style="min-width:200px;">
+            <h3 class="card-title">Manual Feed</h3>
+            <button id="feed-manual-btn" class="btn btn-primary" style="width:100%;">
+              ▶ Manual Feed
+            </button>
+            <div id="feed-manual-status" style="font-size:0.8rem;color:var(--text-muted);margin-top:8px;"></div>
+          </div>
+
+          <!-- Feed Log card -->
+          <div class="card">
+            <h3 class="card-title">Feed Log</h3>
+            <div id="feed-log-list" style="max-height:260px;overflow-y:auto;font-size:0.85rem;"></div>
+          </div>
+        </div>
+
+      </div><!-- /#feed-content -->
     </section>
 
     <!-- Alerts -->

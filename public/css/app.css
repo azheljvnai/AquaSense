@@ -611,8 +611,51 @@ dialog::backdrop { background: rgba(0,0,0,0.45); backdrop-filter: blur(4px); }
 .feed-schedule-list .detail { font-size: 0.78rem; color: var(--text-muted); flex: 1; }
 .feed-schedule-list .status-done    { font-size: 0.7rem; font-weight: 700; color: var(--green-dark); text-transform: uppercase; letter-spacing: 0.04em; }
 .feed-schedule-list .status-pending { font-size: 0.7rem; font-weight: 700; color: var(--blue); text-transform: uppercase; letter-spacing: 0.04em; }
+.feed-schedule-list .status-inactive { font-size: 0.7rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.feed-schedule-list .sched-days { font-size: 0.72rem; color: var(--text-muted); font-weight: 500; }
+.feed-schedule-list .actions { display: flex; gap: 4px; margin-left: auto; flex-shrink: 0; }
+.feed-schedule-list .sched-icon { width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.feed-schedule-list .sched-icon--done { background: var(--green); color: white; }
+.feed-schedule-list .sched-icon--upcoming { background: var(--blue); color: white; }
+.feed-schedule-list .sched-icon--scheduled { background: var(--border2); color: var(--text-muted); }
+.feed-schedule-list .sched-icon--inactive { background: var(--bg); color: var(--text-faint); }
 .feed-chart-wrap { height: 220px; }
 .feed-chart-wrap canvas { width: 100% !important; height: 100% !important; }
+
+/* Feed log */
+.feed-log-row { display: flex; align-items: center; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--border); }
+.feed-log-row:last-child { border-bottom: none; }
+.feed-log-type { display: inline-flex; align-items: center; padding: 2px 9px; border-radius: 9999px; font-size: 0.68rem; font-weight: 700; text-transform: capitalize; letter-spacing: 0.02em; }
+.feed-log-type--manual { background: var(--blue-light); color: var(--blue-dark); border: 1px solid rgba(59,130,246,0.2); }
+.feed-log-type--auto   { background: var(--green-light); color: var(--green-dark); border: 1px solid rgba(34,197,94,0.25); }
+.feed-log-type--unknown { background: var(--bg); color: var(--text-muted); border: 1px solid var(--border2); }
+.feed-log-time { font-size: 0.78rem; color: var(--text-muted); }
+
+/* Schedule form input */
+.input-field { padding: 7px 10px; border: 1.5px solid var(--border2); border-radius: var(--radius-sm); background: var(--panel); color: var(--text); font-size: 0.875rem; outline: none; transition: border-color var(--transition), box-shadow var(--transition); margin-right: 6px; }
+.input-field:focus { border-color: var(--blue); box-shadow: 0 0 0 3px var(--blue-glow); }
+
+/* Day selector */
+.feed-day-selector { display: flex; gap: 6px; flex-wrap: wrap; }
+.feed-day-checkbox { position: relative; cursor: pointer; user-select: none; }
+.feed-day-checkbox input { position: absolute; opacity: 0; width: 0; height: 0; }
+.feed-day-checkbox span {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 42px; height: 32px; padding: 0 10px;
+  border: 1.5px solid var(--border2); border-radius: 8px;
+  background: var(--panel); color: var(--text-muted);
+  font-size: 0.75rem; font-weight: 600;
+  transition: all var(--transition);
+}
+.feed-day-checkbox:hover span { border-color: var(--blue); color: var(--blue); background: var(--blue-light); }
+.feed-day-checkbox input:checked + span {
+  background: var(--blue); border-color: var(--blue); color: white;
+  box-shadow: 0 2px 6px var(--blue-glow);
+}
+.feed-day-checkbox input:focus-visible + span { outline: 2px solid var(--blue); outline-offset: 2px; }
+
+/* Empty state */
+.empty-state { padding: 40px 24px; text-align: center; color: var(--text-muted); font-size: 0.875rem; }
 
 /* ── 14. Alerts page ────────────────────────────────────────────────────── */
 .alert-summary { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 24px; }

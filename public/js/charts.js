@@ -236,13 +236,13 @@ export function updateHistoricalChart(chart, labels, data, activeMetric) {
 }
 
 export function initFeedingChart(canvasEl) {
-  if (!canvasEl || typeof Chart === 'undefined') return;
-  new Chart(canvasEl.getContext('2d'), {
+  if (!canvasEl || typeof Chart === 'undefined') return null;
+  return new Chart(canvasEl.getContext('2d'), {
     type: 'bar',
     data: {
       labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
       datasets: [{
-        label: 'Consumption (kg)',
+        label: 'Feed Events',
         data: [85, 88, 86, 90, 84, 86, 86],
         backgroundColor: 'rgba(59,130,246,0.75)',
         borderColor: '#3b82f6',
