@@ -494,6 +494,7 @@ function connectFirebase() {
       recordSensorReading(ph, doV, turb, temp, ts);
       recordPondSensorReading(ph, doV, turb, temp).catch(() => {/* offline */});
       window.dispatchEvent(new CustomEvent('sensor-reading-recorded'));
+      window.dispatchEvent(new CustomEvent('sensor-data-updated', { detail: { ph, doV, turb, temp, ts } }));
     },
     enableFeedBtn,
   });

@@ -621,6 +621,30 @@ dialog::backdrop { background: rgba(0,0,0,0.45); backdrop-filter: blur(4px); }
 .alert-summary .icon-wrap { width: 46px; height: 46px; border-radius: 12px; margin: 0 auto 10px; display: flex; align-items: center; justify-content: center; }
 .alert-summary .count { font-size: 1.75rem; font-weight: 800; letter-spacing: -0.03em; line-height: 1; margin-top: 4px; }
 .alert-summary .card > div:nth-child(2) { font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); margin-top: 2px; }
+
+/* Alert list toolbar: pond filter tabs */
+.alert-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; flex-wrap: wrap; }
+.alert-pond-filters { display: flex; gap: 6px; flex-wrap: wrap; }
+.alert-pond-btn {
+  padding: 5px 13px; border-radius: 9999px; font-size: 0.75rem; font-weight: 600;
+  border: 1.5px solid var(--border2); background: transparent; color: var(--text-muted);
+  cursor: pointer; transition: all var(--transition); white-space: nowrap;
+}
+.alert-pond-btn:hover { border-color: var(--blue); color: var(--blue); background: var(--blue-light); }
+.alert-pond-btn.active { background: var(--blue); border-color: var(--blue); color: white; }
+
+/* Scrollable alert list */
+.alert-list-scroll {
+  max-height: 420px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border2) transparent;
+  border-radius: 0 0 var(--radius) var(--radius);
+}
+.alert-list-scroll::-webkit-scrollbar { width: 5px; }
+.alert-list-scroll::-webkit-scrollbar-track { background: transparent; }
+.alert-list-scroll::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 9999px; }
+
 .alert-list .alert-row { display: flex; gap: 14px; padding: 16px; border-bottom: 1px solid var(--border); align-items: flex-start; transition: background var(--transition); }
 .alert-list .alert-row:hover { background: var(--panel-hover); }
 .alert-list .alert-row:last-child { border-bottom: none; }
