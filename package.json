@@ -5,7 +5,7 @@
   "description": "AquaSense/CrayFarm root scripts (runs backend)",
   "scripts": {
     "start": "npm --prefix backend start",
-    "build": "npm run build",
+    "build": "xcopy /E /I /Y frontend\\css public\\css & xcopy /E /I /Y frontend\\js public\\js & copy /Y frontend\\icons.svg public\\icons.svg",
     "dev": "npm --prefix backend run dev",
     "install:backend": "npm --prefix backend install"
   },
