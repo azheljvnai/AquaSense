@@ -13,7 +13,7 @@
  *   custom → user-supplied dates, label: MM-DD HH:MM
  */
 import { initHistoricalChart, updateHistoricalChart } from '../charts.js';
-import { getHistoryRange, getThresholds, saveThresholds, resetThresholds, spkData } from '../utils.js';
+import { getHistoryRange, getThresholds, saveThresholds, resetThresholds, spkData, mergeHistoryEntries } from '../utils.js';
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
@@ -184,24 +184,74 @@ export function init() {
   /**
    * Build chart data from stored history for the current range.
    *
-   * - 24h:           one point per reading (HH:MM label) — same as dashboard
-   * - week / month / custom: one point per calendar day (daily average, Mon / Apr-25 label)
+   * - 24h:   one point per hour (hourly average), labels "00:00"–"23:00"
+   * - week:  one point per day Mon–Sun (always all 7 days), label "Mon"–"Sun"
+   * - month / custom: one point per calendar day, label "Apr 25" etc.
    */
-  function buildChartData(readings, rangeVal) {
-    if (!readings.length) return { labels: [], ph: [], do: [], turb: [], temp: [] };
+  function buildChartData(readings, rangeVal, rangeFrom) {
+    const avg = arr => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null;
 
-    // ── 24h: push every reading individually ─────────────────────────────
+    // ── 24h: average per hour, always 24 buckets ──────────────────────────
     if (rangeVal === '24h') {
+      // Build 24 hour-buckets keyed 0–23 relative to the start of the range
+      const fromHour = new Date(rangeFrom);
+      fromHour.setMinutes(0, 0, 0);
+      const hourBuckets = Array.from({ length: 24 }, () => ({ ph: [], do: [], turb: [], temp: [] }));
+
+      for (const r of readings) {
+        const diffMs = r.ts - fromHour.getTime();
+        const idx = Math.floor(diffMs / (60 * 60 * 1000));
+        if (idx >= 0 && idx < 24) {
+          for (const k of ['ph', 'do', 'turb', 'temp']) {
+            if (typeof r[k] === 'number' && Number.isFinite(r[k])) hourBuckets[idx][k].push(r[k]);
+          }
+        }
+      }
+
+      const labels = hourBuckets.map((_, i) => {
+        const d = new Date(fromHour.getTime() + i * 60 * 60 * 1000);
+        return `${pad(d.getHours())}:00`;
+      });
+
       return {
-        labels: readings.map(r => fmtTime(new Date(r.ts))),
-        ph:     readings.map(r => r.ph   ?? null),
-        do:     readings.map(r => r.do   ?? null),
-        turb:   readings.map(r => r.turb ?? null),
-        temp:   readings.map(r => r.temp ?? null),
+        labels,
+        ph:   hourBuckets.map(b => avg(b.ph)),
+        do:   hourBuckets.map(b => avg(b.do)),
+        turb: hourBuckets.map(b => avg(b.turb)),
+        temp: hourBuckets.map(b => avg(b.temp)),
       };
     }
 
-    // ── week / month / custom: average per calendar day ───────────────────
+    // ── week: always Mon–Sun (7 buckets), missing days → null ─────────────
+    if (rangeVal === 'week') {
+      // rangeFrom is already Monday 00:00:00
+      const mon = new Date(rangeFrom);
+      mon.setHours(0, 0, 0, 0);
+      const dayBuckets = Array.from({ length: 7 }, () => ({ ph: [], do: [], turb: [], temp: [] }));
+
+      for (const r of readings) {
+        const diffMs = r.ts - mon.getTime();
+        const idx = Math.floor(diffMs / (24 * 60 * 60 * 1000));
+        if (idx >= 0 && idx < 7) {
+          for (const k of ['ph', 'do', 'turb', 'temp']) {
+            if (typeof r[k] === 'number' && Number.isFinite(r[k])) dayBuckets[idx][k].push(r[k]);
+          }
+        }
+      }
+
+      const WEEK_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+      return {
+        labels: WEEK_LABELS,
+        ph:   dayBuckets.map(b => avg(b.ph)),
+        do:   dayBuckets.map(b => avg(b.do)),
+        turb: dayBuckets.map(b => avg(b.turb)),
+        temp: dayBuckets.map(b => avg(b.temp)),
+      };
+    }
+
+    // ── month / custom: average per calendar day ──────────────────────────
+    if (!readings.length) return { labels: [], ph: [], do: [], turb: [], temp: [] };
+
     const dayBuckets = {};  // key: 'YYYY-MM-DD'
     for (const r of readings) {
       const d = new Date(r.ts);
@@ -212,16 +262,10 @@ export function init() {
       }
     }
 
-    const avg = arr => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null;
     const labels = [], ph = [], doArr = [], turb = [], temp = [];
-
     for (const key of Object.keys(dayBuckets).sort()) {
       const b = dayBuckets[key];
-      // week → "Mon", "Tue" …   month/custom → "Apr 25", "Apr 26" …
-      const label = rangeVal === 'week'
-        ? DAY_NAMES[b.d.getDay()]
-        : `${b.d.toLocaleString('default', { month: 'short' })} ${b.d.getDate()}`;
-      labels.push(label);
+      labels.push(`${b.d.toLocaleString('default', { month: 'short' })} ${b.d.getDate()}`);
       ph.push(avg(b.ph));
       doArr.push(avg(b.do));
       turb.push(avg(b.turb));
@@ -242,6 +286,11 @@ export function init() {
 
     const noDataEl  = document.getElementById('hist-no-data');
     const chartWrap = document.getElementById('hist-chart-wrap');
+
+    // Toggle scrollable class for 24h view
+    if (chartWrap) {
+      chartWrap.classList.toggle('scrollable-24h', activeRange === '24h');
+    }
 
     // No persisted history yet — fall back to live spkData buffer (same as dashboard)
     if (!readings.length) {
@@ -272,7 +321,7 @@ export function init() {
     if (noDataEl)  noDataEl.style.display  = 'none';
     if (chartWrap) chartWrap.style.display = 'block';
 
-    const { labels, ph, do: doArr, turb, temp } = buildChartData(readings, activeRange);
+    const { labels, ph, do: doArr, turb, temp } = buildChartData(readings, activeRange, from.getTime());
     updateHistoricalChart(histChart, labels, { ph, do: doArr, turb, temp }, activeMetric);
   }
 
@@ -306,7 +355,17 @@ export function init() {
 
   // ── full refresh ──────────────────────────────────────────────────────────
 
-  function refresh() {
+  async function refresh() {
+    // Fetch from RTDB first to get data recorded while browser was closed
+    if (typeof window.fetchHistoryFromRTDB === 'function') {
+      try {
+        const { from, to } = getRange(activeRange, customFrom, customTo);
+        const rtdbEntries = await window.fetchHistoryFromRTDB(from.getTime(), to.getTime());
+        if (rtdbEntries.length) mergeHistoryEntries(rtdbEntries);
+      } catch {
+        // RTDB unavailable — fall back to local cache silently
+      }
+    }
     loadChart();
     updateStatCards();
   }
@@ -333,17 +392,10 @@ export function init() {
       return;
     }
 
-    // 24h: append the latest point directly, same as pushChart()
-    const all = getHistoryRange(from.getTime(), to.getTime());
-    if (!all.length) return;
-    const latest = all[all.length - 1];
-
-    // If we were showing fallback spkData, switch to real data now
-    if (all.length === 1) { loadChart(); return; }
-
-    histChart.data.labels.push(fmtTime(new Date(latest.ts)));
-    const vals = [latest.ph, latest.do, latest.turb, latest.temp];
-    vals.forEach((v, i) => histChart.data.datasets[i].data.push(v ?? null));
-    histChart.update('active');
+    // 24h: hourly buckets — reload the whole chart to recompute averages
+    if (activeRange === '24h') {
+      loadChart();
+      return;
+    }
   });
 }

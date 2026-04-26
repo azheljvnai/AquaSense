@@ -50,8 +50,8 @@ try {
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Frontend static files (parent dir / frontend)
-const frontendPath = path.join(__dirname, '..', 'frontend');
+// Frontend static files (parent dir / public)
+const frontendPath = path.join(__dirname, '..', 'public');
 
 // Disable caching during development so changes reflect immediately on localhost.
 app.use((_req, res, next) => {
@@ -256,8 +256,191 @@ app.delete('/api/users/:uid', verifyToken, requireRole('admin'), async (req, res
   }
 });
 
+// ─── Pond API ─────────────────────────────────────────────────────────────────
+
+/** GET /api/ponds — list all ponds */
+app.get('/api/ponds', verifyToken, async (req, res) => {
+  try {
+    const snap = await admin.firestore().collection('ponds').get();
+    const ponds = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    return res.json(ponds);
+  } catch (e) {
+    console.error('[GET /api/ponds]', e.message);
+    return res.status(500).json({ error: e.message });
+  }
+});
+
+/** POST /api/ponds — create a pond. Requires admin or owner. */
+app.post('/api/ponds', verifyToken, requireRole('admin', 'owner'), async (req, res) => {
+  const { name, location, capacity } = req.body || {};
+  if (!name) return res.status(400).json({ error: 'name is required.' });
+  try {
+    const ref = await admin.firestore().collection('ponds').add({
+      name, location: location || '', capacity: capacity || '',
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+    return res.status(201).json({ id: ref.id });
+  } catch (e) {
+    console.error('[POST /api/ponds]', e.message);
+    return res.status(400).json({ error: e.message });
+  }
+});
+
+/** PATCH /api/ponds/:id — update a pond. Requires admin or owner. */
+app.patch('/api/ponds/:id', verifyToken, requireRole('admin', 'owner'), async (req, res) => {
+  const { name, location, capacity } = req.body || {};
+  try {
+    await admin.firestore().collection('ponds').doc(req.params.id).set(
+      { name, location, capacity, updatedAt: admin.firestore.FieldValue.serverTimestamp() },
+      { merge: true },
+    );
+    return res.json({ success: true });
+  } catch (e) {
+    console.error('[PATCH /api/ponds]', e.message);
+    return res.status(400).json({ error: e.message });
+  }
+});
+
+/** DELETE /api/ponds/:id — delete a pond. Requires admin. */
+app.delete('/api/ponds/:id', verifyToken, requireRole('admin'), async (req, res) => {
+  try {
+    await admin.firestore().collection('ponds').doc(req.params.id).delete();
+    return res.json({ success: true });
+  } catch (e) {
+    console.error('[DELETE /api/ponds]', e.message);
+    return res.status(400).json({ error: e.message });
+  }
+});
+
+// ─── Pond Configurations API ──────────────────────────────────────────────────
+
+/** GET /api/pond-configurations?pondId=xxx — list configs for a pond */
+app.get('/api/pond-configurations', verifyToken, async (req, res) => {
+  const { pondId } = req.query;
+  if (!pondId) return res.status(400).json({ error: 'pondId query param required.' });
+  try {
+    const snap = await admin.firestore().collection('pond_configurations')
+      .where('pondId', '==', pondId).get();
+    return res.json(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+  } catch (e) {
+    console.error('[GET /api/pond-configurations]', e.message);
+    return res.status(500).json({ error: e.message });
+  }
+});
+
+/** POST /api/pond-configurations — assign a config to a pond. Requires admin or owner. */
+app.post('/api/pond-configurations', verifyToken, requireRole('admin', 'owner'), async (req, res) => {
+  const { pondId, name, species, thresholds } = req.body || {};
+  if (!pondId || !species) return res.status(400).json({ error: 'pondId and species are required.' });
+  try {
+    const ref = await admin.firestore().collection('pond_configurations').add({
+      pondId, name: name || species, species, thresholds: thresholds || {},
+      isActive: false, createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+    return res.status(201).json({ id: ref.id });
+  } catch (e) {
+    console.error('[POST /api/pond-configurations]', e.message);
+    return res.status(400).json({ error: e.message });
+  }
+});
+
+/** PATCH /api/pond-configurations/:id — update a config. Requires admin or owner. */
+app.patch('/api/pond-configurations/:id', verifyToken, requireRole('admin', 'owner'), async (req, res) => {
+  try {
+    await admin.firestore().collection('pond_configurations').doc(req.params.id).set(
+      { ...req.body, updatedAt: admin.firestore.FieldValue.serverTimestamp() },
+      { merge: true },
+    );
+    return res.json({ success: true });
+  } catch (e) {
+    console.error('[PATCH /api/pond-configurations]', e.message);
+    return res.status(400).json({ error: e.message });
+  }
+});
+
+/**
+ * POST /api/pond-configurations/:id/activate — set as active for its pond.
+ * Deactivates all other configs for the same pond. Requires admin or owner.
+ */
+app.post('/api/pond-configurations/:id/activate', verifyToken, requireRole('admin', 'owner'), async (req, res) => {
+  try {
+    const fs = admin.firestore();
+    const cfgSnap = await fs.collection('pond_configurations').doc(req.params.id).get();
+    if (!cfgSnap.exists) return res.status(404).json({ error: 'Configuration not found.' });
+    const pondId = cfgSnap.data().pondId;
+
+    // Deactivate all configs for this pond, then activate the target
+    const allSnap = await fs.collection('pond_configurations').where('pondId', '==', pondId).get();
+    const batch = fs.batch();
+    allSnap.docs.forEach(d => batch.update(d.ref, { isActive: d.id === req.params.id }));
+    await batch.commit();
+    return res.json({ success: true });
+  } catch (e) {
+    console.error('[POST /api/pond-configurations/:id/activate]', e.message);
+    return res.status(400).json({ error: e.message });
+  }
+});
+
+/**
+ * POST /api/pond-configurations/:id/deactivate — clear the active flag for this config.
+ * Requires admin or owner.
+ */
+app.post('/api/pond-configurations/:id/deactivate', verifyToken, requireRole('admin', 'owner'), async (req, res) => {
+  try {
+    const fs = admin.firestore();
+    const ref = fs.collection('pond_configurations').doc(req.params.id);
+    const snap = await ref.get();
+    if (!snap.exists) return res.status(404).json({ error: 'Configuration not found.' });
+    await ref.update({ isActive: false });
+    return res.json({ success: true });
+  } catch (e) {
+    console.error('[POST /api/pond-configurations/:id/deactivate]', e.message);
+    return res.status(400).json({ error: e.message });
+  }
+});
+
+/** DELETE /api/pond-configurations/:id — remove a config. Requires admin or owner. */
+app.delete('/api/pond-configurations/:id', verifyToken, requireRole('admin', 'owner'), async (req, res) => {
+  try {
+    await admin.firestore().collection('pond_configurations').doc(req.params.id).delete();
+    return res.json({ success: true });
+  } catch (e) {
+    console.error('[DELETE /api/pond-configurations]', e.message);
+    return res.status(400).json({ error: e.message });
+  }
+});
+
+/** GET /api/configurations — list global species presets */
+app.get('/api/configurations', verifyToken, async (req, res) => {
+  try {
+    const snap = await admin.firestore().collection('configurations').get();
+    return res.json(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+  } catch (e) {
+    return res.status(500).json({ error: e.message });
+  }
+});
+
+/** POST /api/configurations — seed/create a global preset. Requires admin. */
+app.post('/api/configurations', verifyToken, requireRole('admin'), async (req, res) => {
+  const { id, name, species, thresholds } = req.body || {};
+  if (!species) return res.status(400).json({ error: 'species is required.' });
+  try {
+    const docId = id || species;
+    await admin.firestore().collection('configurations').doc(docId).set(
+      { name: name || species, species, thresholds: thresholds || {}, isPreset: true,
+        createdAt: admin.firestore.FieldValue.serverTimestamp() },
+      { merge: true },
+    );
+    return res.status(201).json({ id: docId });
+  } catch (e) {
+    return res.status(400).json({ error: e.message });
+  }
+});
+
 // Static files — registered after API routes so /api/* is never intercepted
 app.use(express.static(frontendPath, { etag: false, lastModified: false, maxAge: 0 }));
+// Also serve frontend assets (css, js, etc.)
+app.use(express.static(path.join(__dirname, '..', 'frontend'), { etag: false, lastModified: false, maxAge: 0 }));
 
 // SPA fallback: serve index.html for non-file routes
 app.get('*', (_req, res) => {

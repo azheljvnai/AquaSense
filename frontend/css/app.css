@@ -224,6 +224,12 @@ body {
   background: linear-gradient(135deg, var(--blue), var(--blue-dark));
   color: white; display: flex; align-items: center; justify-content: center;
   font-weight: 700; font-size: 0.875rem; flex-shrink: 0;
+  transition: box-shadow 0.15s, transform 0.15s;
+}
+#account-avatar-btn:hover, #account-avatar-btn:focus-visible {
+  box-shadow: 0 0 0 3px rgba(59,130,246,0.45);
+  transform: scale(1.08);
+  outline: none;
 }
 .sidebar-user-info { flex: 1; min-width: 0; }
 .sidebar-user-name { font-size: 0.82rem; font-weight: 600; color: #f1f5f9; }
@@ -247,6 +253,66 @@ body {
 .topbar-page-title { font-size: 0.9rem; font-weight: 600; color: var(--text-2); display: none; }
 .topbar-right { display: flex; align-items: center; gap: 12px; }
 .topbar-clock { font-size: 0.78rem; color: var(--text-muted); font-variant-numeric: tabular-nums; font-weight: 500; letter-spacing: 0.02em; }
+
+/* Topbar pond selector */
+.topbar-pond-selector {
+  display: flex; align-items: center; gap: 6px;
+  background: var(--panel); border: 1px solid var(--border);
+  border-radius: 8px; padding: 4px 10px 4px 8px;
+  box-shadow: var(--shadow-sm);
+}
+.topbar-pond-icon { color: var(--blue); flex-shrink: 0; }
+.topbar-pond-select {
+  border: none; background: transparent; font-size: 0.8rem;
+  font-weight: 600; color: var(--text-2); cursor: pointer;
+  outline: none; max-width: 160px;
+}
+.topbar-pond-select:focus { outline: none; }
+
+/* Dashboard pond badge */
+.page-title-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 4px; }
+.page-title-row .page-title { margin-bottom: 0; }
+.active-pond-badge {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: var(--blue-light); border: 1px solid rgba(59,130,246,0.2);
+  border-radius: 9999px; padding: 4px 12px; font-size: 0.78rem;
+  font-weight: 600; color: var(--blue-dark);
+}
+.active-pond-badge svg { color: var(--blue); }
+.species-chip {
+  background: rgba(34,197,94,0.12); color: var(--green-dark);
+  border-radius: 9999px; padding: 1px 8px; font-size: 0.68rem;
+  font-weight: 700; text-transform: capitalize;
+}
+.species-chip--unconfigured {
+  background: rgba(239,68,68,0.1); color: #b91c1c;
+}
+
+/* Not-configured notice in pond config list */
+.pond-not-configured {
+  display: flex; align-items: flex-start; gap: 12px;
+  background: #fff7ed; border: 1px solid #fed7aa;
+  border-radius: 8px; padding: 14px 16px; margin-bottom: 12px;
+}
+.pond-not-configured-title { font-weight: 700; color: #9a3412; font-size: 0.9rem; }
+.pond-not-configured-sub   { font-size: 0.8rem; color: #c2410c; margin-top: 2px; }
+.pond-cfg-inactive-list    { opacity: 0.7; }
+
+/* Reports pond filter */
+.report-pond-filter { display: flex; align-items: center; gap: 6px; }
+.report-pond-label { font-size: 0.78rem; font-weight: 600; color: var(--text-muted); display: flex; align-items: center; gap: 4px; white-space: nowrap; }
+.report-pond-select {
+  border: 1px solid var(--border); border-radius: 7px; background: var(--panel);
+  font-size: 0.8rem; font-weight: 500; color: var(--text-2);
+  padding: 5px 10px; cursor: pointer; outline: none;
+}
+.report-pond-select:focus { border-color: var(--blue); box-shadow: 0 0 0 3px var(--blue-glow); }
+.report-active-pond-bar {
+  margin-top: 10px; padding: 8px 12px;
+  background: var(--blue-light); border-radius: 7px;
+  font-size: 0.82rem; color: var(--blue-dark);
+  display: flex; align-items: center; gap: 6px;
+}
 
 .status-chip { display: inline-flex; align-items: center; gap: 6px; padding: 5px 11px; border-radius: 9999px; font-size: 0.7rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; }
 .status-chip::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
@@ -273,6 +339,7 @@ body {
 
 /* ── 07. Buttons, badges, switches, fields, tabs, icons ─────────────────── */
 .btn { padding: 9px 16px; border-radius: var(--radius-sm); font-size: 0.82rem; font-weight: 600; cursor: pointer; border: 1px solid; transition: all var(--transition); display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; letter-spacing: 0.01em; }
+.btn-sm { padding: 5px 11px; font-size: 0.76rem; }
 .btn-primary { background: var(--blue); border-color: var(--blue); color: white; box-shadow: 0 1px 4px var(--blue-glow); }
 .btn-primary:hover:not(:disabled) { background: var(--blue-dark); border-color: var(--blue-dark); box-shadow: 0 3px 10px var(--blue-glow); transform: translateY(-1px); }
 .btn-primary:active:not(:disabled) { transform: translateY(0); }
@@ -282,6 +349,8 @@ body {
 
 .badge-pill { display: inline-flex; align-items: center; padding: 3px 9px; border-radius: 9999px; font-size: 0.68rem; font-weight: 700; text-transform: capitalize; letter-spacing: 0.02em; }
 .status-normal, .wq-normal { background: #dcfce7; color: #15803d; border: 1px solid rgba(34,197,94,0.3); }
+.status-acceptable, .wq-acceptable { background: #d1fae5; color: #065f46; border: 1px solid rgba(16,185,129,0.3); }
+.status-stress, .wq-stress { background: #ffedd5; color: #c2410c; border: 1px solid rgba(249,115,22,0.3); }
 .status-warning, .wq-warning { background: #fef3c7; color: #b45309; border: 1px solid rgba(245,158,11,0.3); }
 .status-critical, .wq-critical { background: #fee2e2; color: #b91c1c; border: 1px solid rgba(239,68,68,0.3); }
 
@@ -382,9 +451,11 @@ dialog::backdrop { background: rgba(0,0,0,0.45); backdrop-filter: blur(4px); }
 .scard.turb .scard-val { color: var(--turb-c); }
 
 .scard-badge { position: absolute; top: 14px; right: 14px; padding: 3px 9px; border-radius: 9999px; font-size: 0.62rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; }
-.scard-badge.ok     { background: #dcfce7; color: #15803d; border: 1px solid rgba(34,197,94,0.3); }
-.scard-badge.warn   { background: #fef3c7; color: #b45309; border: 1px solid rgba(245,158,11,0.3); }
-.scard-badge.danger { background: #fee2e2; color: #b91c1c; border: 1px solid rgba(239,68,68,0.3); animation: badge-pulse 2s ease-in-out infinite; }
+.scard-badge.ok         { background: #dcfce7; color: #15803d; border: 1px solid rgba(34,197,94,0.3); }
+.scard-badge.acceptable { background: #d1fae5; color: #065f46; border: 1px solid rgba(16,185,129,0.3); }
+.scard-badge.stress     { background: #ffedd5; color: #c2410c; border: 1px solid rgba(249,115,22,0.3); }
+.scard-badge.warn       { background: #fef3c7; color: #b45309; border: 1px solid rgba(245,158,11,0.3); }
+.scard-badge.danger     { background: #fee2e2; color: #b91c1c; border: 1px solid rgba(239,68,68,0.3); animation: badge-pulse 2s ease-in-out infinite; }
 @keyframes badge-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.7; } }
 
 .spark { width: 100%; height: 30px; margin-top: auto; padding-top: 8px; opacity: 0.7; }
@@ -468,8 +539,12 @@ dialog::backdrop { background: rgba(0,0,0,0.45); backdrop-filter: blur(4px); }
 .hist-toolbar select, .hist-date-input { padding: 7px 12px; border: 1.5px solid var(--border2); border-radius: var(--radius-sm); font-size: 0.82rem; font-weight: 500; background: var(--panel); color: var(--text); outline: none; cursor: pointer; transition: border-color var(--transition); }
 .hist-toolbar select:focus, .hist-date-input:focus { border-color: var(--blue); }
 .hist-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-.hist-chart-wrap { height: 300px; }
+.hist-chart-wrap { height: 300px; overflow-x: hidden; }
 .hist-chart-wrap canvas { width: 100% !important; height: 100% !important; }
+
+/* 24h view: scrollable with fixed wide canvas so all 24 hours are visible */
+.hist-chart-wrap.scrollable-24h { overflow-x: auto; overflow-y: hidden; scrollbar-width: thin; scrollbar-color: var(--border2) transparent; }
+.hist-chart-wrap.scrollable-24h canvas { width: 1200px !important; min-width: 1200px; height: 100% !important; }
 
 /* Metric selector tabs */
 .hist-metric-tabs { display: flex; gap: 4px; background: var(--bg); border-radius: var(--radius-sm); padding: 3px; border: 1px solid var(--border); }
@@ -784,4 +859,232 @@ body.sidebar-open .sidebar { transform: translateX(0); }
   .dash-metrics { grid-template-columns: 1fr; }
   .wq-avg-row { grid-template-columns: 1fr; }
   .cfg-data-grid { grid-template-columns: 1fr; }
+}
+
+/* ── Account Popover (compact) ──────────────────────────────────────────── */
+.sidebar-user-avatar {
+  cursor: pointer;
+  border: none;
+  padding: 0;
+}
+.account-popover {
+  position: fixed;
+  width: 220px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 12px 32px rgba(0,0,0,0.18), 0 2px 8px rgba(0,0,0,0.08);
+  z-index: 9999;
+  overflow: hidden;
+  animation: popoverIn 0.14s cubic-bezier(0.16,1,0.3,1);
+  transform-origin: bottom left;
+}
+@keyframes popoverIn {
+  from { opacity: 0; transform: scale(0.94) translateY(6px); }
+  to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+.account-popover[hidden] { display: none; }
+.account-popover-user {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px 10px;
+}
+.account-popover-avatar {
+  width: 32px; height: 32px; border-radius: 50%;
+  background: linear-gradient(135deg, var(--blue), var(--blue-dark));
+  color: #fff;
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 700; font-size: 0.8rem; flex-shrink: 0;
+}
+.account-popover-info { min-width: 0; }
+.account-popover-name {
+  font-size: 0.82rem; font-weight: 600; color: var(--text);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.account-popover-email {
+  font-size: 0.7rem; color: var(--text-muted);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.account-popover-divider {
+  height: 1px; background: var(--border); margin: 0 10px;
+}
+.account-popover-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 9px 14px;
+  background: none;
+  border: none;
+  color: var(--text);
+  font-size: 0.82rem;
+  font-family: inherit;
+  font-weight: 500;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.1s;
+}
+.account-popover-item:last-child { margin-bottom: 4px; }
+.account-popover-item:hover, .account-popover-item:focus-visible {
+  background: var(--bg);
+  outline: none;
+}
+.account-popover-icon {
+  width: 26px; height: 26px; border-radius: 7px;
+  background: var(--bg);
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+  color: var(--blue);
+}
+
+/* ── Account Pages ──────────────────────────────────────────────────────── */
+.acct-page-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+}
+.acct-hero-strip {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px 20px;
+  margin-bottom: 20px;
+}
+.acct-hero-avatar {
+  width: 44px; height: 44px; border-radius: 50%;
+  background: linear-gradient(135deg, var(--blue), var(--blue-dark));
+  color: #fff;
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 800; font-size: 1.1rem; flex-shrink: 0;
+}
+.acct-hero-body { display: flex; flex-direction: column; gap: 4px; }
+.acct-hero-name { font-size: 1rem; font-weight: 700; color: var(--text); }
+.acct-page-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+  margin-bottom: 20px;
+}
+@media (max-width: 700px) { .acct-page-grid { grid-template-columns: 1fr; } }
+.acct-info-card { padding: 20px; }
+.acct-info-card-title {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 0.75rem; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.07em;
+  color: var(--text-muted); margin-bottom: 14px;
+}
+.acct-info-rows { display: flex; flex-direction: column; }
+.acct-info-row {
+  display: flex; justify-content: space-between; align-items: baseline;
+  gap: 12px; padding: 9px 0;
+  border-bottom: 1px solid var(--border); font-size: 0.875rem;
+}
+.acct-info-row:last-child { border-bottom: none; }
+.acct-info-label { color: var(--text-muted); flex-shrink: 0; }
+.acct-info-val { color: var(--text); font-weight: 500; text-align: right; }
+.acct-team-card { padding: 20px; }
+
+/* ── Change Password Page ───────────────────────────────────────────────── */
+.acct-pw-card {
+  max-width: 480px;
+  padding: 24px;
+}
+.acct-pw-hint {
+  font-size: 0.85rem; color: var(--text-muted);
+  margin-bottom: 20px; line-height: 1.55;
+}
+.acct-pw-fields { display: flex; flex-direction: column; gap: 14px; margin-bottom: 16px; }
+.acct-pw-rules {
+  list-style: none; padding: 0; margin: 0 0 16px;
+  display: grid; grid-template-columns: 1fr 1fr; gap: 6px;
+}
+.acct-pw-rules li {
+  font-size: 0.75rem; color: var(--text-muted);
+  padding: 5px 9px; border-radius: 6px;
+  background: var(--bg); border: 1px solid var(--border);
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+  display: flex; align-items: center; gap: 5px;
+}
+.acct-pw-rules li::before { content: '✗'; font-size: 0.7rem; color: var(--text-muted); }
+.acct-pw-rules li.rule-ok { color: #16a34a; border-color: rgba(34,197,94,0.35); background: rgba(34,197,94,0.07); }
+.acct-pw-rules li.rule-ok::before { content: '✓'; color: #16a34a; }
+.acct-pw-actions { display: flex; justify-content: flex-end; margin-top: 4px; }
+.acct-error {
+  font-size: 0.8rem; color: #dc2626;
+  padding: 9px 12px; border-radius: 7px;
+  background: rgba(220,38,38,0.07); border: 1px solid rgba(220,38,38,0.15);
+  margin-bottom: 12px;
+}
+.acct-success {
+  font-size: 0.8rem; color: #16a34a;
+  padding: 9px 12px; border-radius: 7px;
+  background: rgba(34,197,94,0.07); border: 1px solid rgba(34,197,94,0.2);
+  margin-bottom: 12px;
+}
+
+/* ─── Pond Management ──────────────────────────────────────────────────────── */
+
+.pond-selector-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 14px;
+}
+.pond-selector-wrap { display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 180px; }
+.pond-selector-label { font-size: 0.78rem; font-weight: 600; color: var(--text-muted); }
+.pond-selector-select {
+  padding: 7px 10px; border: 1px solid var(--border); border-radius: 8px;
+  font-size: 0.9rem; background: var(--surface); color: var(--text); min-width: 180px;
+}
+.pond-selector-btns { display: flex; gap: 8px; flex-wrap: wrap; }
+
+.pond-active-cfg-bar {
+  display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap;
+  gap: 10px; margin-top: 14px; padding: 10px 14px;
+  background: var(--surface-2, #f8fafc); border-radius: 8px; border: 1px solid var(--border);
+}
+.pond-active-cfg-info { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.pond-active-cfg-lbl { font-size: 0.8rem; color: var(--text-muted); font-weight: 500; }
+.pond-active-cfg-name { font-size: 0.9rem; font-weight: 600; color: var(--text); }
+
+.pond-config-list { margin-top: 14px; display: flex; flex-direction: column; gap: 8px; }
+.pond-cfg-loading, .pond-cfg-empty { font-size: 0.85rem; color: var(--text-muted); padding: 10px 0; }
+.pond-cfg-row {
+  display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap;
+  gap: 10px; padding: 10px 14px; border-radius: 8px;
+  border: 1px solid var(--border); background: var(--surface);
+}
+.pond-cfg-row.pond-cfg-active { border-color: var(--green-dark, #15803d); background: #f0fdf4; }
+.pond-cfg-info { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.pond-cfg-name { font-size: 0.88rem; font-weight: 600; color: var(--text); }
+.pond-cfg-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+
+/* Species badges */
+.species-badge { font-size: 0.68rem; font-weight: 700; text-transform: capitalize; }
+.species-crayfish  { background: #fef3c7; color: #92400e; border: 1px solid rgba(245,158,11,0.3); }
+.species-tilapia   { background: #dbeafe; color: #1e40af; border: 1px solid rgba(59,130,246,0.3); }
+.species-catfish   { background: #ede9fe; color: #5b21b6; border: 1px solid rgba(139,92,246,0.3); }
+.species-shrimp    { background: #fce7f3; color: #9d174d; border: 1px solid rgba(236,72,153,0.3); }
+
+/* Wide modal variant */
+.um-modal-wide .um-modal-inner { max-width: 640px; }
+
+/* Danger outline button */
+.btn-danger-outline {
+  border-color: var(--red-dark, #ef4444); color: var(--red-dark, #ef4444);
+}
+.btn-danger-outline:hover { background: #fee2e2; }
+
+/* Warning outline button */
+.btn-warning-outline {
+  border-color: var(--amber, #f59e0b); color: var(--amber, #f59e0b);
+}
+.btn-warning-outline:hover { background: #fef3c7; }
+
+/* Active preset label in cfg-head */
+.cfg-preset-label {
+  font-size: 0.72rem; color: var(--text-muted); font-style: italic;
 }

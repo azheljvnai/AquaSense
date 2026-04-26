@@ -172,6 +172,7 @@ export function initHistoricalChart(canvasEl) {
       maintainAspectRatio: false,
       animation: { duration: 350, easing: 'easeInOutQuart' },
       interaction: { mode: 'index', intersect: false },
+      spanGaps: false,
       plugins: {
         legend: { display: false },
         tooltip: {
@@ -188,7 +189,7 @@ export function initHistoricalChart(canvasEl) {
       },
       scales: {
         x: {
-          ticks: { color: TICK_COLOR, font: FONT, maxTicksLimit: 8 },
+          ticks: { color: TICK_COLOR, font: FONT, maxTicksLimit: 24 },
           grid: { color: GRID_COLOR },
           border: { color: GRID_COLOR },
         },

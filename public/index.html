@@ -101,10 +101,6 @@
         <span class="nav-icon"><svg class="icon icon-20"><use href="#icon-bell"/></svg></span>
         <span>Alerts</span>
       </a>
-      <a href="#" data-page="farm-profile">
-        <span class="nav-icon"><svg class="icon icon-20"><use href="#icon-building"/></svg></span>
-        <span>Farm & Profile</span>
-      </a>
       <a href="#" data-page="reports">
         <span class="nav-icon"><svg class="icon icon-20"><use href="#icon-document"/></svg></span>
         <span>Reports</span>
@@ -119,12 +115,32 @@
       </a>
     </nav>
     <div class="sidebar-user">
-      <div class="sidebar-user-avatar">F</div>
+      <button class="sidebar-user-avatar" id="account-avatar-btn" type="button" aria-haspopup="true" aria-expanded="false" aria-label="Account menu">F</button>
       <div class="sidebar-user-info">
         <div class="sidebar-user-name" id="sb-user-name">—</div>
         <div class="sidebar-user-email" id="sb-user-email">—</div>
       </div>
       <button class="btn btn-outline" id="btn-logout" type="button" style="margin-left:auto;padding:6px 10px;font-size:0.8rem;">Logout</button>
+    </div>
+
+    <!-- Account popover (compact) -->
+    <div id="account-dropdown" class="account-popover" role="menu" aria-label="Account options" hidden>
+      <div class="account-popover-user">
+        <div class="account-popover-avatar" id="acct-pop-avatar">F</div>
+        <div class="account-popover-info">
+          <div class="account-popover-name" id="acct-pop-name">—</div>
+          <div class="account-popover-email" id="acct-pop-email">—</div>
+        </div>
+      </div>
+      <div class="account-popover-divider"></div>
+      <button class="account-popover-item" id="acct-profile-btn" role="menuitem">
+        <span class="account-popover-icon"><svg class="icon icon-15"><use href="#icon-edit"/></svg></span>
+        <span>My Profile</span>
+      </button>
+      <button class="account-popover-item" id="acct-password-btn" role="menuitem">
+        <span class="account-popover-icon"><svg class="icon icon-15"><use href="#icon-key"/></svg></span>
+        <span>Change Password</span>
+      </button>
     </div>
   </aside>
 
@@ -137,6 +153,12 @@
         <span class="topbar-page-title" id="topbar-page-title">Dashboard</span>
       </div>
       <div class="topbar-right">
+        <div class="topbar-pond-selector" id="topbar-pond-wrap" title="Active pond">
+          <svg class="icon icon-14 topbar-pond-icon"><use href="#icon-droplet"/></svg>
+          <select id="topbar-pond-select" class="topbar-pond-select" aria-label="Active pond">
+            <option value="">Loading ponds…</option>
+          </select>
+        </div>
         <span id="fb-lbl" class="status-chip offline">OFFLINE</span>
         <span id="hclock" class="topbar-clock">--:--:--</span>
       </div>
@@ -144,7 +166,14 @@
     <div class="pages-scroll">
     <!-- Dashboard -->
     <section id="page-dashboard" class="page-section active">
-      <h1 class="page-title">Dashboard</h1>
+      <div class="page-title-row">
+        <h1 class="page-title">Dashboard</h1>
+        <div class="active-pond-badge" id="dash-pond-badge" style="display:none">
+          <svg class="icon icon-14"><use href="#icon-droplet"/></svg>
+          <span id="dash-pond-name">—</span>
+          <span id="dash-pond-species" class="species-chip"></span>
+        </div>
+      </div>
       <div class="dash-metrics">
         <div class="metric-card scard temp">
           <div class="metric-icon" style="background:var(--red-light);color:var(--temp-c)"><svg class="icon icon-20"><use href="#icon-thermometer"/></svg></div>
@@ -258,7 +287,7 @@
       </div>
       <div class="wq-tanks">
         <div class="tank-card">
-          <h3>Pond 1 <span class="badge-pill status-normal" id="wq-pond-status">Active</span></h3>
+          <h3><span id="wq-pond-title">Pond 1</span> <span class="badge-pill status-normal" id="wq-pond-status">Active</span></h3>
           <div class="param"><span>pH Level</span><span class="param-val"><span id="wq-pond-ph">—</span> <span class="badge-pill status-normal" id="wq-pond-b-ph">Normal</span></span></div>
           <div class="param"><span>Temperature</span><span class="param-val"><span id="wq-pond-temp">—</span> <span class="badge-pill status-normal" id="wq-pond-b-temp">Normal</span></span></div>
           <div class="param"><span>Dissolved O₂</span><span class="param-val"><span id="wq-pond-do">—</span> <span class="badge-pill status-normal" id="wq-pond-b-do">Normal</span></span></div>
@@ -531,97 +560,133 @@
       </div>
     </section>
 
-    <!-- Farm & Profile -->
-    <section id="page-farm-profile" class="page-section">
-      <h1 class="page-title">Farm & Profile</h1>
-
-      <!-- Hero banner -->
-      <div class="farm-hero">
-        <div style="flex:1;min-width:0;">
-          <h1 id="farm-name" style="font-size:1.5rem;font-weight:800;letter-spacing:-0.02em;margin-bottom:4px;">—</h1>
-          <div class="meta">
-            <span class="meta-chip"><svg class="icon icon-12"><use href="#icon-location"/></svg> <span id="farm-location">—</span></span>
-            <span class="meta-chip"><svg class="icon icon-12"><use href="#icon-calendar"/></svg> <span id="farm-created">—</span></span>
-            <span class="meta-chip" id="farm-status-chip"><span class="dot" style="display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--green);margin-right:4px;"></span>Active</span>
-          </div>
-        </div>
+    <!-- Account: Profile & Farm -->
+    <section id="page-account-profile" class="page-section">
+      <div class="acct-page-topbar">
+        <h1 class="page-title" style="margin-bottom:0;">My Profile</h1>
         <button class="btn btn-primary" id="btn-edit-profile" type="button">
-          <svg class="icon icon-16" style="vertical-align:middle"><use href="#icon-edit"/></svg> Edit Profile
+          <svg class="icon icon-15" style="vertical-align:middle"><use href="#icon-edit"/></svg> Edit Profile
         </button>
       </div>
 
-      <!-- Main grid: Farm Info + My Profile -->
-      <div class="fp-main-grid">
+      <!-- Profile hero strip -->
+      <div class="card acct-hero-strip">
+        <div class="acct-hero-avatar" id="fp-avatar-letter">U</div>
+        <div class="acct-hero-body">
+          <div class="acct-hero-name" id="fp-display-name">—</div>
+          <span class="um-role-badge" id="fp-role-badge">farmer</span>
+        </div>
+      </div>
 
-        <!-- Farm Information -->
-        <div class="card fp-card">
-          <h3 class="card-title">Farm Information</h3>
-          <p style="font-size:0.78rem;color:var(--text-muted);margin-bottom:16px;">Details about your aquaculture facility</p>
-          <div class="fp-fields">
-            <div class="fp-field">
-              <div class="fp-field-label">Farm Name</div>
-              <div class="fp-field-val" id="farm-name-2">—</div>
+      <div class="acct-page-grid">
+        <!-- Personal Info card -->
+        <div class="card acct-info-card">
+          <div class="acct-info-card-title">
+            <svg class="icon icon-14"><use href="#icon-edit"/></svg> Personal Info
+          </div>
+          <div class="acct-info-rows">
+            <div class="acct-info-row">
+              <span class="acct-info-label">Email</span>
+              <span class="acct-info-val" id="user-email">—</span>
             </div>
-            <div class="fp-field">
-              <div class="fp-field-label">Location</div>
-              <div class="fp-field-val" id="farm-location-2">—</div>
+            <div class="acct-info-row">
+              <span class="acct-info-label">Phone</span>
+              <span class="acct-info-val" id="user-phone">—</span>
             </div>
-            <div class="fp-field">
-              <div class="fp-field-label">Farm Size</div>
-              <div class="fp-field-val" id="farm-size">—</div>
+            <div class="acct-info-row">
+              <span class="acct-info-label">Status</span>
+              <span class="acct-info-val"><span class="badge-pill status-normal">Active</span></span>
             </div>
-            <div class="fp-field">
-              <div class="fp-field-label">Total Capacity</div>
-              <div class="fp-field-val" id="farm-capacity">—</div>
-            </div>
-            <div class="fp-field">
-              <div class="fp-field-label">Established</div>
-              <div class="fp-field-val" id="farm-established">—</div>
-            </div>
-            <div class="fp-field">
-              <div class="fp-field-label">Farm Manager</div>
-              <div class="fp-field-val" id="farm-manager">—</div>
+            <div class="acct-info-row">
+              <span class="acct-info-label">Member since</span>
+              <span class="acct-info-val" id="fp-member-since">—</span>
             </div>
           </div>
         </div>
 
-        <!-- My Profile -->
-        <div class="card fp-card">
-          <h3 class="card-title">My Profile</h3>
-          <p style="font-size:0.78rem;color:var(--text-muted);margin-bottom:16px;">Your personal account information</p>
-          <div class="fp-profile-avatar-row">
-            <div class="fp-avatar" id="fp-avatar-letter">U</div>
-            <div>
-              <div style="font-weight:700;font-size:1rem;" id="fp-display-name">—</div>
-              <div style="font-size:0.8rem;color:var(--text-muted);" id="fp-role-badge-wrap"><span class="badge-pill" id="fp-role-badge">farmer</span></div>
-            </div>
+        <!-- Pond Details card -->
+        <div class="card acct-info-card">
+          <div class="acct-info-card-title">
+            <svg class="icon icon-14"><use href="#icon-building"/></svg> Pond Details
           </div>
-          <div class="fp-fields">
-            <div class="fp-field">
-              <div class="fp-field-label">Email Address</div>
-              <div class="fp-field-val" id="user-email">—</div>
+          <div class="acct-info-rows">
+            <div class="acct-info-row">
+              <span class="acct-info-label">Pond name</span>
+              <span class="acct-info-val" id="farm-name-2">—</span>
             </div>
-            <div class="fp-field">
-              <div class="fp-field-label">Phone Number</div>
-              <div class="fp-field-val" id="user-phone">—</div>
+            <div class="acct-info-row">
+              <span class="acct-info-label">Location</span>
+              <span class="acct-info-val" id="farm-location-2">—</span>
             </div>
-            <div class="fp-field">
-              <div class="fp-field-label">Account Status</div>
-              <div class="fp-field-val"><span class="badge-pill status-normal">Active</span></div>
+            <div class="acct-info-row">
+              <span class="acct-info-label">Size</span>
+              <span class="acct-info-val" id="farm-size">—</span>
             </div>
-            <div class="fp-field">
-              <div class="fp-field-label">Member Since</div>
-              <div class="fp-field-val" id="fp-member-since">—</div>
+            <div class="acct-info-row">
+              <span class="acct-info-label">Capacity</span>
+              <span class="acct-info-val" id="farm-capacity">—</span>
+            </div>
+            <div class="acct-info-row">
+              <span class="acct-info-label">Established</span>
+              <span class="acct-info-val" id="farm-established">—</span>
+            </div>
+            <div class="acct-info-row">
+              <span class="acct-info-label">Manager</span>
+              <span class="acct-info-val" id="farm-manager">—</span>
             </div>
           </div>
         </div>
       </div>
 
       <!-- Team Members -->
-      <div class="card" style="margin-top:20px;">
-        <h3 class="card-title" style="margin-bottom:4px;">Team Members</h3>
-        <p style="font-size:0.78rem;color:var(--text-muted);margin-bottom:16px;">All staff assigned to this farm</p>
+      <div class="card acct-team-card">
+        <div class="acct-info-card-title" style="margin-bottom:14px;">
+          <svg class="icon icon-14"><use href="#icon-users"/></svg> Team Members
+        </div>
         <div class="staff-list" id="staff-list"></div>
+      </div>
+
+      <!-- Hidden legacy IDs kept for farm-profile.js compatibility -->
+      <span id="farm-name" style="display:none"></span>
+      <span id="farm-location" style="display:none"></span>
+      <span id="farm-created" style="display:none"></span>
+    </section>
+
+    <!-- Account: Change Password -->
+    <section id="page-account-password" class="page-section">
+      <h1 class="page-title">Change Password</h1>
+
+      <div class="card acct-pw-card">
+        <p class="acct-pw-hint">Enter your current password to verify your identity, then choose a new strong password.</p>
+
+        <div class="acct-pw-fields">
+          <div class="um-field">
+            <label for="acct-pw-current">Current Password</label>
+            <input id="acct-pw-current" type="password" autocomplete="current-password" placeholder="••••••••" />
+          </div>
+          <div class="um-field">
+            <label for="acct-pw-new">New Password</label>
+            <input id="acct-pw-new" type="password" autocomplete="new-password" placeholder="Min 8 chars, mixed case + number" />
+          </div>
+          <div class="um-field">
+            <label for="acct-pw-confirm">Confirm New Password</label>
+            <input id="acct-pw-confirm" type="password" autocomplete="new-password" placeholder="Repeat new password" />
+          </div>
+        </div>
+
+        <ul class="acct-pw-rules" id="acct-pw-rules">
+          <li id="rule-length">At least 8 characters</li>
+          <li id="rule-upper">Uppercase letter</li>
+          <li id="rule-lower">Lowercase letter</li>
+          <li id="rule-number">Number</li>
+        </ul>
+
+        <div id="acct-pw-error" class="acct-error" style="display:none;"></div>
+        <div id="acct-pw-success" class="acct-success" style="display:none;">Password updated successfully.</div>
+
+        <div class="acct-pw-actions">
+          <button type="button" class="btn btn-primary" id="acct-pw-save">Update Password</button>
+        </div>
       </div>
     </section>
 
@@ -635,9 +700,20 @@
             <p class="reports-sub">Generate reports by period: daily, weekly, monthly, or custom range.</p>
           </div>
           <div class="reports-actions">
-            <button type="button" class="btn btn-outline">Filter</button>
+            <div class="report-pond-filter">
+              <label for="report-pond-select" class="report-pond-label">
+                <svg class="icon icon-14"><use href="#icon-droplet"/></svg> Pond
+              </label>
+              <select id="report-pond-select" class="report-pond-select">
+                <option value="all">All Ponds</option>
+              </select>
+            </div>
             <button type="button" class="btn btn-primary">New Report</button>
           </div>
+        </div>
+        <div id="report-active-pond-bar" class="report-active-pond-bar" style="display:none">
+          Showing data for: <strong id="report-active-pond-name">—</strong>
+          <span id="report-active-pond-species" class="species-chip" style="margin-left:6px"></span>
         </div>
       </div>
 
@@ -812,13 +888,55 @@
     <!-- Configuration -->
     <section id="page-configuration" class="page-section">
       <h1 class="page-title">Configuration</h1>
-      
+
+      <!-- Pond Selector -->
+      <div class="card cfg-topcard" id="pond-mgmt-section">
+        <div class="cfg-top-title">
+          <svg class="icon icon-16"><use href="#icon-droplet"/></svg>
+          <div>
+            <div class="cfg-top-h">Pond Management</div>
+            <div class="cfg-top-sub">Select a pond to manage its species configurations and thresholds</div>
+          </div>
+        </div>
+        <div class="pond-selector-row">
+          <div class="pond-selector-wrap">
+            <label for="pond-selector" class="pond-selector-label">Active Pond</label>
+            <select id="pond-selector" class="pond-selector-select"></select>
+          </div>
+          <div class="pond-selector-btns">
+            <button type="button" class="btn btn-outline btn-sm" id="btn-add-pond">
+              <svg class="icon icon-14"><use href="#icon-plus"/></svg> Add Pond
+            </button>
+            <button type="button" class="btn btn-outline btn-sm" id="btn-edit-pond">
+              <svg class="icon icon-14"><use href="#icon-edit"/></svg> Edit Pond
+            </button>
+          </div>
+        </div>
+
+        <!-- Active Config Status -->
+        <div class="pond-active-cfg-bar">
+          <div class="pond-active-cfg-info">
+            <span class="pond-active-cfg-lbl">Active Configuration:</span>
+            <span id="pond-active-config-label" class="pond-active-cfg-name">—</span>
+            <span id="pond-active-species" class="badge-pill species-badge">—</span>
+          </div>
+          <button type="button" class="btn btn-sm btn-outline" id="btn-assign-config">
+            <svg class="icon icon-14"><use href="#icon-plus"/></svg> Assign Config
+          </button>
+        </div>
+
+        <!-- Pond Config List -->
+        <div id="pond-config-list" class="pond-config-list">
+          <div class="pond-cfg-empty">Select a pond to view its configurations.</div>
+        </div>
+      </div>
+
       <div class="card cfg-topcard">
         <div class="cfg-top-title">
           <svg class="icon icon-16"><use href="#icon-settings"/></svg>
           <div>
             <div class="cfg-top-h">System Configuration</div>
-            <div class="cfg-top-sub">Customize your farm management system settings</div>
+            <div class="cfg-top-sub">Customize your pond management system settings</div>
           </div>
         </div>
       </div>
@@ -827,6 +945,7 @@
         <div class="card cfg-card cfg-wq">
           <div class="cfg-head">
             <div class="cfg-head-title"><svg class="icon icon-16"><use href="#icon-droplet"/></svg> Water Quality Thresholds</div>
+            <div id="cfg-active-preset-label" class="cfg-preset-label">No active config</div>
           </div>
 
           <div class="cfg-form">
@@ -1176,5 +1295,26 @@
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script type="module" src="js/app.js"></script>
+
+<!-- Account popover — lives on body so sidebar overflow:auto doesn't clip it -->
+<div id="account-dropdown" class="account-popover" role="menu" aria-label="Account options" hidden>
+  <div class="account-popover-user">
+    <div class="account-popover-avatar" id="acct-pop-avatar">F</div>
+    <div class="account-popover-info">
+      <div class="account-popover-name" id="acct-pop-name">—</div>
+      <div class="account-popover-email" id="acct-pop-email">—</div>
+    </div>
+  </div>
+  <div class="account-popover-divider"></div>
+  <button class="account-popover-item" id="acct-profile-btn" role="menuitem">
+    <span class="account-popover-icon"><svg class="icon icon-15"><use href="#icon-edit"/></svg></span>
+    <span>My Profile</span>
+  </button>
+  <button class="account-popover-item" id="acct-password-btn" role="menuitem">
+    <span class="account-popover-icon"><svg class="icon icon-15"><use href="#icon-key"/></svg></span>
+    <span>Change Password</span>
+  </button>
+</div>
+
 </body>
 </html>

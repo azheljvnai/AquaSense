@@ -203,33 +203,5 @@ export function init() {
     }
   };
 
-  els.btnEdit?.addEventListener('click', async () => {
-    if (!lastUser) return;
-    const dlg = openEditDialog(lastProfile || {});
-    dlg.querySelector('#ep-save')?.addEventListener('click', async () => {
-      const errEl = dlg.querySelector('#ep-error');
-      const name = (dlg.querySelector('#ep-name')?.value || '').trim();
-      const phone = (dlg.querySelector('#ep-phone')?.value || '').trim();
-      const saveBtn = dlg.querySelector('#ep-save');
-      saveBtn.disabled = true;
-      saveBtn.textContent = 'Saving…';
-      try {
-        const token = await fbGetIdToken();
-        const resp = await fetch('/api/users/me', {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-          body: JSON.stringify({ displayName: name || lastProfile?.displayName || '', phone }),
-        });
-        const data = await resp.json();
-        if (!resp.ok) throw new Error(data.error || 'Save failed.');
-        dlg.close();
-        const { profile } = await loadForUser(lastUser);
-        lastProfile = profile || {};
-      } catch (e) {
-        if (errEl) { errEl.textContent = 'Save failed: ' + (e?.message || String(e)); errEl.style.display = 'block'; }
-        saveBtn.disabled = false;
-        saveBtn.textContent = 'Save Changes';
-      }
-    });
-  });
+  // Edit Profile button is handled by setupAccountMenu in app.js
 }

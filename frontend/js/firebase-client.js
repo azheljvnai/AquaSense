@@ -3,19 +3,23 @@
  * Uses ESM imports directly from gstatic (no bundler).
  */
 import { initializeApp, getApps } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
-import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut, getIdToken } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
+import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut, getIdToken, updatePassword, reauthenticateWithCredential, EmailAuthProvider } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
 import {
   getFirestore,
   doc,
   getDoc,
   setDoc,
+  updateDoc,
+  deleteDoc,
+  addDoc,
   collection,
   getDocs,
   query,
   where,
+  onSnapshot,
   serverTimestamp,
 } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
-import { getDatabase, ref, onValue, set } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js';
+import { getDatabase, ref, onValue, set, query, orderByChild, startAt, endAt, get } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js';
 
 let app = null;
 let auth = null;
@@ -56,6 +60,19 @@ export function fbSignOut() {
   return signOut(fbAuth());
 }
 
+export async function fbReauthenticate(currentPassword) {
+  const user = fbAuth().currentUser;
+  if (!user || !user.email) throw new Error('No authenticated user.');
+  const cred = EmailAuthProvider.credential(user.email, currentPassword);
+  return reauthenticateWithCredential(user, cred);
+}
+
+export async function fbUpdatePassword(newPassword) {
+  const user = fbAuth().currentUser;
+  if (!user) throw new Error('No authenticated user.');
+  return updatePassword(user, newPassword);
+}
+
 /**
  * Returns a fresh Firebase ID token for the currently signed-in user.
  * Pass this as `Authorization: Bearer <token>` on protected API calls.
@@ -73,10 +90,14 @@ export function fbFirestore() {
 export const fbDoc = doc;
 export const fbGetDoc = getDoc;
 export const fbSetDoc = setDoc;
+export const fbUpdateDoc = updateDoc;
+export const fbDeleteDoc = deleteDoc;
+export const fbAddDoc = addDoc;
 export const fbCollection = collection;
 export const fbGetDocs = getDocs;
 export const fbQuery = query;
 export const fbWhere = where;
+export const fbOnSnapshot = onSnapshot;
 export const fbServerTimestamp = serverTimestamp;
 
 // RTDB helpers
@@ -86,4 +107,9 @@ export function fbDatabase() {
 export const fbRef = ref;
 export const fbOnValue = onValue;
 export const fbSet = set;
+export const fbRtdbQuery = query;
+export const fbOrderByChild = orderByChild;
+export const fbStartAt = startAt;
+export const fbEndAt = endAt;
+export const fbGet = get;
 

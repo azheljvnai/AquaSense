@@ -2,9 +2,9 @@
  * Firebase Realtime Database integration.
  * Uses the shared Firebase app instance from firebase-client.js.
  */
-import { fbDatabase, fbRef as ref, fbOnValue as onValue, fbSet as set } from './firebase-client.js';
+import { fbDatabase, fbRef as ref, fbOnValue as onValue, fbSet as set, fbRtdbQuery as rtdbQuery, fbOrderByChild as orderByChild, fbStartAt as startAt, fbEndAt as endAt, fbGet as get } from './firebase-client.js';
 import { fbOnAuthStateChanged, fbFirestore, fbDoc, fbGetDoc } from './firebase-client.js';
-import { log } from './utils.js';
+import { log, recordSensorReading } from './utils.js';
 
 let fbDb = null;
 let feedUnsubscribe = null;
@@ -92,9 +92,13 @@ export async function connect(firebaseUrl, deviceId, { onStatus, onSensorData, e
       const lastUpd = document.getElementById('last-upd');
       if (lastUpd) lastUpd.textContent = new Date().toLocaleTimeString();
       const ph = parseFloat(d.ph) || 0, doV = parseFloat(d.do) || 0, turb = parseFloat(d.turb) || 0, temp = parseFloat(d.temp) || 0;
-      if (onSensorData) onSensorData(ph, doV, turb, temp);
-    }, (err) => {
-      onStatus('ERROR', false);
+
+      // Write to RTDB history so data persists even when browser is closed
+      const ts = d.ts ? Number(d.ts) : Date.now();
+      writeHistoryEntry(DEVICE, ts, ph, doV, turb, temp);
+
+      if (onSensorData) onSensorData(ph, doV, turb, temp, ts);
+    }, (err) => {      onStatus('ERROR', false);
       log('Firebase error: ' + err.message, 'err');
     });
 
@@ -173,8 +177,45 @@ export function triggerFeed(deviceId = 'device001') {
     });
 }
 
-export function saveSchedules(deviceId = 'device001') {
-  if (!fbDb) {
+/**
+ * Write a single sensor reading to RTDB history.
+ * Path: /devices/{deviceId}/history/{ts}
+ * Uses the sensor timestamp (or Date.now()) as the key so entries are
+ * naturally ordered and de-duplicated by the device's own clock.
+ */
+function writeHistoryEntry(devicePath, ts, ph, doVal, turb, temp) {
+  if (!fbDb) return;
+  const key = String(ts);
+  set(ref(fbDb, `${devicePath}/history/${key}`), { ts, ph, do: doVal, turb, temp })
+    .catch(() => { /* silently ignore write failures (offline, permissions) */ });
+}
+
+/**
+ * Fetch history entries from RTDB for a given time range.
+ * Returns an array of { ts, ph, do, turb, temp } sorted by ts ascending.
+ *
+ * Uses orderByChild('ts') + startAt/endAt for efficient range queries.
+ */
+export async function fetchHistoryFromRTDB(deviceId, fromMs, toMs) {
+  if (!fbDb) return [];
+  try {
+    const histRef = ref(fbDb, `/devices/${deviceId}/history`);
+    const q = rtdbQuery(histRef, orderByChild('ts'), startAt(fromMs), endAt(toMs));
+    const snap = await get(q);
+    if (!snap.exists()) return [];
+    const entries = [];
+    snap.forEach(child => {
+      const d = child.val();
+      if (d && typeof d.ts === 'number') entries.push(d);
+    });
+    return entries.sort((a, b) => a.ts - b.ts);
+  } catch (e) {
+    log('History fetch error: ' + e.message, 'err');
+    return [];
+  }
+}
+
+export function saveSchedules(deviceId = 'device001') {  if (!fbDb) {
     log('Not connected to Firebase', 'err');
     return;
   }

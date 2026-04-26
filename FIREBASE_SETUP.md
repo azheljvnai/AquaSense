@@ -95,11 +95,32 @@ service cloud.firestore {
         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
     }
 
-    // Farm profile — any authenticated user can read, only admin/manager can write
+    // Farm profile — any authenticated user can read, only admin/owner can write
     match /farm/{docId} {
       allow read: if request.auth != null;
       allow write: if request.auth != null &&
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'manager'];
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'owner'];
+    }
+
+    // Ponds — any authenticated user can read; writes go through backend API (Admin SDK)
+    match /ponds/{pondId} {
+      allow read: if request.auth != null;
+    }
+
+    // Global species presets — any authenticated user can read
+    match /configurations/{configId} {
+      allow read: if request.auth != null;
+    }
+
+    // Per-pond configurations — any authenticated user can read
+    match /pond_configurations/{configId} {
+      allow read: if request.auth != null;
+    }
+
+    // Sensor data — authenticated users can write (tagged with pond_id + species)
+    match /sensor_data/{docId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null;
     }
 
     // Deny everything else
@@ -111,6 +132,9 @@ service cloud.firestore {
 ```
 
 Click **Publish**.
+
+> All pond/configuration writes go through the backend API (Admin SDK) which bypasses these rules.
+> Only `sensor_data` is written directly from the client.
 
 ### 5c. Collections (auto-created on first use)
 

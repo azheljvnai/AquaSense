@@ -47,10 +47,10 @@ export function init() {
     const doEl = document.getElementById('alert-th-do');
     const turb = document.getElementById('alert-th-turb');
 
-    if (ph)   ph.textContent   = `${t.ph.ok[0]} – ${t.ph.ok[1]}`;
-    if (temp) temp.textContent = `${t.temp.ok[0]} – ${t.temp.ok[1]} °C`;
-    if (doEl) doEl.textContent = `≥ ${t.do.ok[0]} mg/L`;
-    if (turb) turb.textContent = `≤ ${t.turb.ok[1]} NTU`;
+    if (ph)   ph.textContent   = `Optimal: ${t.ph.ok[0]} – ${t.ph.ok[1]}`;
+    if (temp) temp.textContent = `Optimal: ${t.temp.ok[0]} – ${t.temp.ok[1]} °C`;
+    if (doEl) doEl.textContent = `Optimal: > 6 mg/L`;
+    if (turb) turb.textContent = `Optimal: 0 – 20 NTU`;
   }
 
   renderThresholds();

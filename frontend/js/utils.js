@@ -5,10 +5,10 @@
 const STORAGE_KEY_THRESH = 'aquasense.thresholds.v1';
 
 const DEFAULT_THRESH = {
-  ph: { ok: [6.5, 8.5], warn: [6.0, 9.0] },
-  do: { ok: [5.0, 9.0], warn: [4.0, 10.0] },
-  turb: { ok: [0, 3.0], warn: [0, 5.0] },
-  temp: { ok: [26, 30], warn: [24, 32] },
+  ph:   { ok: [6.5, 8.5],  warn: [5.5, 9.5] },
+  do:   { ok: [6.0, 99],   warn: [3.0, 99] },
+  turb: { ok: [0, 20],     warn: [0, 90] },
+  temp: { ok: [20, 26],    warn: [14, 32] },
 };
 
 function deepClone(obj) {
@@ -67,12 +67,47 @@ try {
   // ignore
 }
 
-/** Returns { c: 'ok'|'warn'|'danger', l: 'Normal'|'Warning'|'Critical' } */
+/**
+ * getBadge delegates to the active pond species configuration.
+ * pond-config.js registers its classifier via window._pondGetBadge after init.
+ * Falls back to crayfish defaults if pond-config is not yet loaded.
+ */
 export function getBadge(key, val) {
+  if (typeof window._pondGetBadge === 'function') {
+    return window._pondGetBadge(key, val);
+  }
+  return _crayfishBadge(key, val);
+}
+
+function _crayfishBadge(key, val) {
+  if (key === 'turb') {
+    if (val <= 20) return { c: 'ok',         l: 'Clear / Optimal' };
+    if (val <= 40) return { c: 'acceptable', l: 'Slightly Turbid / Acceptable' };
+    if (val <= 70) return { c: 'stress',     l: 'Moderate / Stress Risk' };
+    if (val <= 90) return { c: 'warn',       l: 'High / Poor' };
+    return                { c: 'danger',     l: 'Critical' };
+  }
+  if (key === 'temp') {
+    if (val >= 20 && val <= 26) return { c: 'ok',        l: 'Optimal' };
+    if ((val >= 17 && val <= 19) || (val >= 27 && val <= 29)) return { c: 'acceptable', l: 'Acceptable' };
+    if ((val >= 14 && val <= 16) || (val >= 30 && val <= 32)) return { c: 'stress',     l: 'Stress Risk' };
+    return                                                            { c: 'danger',     l: 'Critical' };
+  }
+  if (key === 'ph') {
+    if (val >= 6.5 && val <= 8.5) return { c: 'ok',        l: 'Optimal' };
+    if ((val >= 6.0 && val < 6.5) || (val > 8.5 && val <= 9.0)) return { c: 'acceptable', l: 'Acceptable' };
+    if ((val >= 5.5 && val < 6.0) || (val > 9.0 && val <= 9.5)) return { c: 'stress',     l: 'Stress Risk' };
+    return                                                               { c: 'danger',     l: 'Critical' };
+  }
+  if (key === 'do') {
+    if (val > 6)              return { c: 'ok',         l: 'Optimal' };
+    if (val >= 5 && val <= 6) return { c: 'acceptable', l: 'Acceptable' };
+    if (val >= 3 && val < 5)  return { c: 'stress',     l: 'Stress Risk' };
+    return                           { c: 'danger',     l: 'Critical' };
+  }
   const t = thresh[key];
   if (!t) return { c: 'ok', l: 'Normal' };
-  if (val >= t.ok[0] && val <= t.ok[1]) return { c: 'ok', l: 'Normal' };
-  if (val >= t.warn[0] && val <= t.warn[1]) return { c: 'warn', l: 'Warning' };
+  if (val >= t.ok[0] && val <= t.ok[1]) return { c: 'ok', l: 'Optimal' };
   return { c: 'danger', l: 'Critical' };
 }
 
@@ -118,12 +153,33 @@ function saveHistory() {
 loadHistory();
 
 /**
+ * Merge entries fetched from RTDB into local history (deduplicates by ts).
+ * Call this after fetchHistoryFromRTDB to keep localStorage in sync.
+ */
+export function mergeHistoryEntries(entries) {
+  if (!entries || !entries.length) return;
+  const existing = new Set(_history.map(e => e.ts));
+  let added = 0;
+  for (const e of entries) {
+    if (!existing.has(e.ts)) {
+      _history.push(e);
+      added++;
+    }
+  }
+  if (added > 0) {
+    _history.sort((a, b) => a.ts - b.ts);
+    pruneHistory();
+    saveHistory();
+  }
+}
+
+/**
  * Record a full sensor snapshot. Called from app.js whenever all four
  * sensor values are available (after each Firebase update cycle).
  */
-export function recordSensorReading(ph, doVal, turb, temp) {
+export function recordSensorReading(ph, doVal, turb, temp, ts) {
   pruneHistory();
-  _history.push({ ts: Date.now(), ph, do: doVal, turb, temp });
+  _history.push({ ts: ts && Number.isFinite(ts) ? ts : Date.now(), ph, do: doVal, turb, temp });
   saveHistory();
 }
 
