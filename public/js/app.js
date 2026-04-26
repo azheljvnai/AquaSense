@@ -34,6 +34,7 @@ import { init as initFarmProfile } from './features/farm-profile.js';
 import { init as initReports } from './features/reports.js';
 import { init as initConfiguration } from './features/configuration.js';
 import { init as initUserManagement, loadUsers, setCurrentUser } from './features/user-management.js';
+import { init as initNotifications, handleAlert } from './features/notifications.js';
 
 let deviceId = 'device001';
 let connectStarted = false;
@@ -884,6 +885,8 @@ function init() {
       } catch (e) {
         log('Profile load failed: ' + (e?.message || String(e)), 'err');
       }
+
+      initNotifications(currentUser).catch(err => console.warn('[Notifications] init error:', err));
 
       // Notify farm-profile feature that a user is signed in
       if (typeof window._farmProfileOnUser === 'function') {

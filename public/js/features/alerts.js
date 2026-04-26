@@ -9,6 +9,7 @@
  */
 import { getBadgeForSpecies, getActiveThresholds, getActiveSpecies, getActivePondId } from '../pond-config.js';
 import { getActivePond } from '../pond-context.js';
+import { handleAlert } from './notifications.js';
 
 // ─── Alert History Storage ────────────────────────────────────────────────────
 
@@ -348,6 +349,7 @@ export function init() {
       if (alert) {
         markAlerted(key);
         newAlerts.push(alert);
+        handleAlert(alert).catch(() => {/* notification errors are non-fatal */});
       }
     }
 

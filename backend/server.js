@@ -123,6 +123,9 @@ app.get('/api/config', (_req, res) => {
       appId: process.env.FIREBASE_APP_ID || '',
       databaseURL: process.env.FIREBASE_DATABASE_URL || '',
     },
+    emailjsPublicKey: process.env.EMAILJS_PUBLIC_KEY || '',
+    emailjsServiceId: process.env.EMAILJS_SERVICE_ID || '',
+    emailjsTemplateId: process.env.EMAILJS_TEMPLATE_ID || '',
   });
 });
 

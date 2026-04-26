@@ -21,6 +21,9 @@ export async function getConfig() {
         appId: data.firebase?.appId || '',
         databaseURL: data.firebase?.databaseURL || data.firebaseDatabaseUrl || '',
       },
+      emailjsPublicKey: data.emailjsPublicKey || '',
+      emailjsServiceId: data.emailjsServiceId || '',
+      emailjsTemplateId: data.emailjsTemplateId || '',
     };
   } catch {
     return {};
