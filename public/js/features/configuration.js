@@ -250,6 +250,14 @@ export function init() {
     populateThresholdInputs();
   });
 
+  // Also re-populate when the active pond itself changes (e.g. topbar switch)
+  // This covers the case where pond-config-changed fires before configuration.js
+  // has finished initialising, or when switching to a pond with no active config.
+  window.addEventListener('active-pond-changed', () => {
+    syncActiveConfigToUtils();
+    populateThresholdInputs();
+  });
+
   // Save button
   els.save.addEventListener('click', () => {
     if (!canEditConfig()) {

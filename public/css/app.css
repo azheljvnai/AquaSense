@@ -349,9 +349,8 @@ body {
 
 .badge-pill { display: inline-flex; align-items: center; padding: 3px 9px; border-radius: 9999px; font-size: 0.68rem; font-weight: 700; text-transform: capitalize; letter-spacing: 0.02em; }
 .status-normal, .wq-normal { background: #dcfce7; color: #15803d; border: 1px solid rgba(34,197,94,0.3); }
-.status-acceptable, .wq-acceptable { background: #d1fae5; color: #065f46; border: 1px solid rgba(16,185,129,0.3); }
-.status-stress, .wq-stress { background: #ffedd5; color: #c2410c; border: 1px solid rgba(249,115,22,0.3); }
 .status-warning, .wq-warning { background: #fef3c7; color: #b45309; border: 1px solid rgba(245,158,11,0.3); }
+.status-critical, .wq-critical { background: #fecaca; color: #dc2626; border: 1px solid rgba(239,68,68,0.3); }
 .status-critical, .wq-critical { background: #fee2e2; color: #b91c1c; border: 1px solid rgba(239,68,68,0.3); }
 
 .switch { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 42px; height: 24px; flex-shrink: 0; }
@@ -451,10 +450,9 @@ dialog::backdrop { background: rgba(0,0,0,0.45); backdrop-filter: blur(4px); }
 .scard.turb .scard-val { color: var(--turb-c); }
 
 .scard-badge { position: absolute; top: 14px; right: 14px; padding: 3px 9px; border-radius: 9999px; font-size: 0.62rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; }
-.scard-badge.ok         { background: #dcfce7; color: #15803d; border: 1px solid rgba(34,197,94,0.3); }
-.scard-badge.acceptable { background: #d1fae5; color: #065f46; border: 1px solid rgba(16,185,129,0.3); }
-.scard-badge.stress     { background: #ffedd5; color: #c2410c; border: 1px solid rgba(249,115,22,0.3); }
-.scard-badge.warn       { background: #fef3c7; color: #b45309; border: 1px solid rgba(245,158,11,0.3); }
+.scard-badge.ok       { background: #dcfce7; color: #15803d; border: 1px solid rgba(34,197,94,0.3); }
+.scard-badge.warn     { background: #fef3c7; color: #b45309; border: 1px solid rgba(245,158,11,0.3); }
+.scard-badge.danger   { background: #fecaca; color: #dc2626; border: 1px solid rgba(239,68,68,0.3); }
 .scard-badge.danger     { background: #fee2e2; color: #b91c1c; border: 1px solid rgba(239,68,68,0.3); animation: badge-pulse 2s ease-in-out infinite; }
 @keyframes badge-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.7; } }
 
@@ -485,6 +483,7 @@ dialog::backdrop { background: rgba(0,0,0,0.45); backdrop-filter: blur(4px); }
 .panel-title { font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.07em; color: var(--text-muted); margin-bottom: 14px; font-weight: 700; display: flex; align-items: center; gap: 7px; }
 
 .recent-alerts .alert-item { padding: 11px 13px; border-radius: 10px; margin-bottom: 8px; font-size: 0.82rem; line-height: 1.4; }
+.recent-alerts .alert-item.critical { background: #fef2f2; border: 1px solid rgba(239,68,68,0.2); border-left: 3px solid #ef4444; }
 .recent-alerts .alert-item.warning { background: var(--yellow-light); border: 1px solid rgba(245,158,11,0.2); border-left: 3px solid var(--yellow); }
 .recent-alerts .alert-item.info    { background: var(--blue-light);   border: 1px solid rgba(59,130,246,0.15); border-left: 3px solid var(--blue); }
 .recent-alerts .alert-item.neutral { background: #f8fafc; border: 1px solid var(--border); border-left: 3px solid var(--border2); }
@@ -539,12 +538,11 @@ dialog::backdrop { background: rgba(0,0,0,0.45); backdrop-filter: blur(4px); }
 .hist-toolbar select, .hist-date-input { padding: 7px 12px; border: 1.5px solid var(--border2); border-radius: var(--radius-sm); font-size: 0.82rem; font-weight: 500; background: var(--panel); color: var(--text); outline: none; cursor: pointer; transition: border-color var(--transition); }
 .hist-toolbar select:focus, .hist-date-input:focus { border-color: var(--blue); }
 .hist-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-.hist-chart-wrap { height: 300px; overflow-x: hidden; }
-.hist-chart-wrap canvas { width: 100% !important; height: 100% !important; }
+.hist-chart-wrap { height: 300px; overflow-x: auto; overflow-y: hidden; scrollbar-width: thin; scrollbar-color: var(--border2) transparent; }
+.hist-chart-wrap canvas { height: 100% !important; }
 
-/* 24h view: scrollable with fixed wide canvas so all 24 hours are visible */
-.hist-chart-wrap.scrollable-24h { overflow-x: auto; overflow-y: hidden; scrollbar-width: thin; scrollbar-color: var(--border2) transparent; }
-.hist-chart-wrap.scrollable-24h canvas { width: 1200px !important; min-width: 1200px; height: 100% !important; }
+/* Scrollable canvas — width is set dynamically via JS */
+.hist-chart-wrap.scrollable { overflow-x: auto; }
 
 /* Metric selector tabs */
 .hist-metric-tabs { display: flex; gap: 4px; background: var(--bg); border-radius: var(--radius-sm); padding: 3px; border: 1px solid var(--border); }

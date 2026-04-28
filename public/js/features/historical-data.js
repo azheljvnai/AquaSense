@@ -74,7 +74,7 @@ export function init() {
   const histEl   = document.getElementById('hist-chart');
   const histChart = histEl ? initHistoricalChart(histEl) : null;
 
-  let activeRange  = 'week';
+  let activeRange  = '24h';
   let activeMetric = 'all';
   let customFrom   = '';
   let customTo     = '';
@@ -82,6 +82,7 @@ export function init() {
   // ── range selector ────────────────────────────────────────────────────────
   const rangeEl       = document.getElementById('hist-range');
   const customRangeEl = document.getElementById('hist-custom-range');
+  if (rangeEl) rangeEl.value = '24h';
 
   rangeEl?.addEventListener('change', () => {
     activeRange = rangeEl.value;
@@ -180,6 +181,42 @@ export function init() {
   window.addEventListener('thresholds-changed', () => refresh());
 
   // ── chart helpers ─────────────────────────────────────────────────────────
+
+  /** Hours visible in the 24h chart window at once */
+  const VISIBLE_HOURS = 6;
+
+  /**
+   * For the 24h range: expand the canvas to fit all 24 hourly buckets but
+   * only show VISIBLE_HOURS worth of width, then scroll to the right end so
+   * the most-recent hours are visible by default.
+   * For all other ranges: reset to full-width (no scroll).
+   */
+  function resizeAndScrollChart(rangeVal) {
+    const chartWrap = document.getElementById('hist-chart-wrap');
+    const canvas    = document.getElementById('hist-chart');
+    if (!chartWrap || !canvas || !histChart) return;
+
+    const containerWidth  = chartWrap.clientWidth  || 600;
+    const containerHeight = chartWrap.clientHeight || 300;
+
+    if (rangeVal === '24h') {
+      // Canvas is 24/6 = 4× the container width so each hour is equal-sized
+      const totalWidth = Math.round(containerWidth * (24 / VISIBLE_HOURS));
+      canvas.style.width  = totalWidth + 'px';
+      canvas.width        = totalWidth;
+    } else {
+      // Non-24h ranges fill the container normally
+      canvas.style.width  = containerWidth + 'px';
+      canvas.width        = containerWidth;
+    }
+
+    canvas.style.height = '100%';
+    canvas.height       = containerHeight;
+    histChart.resize();
+
+    // Always scroll to the right so the most recent data is in view
+    requestAnimationFrame(() => { chartWrap.scrollLeft = chartWrap.scrollWidth; });
+  }
 
   /**
    * Build chart data from stored history for the current range.
@@ -287,11 +324,6 @@ export function init() {
     const noDataEl  = document.getElementById('hist-no-data');
     const chartWrap = document.getElementById('hist-chart-wrap');
 
-    // Toggle scrollable class for 24h view
-    if (chartWrap) {
-      chartWrap.classList.toggle('scrollable-24h', activeRange === '24h');
-    }
-
     // No persisted history yet — fall back to live spkData buffer (same as dashboard)
     if (!readings.length) {
       const len = (spkData.ph || []).length;
@@ -315,6 +347,7 @@ export function init() {
         turb: [...(spkData.turb || [])],
         temp: [...(spkData.temp || [])],
       }, activeMetric);
+      resizeAndScrollChart(activeRange);
       return;
     }
 
@@ -323,6 +356,7 @@ export function init() {
 
     const { labels, ph, do: doArr, turb, temp } = buildChartData(readings, activeRange, from.getTime());
     updateHistoricalChart(histChart, labels, { ph, do: doArr, turb, temp }, activeMetric);
+    resizeAndScrollChart(activeRange);
   }
 
   // ── stat cards ────────────────────────────────────────────────────────────
@@ -333,20 +367,16 @@ export function init() {
 
     for (const k of ['ph', 'do', 'turb', 'temp']) {
       const s = statsOf(readings, k);
-      const avgEl   = document.getElementById(`hstat-${k}-avg`);
-      const minEl   = document.getElementById(`hstat-${k}-min`);
-      const maxEl   = document.getElementById(`hstat-${k}-max`);
-      const badgeEl = document.getElementById(`hstat-${k}-badge`);
+      const avgEl   = document.getElementById(`hist-v-${k}`);
+      const badgeEl = document.getElementById(`hist-b-${k}`);
       if (avgEl) avgEl.textContent = s ? s.avg.toFixed(2) : '—';
-      if (minEl) minEl.textContent = s ? s.min.toFixed(2) : '—';
-      if (maxEl) maxEl.textContent = s ? s.max.toFixed(2) : '—';
       if (badgeEl) {
         if (s) {
           const c = badgeClass(k, s.avg);
-          badgeEl.className = `hist-stat-badge ${c}`;
+          badgeEl.className = `scard-badge ${c}`;
           badgeEl.textContent = c === 'ok' ? 'Normal' : c === 'warn' ? 'Warning' : 'Critical';
         } else {
-          badgeEl.className = 'hist-stat-badge';
+          badgeEl.className = 'scard-badge';
           badgeEl.textContent = '';
         }
       }

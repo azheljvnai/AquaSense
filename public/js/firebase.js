@@ -93,9 +93,9 @@ export async function connect(firebaseUrl, deviceId, { onStatus, onSensorData, e
       if (lastUpd) lastUpd.textContent = new Date().toLocaleTimeString();
       const ph = parseFloat(d.ph) || 0, doV = parseFloat(d.do) || 0, turb = parseFloat(d.turb) || 0, temp = parseFloat(d.temp) || 0;
 
-      // Write to RTDB history so data persists even when browser is closed
+      // History persistence is handled by ESP32 firmware (see ESP32_HISTORY_SETUP.md)
+      // Frontend only updates UI and localStorage cache
       const ts = d.ts ? Number(d.ts) : Date.now();
-      writeHistoryEntry(DEVICE, ts, ph, doV, turb, temp);
 
       if (onSensorData) onSensorData(ph, doV, turb, temp, ts);
     }, (err) => {      onStatus('ERROR', false);
@@ -177,18 +177,7 @@ export function triggerFeed(deviceId = 'device001') {
     });
 }
 
-/**
- * Write a single sensor reading to RTDB history.
- * Path: /devices/{deviceId}/history/{ts}
- * Uses the sensor timestamp (or Date.now()) as the key so entries are
- * naturally ordered and de-duplicated by the device's own clock.
- */
-function writeHistoryEntry(devicePath, ts, ph, doVal, turb, temp) {
-  if (!fbDb) return;
-  const key = String(ts);
-  set(ref(fbDb, `${devicePath}/history/${key}`), { ts, ph, do: doVal, turb, temp })
-    .catch(() => { /* silently ignore write failures (offline, permissions) */ });
-}
+
 
 /**
  * Fetch history entries from RTDB for a given time range.

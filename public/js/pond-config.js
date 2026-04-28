@@ -19,13 +19,13 @@ export const SPECIES_PRESETS = {
     species: 'crayfish',
     thresholds: {
       ph:   { optimalMin: 6.5,  optimalMax: 8.5,
-              acceptable1Min: 6.0,  acceptable1Max: 6.49, acceptable2Min: 8.51, acceptable2Max: 9.0,
-              stress1Min: 5.5,      stress1Max: 5.99,     stress2Min: 9.01,     stress2Max: 9.5 },
-      temp: { optimalMin: 20,   optimalMax: 26,
-              acceptable1Min: 17,   acceptable1Max: 19.99, acceptable2Min: 26.01, acceptable2Max: 29,
-              stress1Min: 14,       stress1Max: 16.99,     stress2Min: 29.01,    stress2Max: 32 },
-      do:   { optimalMin: 6,    acceptableMin: 5,   stressMin: 3 },
-      turb: { optimalMax: 20,   acceptableMax: 40,  stressMax: 70,  warnMax: 90 },
+              acceptable1Min: null, acceptable1Max: 6.49, acceptable2Min: 8.51, acceptable2Max: null,
+              stress1Min: null,     stress1Max: null,     stress2Min: null,     stress2Max: null },
+      temp: { optimalMin: 20,   optimalMax: 30,
+              acceptable1Min: null, acceptable1Max: 19.99, acceptable2Min: 30.01, acceptable2Max: null,
+              stress1Min: null,     stress1Max: null,      stress2Min: null,      stress2Max: null },
+      do:   { optimalMin: 5,    acceptableMin: null, stressMin: null },
+      turb: { optimalMax: 40,   acceptableMax: 90,  stressMax: 100, warnMax: null },
     },
   },
   tilapia: {
@@ -33,41 +33,41 @@ export const SPECIES_PRESETS = {
     species: 'tilapia',
     thresholds: {
       ph:   { optimalMin: 6.5,  optimalMax: 8.5,
-              acceptable1Min: 6.0,  acceptable1Max: 6.49, acceptable2Min: 8.51, acceptable2Max: 9.0,
-              stress1Min: 5.5,      stress1Max: 5.99,     stress2Min: 9.01,     stress2Max: 9.5 },
-      temp: { optimalMin: 25,   optimalMax: 30,
-              acceptable1Min: 22,   acceptable1Max: 24.99, acceptable2Min: 30.01, acceptable2Max: 33,
-              stress1Min: 19,       stress1Max: 21.99,     stress2Min: 33.01,    stress2Max: 36 },
-      do:   { optimalMin: 5,    acceptableMin: 4,   stressMin: 2.5 },
-      turb: { optimalMax: 25,   acceptableMax: 50,  stressMax: 75,  warnMax: null },
+              acceptable1Min: null, acceptable1Max: 6.49, acceptable2Min: 8.51, acceptable2Max: null,
+              stress1Min: null,     stress1Max: null,     stress2Min: null,     stress2Max: null },
+      temp: { optimalMin: 25,   optimalMax: 32,
+              acceptable1Min: null, acceptable1Max: 24.99, acceptable2Min: 32.01, acceptable2Max: null,
+              stress1Min: null,     stress1Max: null,      stress2Min: null,      stress2Max: null },
+      do:   { optimalMin: 5,    acceptableMin: null, stressMin: null },
+      turb: { optimalMax: 50,   acceptableMax: 75,  stressMax: 100, warnMax: null },
     },
   },
   catfish: {
     name: 'Catfish',
     species: 'catfish',
     thresholds: {
-      ph:   { optimalMin: 6.5,  optimalMax: 8.5,
-              acceptable1Min: 6.0,  acceptable1Max: 6.49, acceptable2Min: 8.51, acceptable2Max: 9.0,
-              stress1Min: 5.5,      stress1Max: 5.99,     stress2Min: 9.01,     stress2Max: 9.5 },
-      temp: { optimalMin: 25,   optimalMax: 30,
-              acceptable1Min: 22,   acceptable1Max: 24.99, acceptable2Min: 30.01, acceptable2Max: 33,
-              stress1Min: 19,       stress1Max: 21.99,     stress2Min: 33.01,    stress2Max: 36 },
-      do:   { optimalMin: 5,    acceptableMin: 4,   stressMin: 2 },
-      turb: { optimalMax: 30,   acceptableMax: 70,  stressMax: 100, warnMax: null },
+      ph:   { optimalMin: 6.5,  optimalMax: 9.0,
+              acceptable1Min: null, acceptable1Max: 6.49, acceptable2Min: 9.01, acceptable2Max: null,
+              stress1Min: null,     stress1Max: null,     stress2Min: null,     stress2Max: null },
+      temp: { optimalMin: 25,   optimalMax: 32,
+              acceptable1Min: null, acceptable1Max: 24.99, acceptable2Min: 32.01, acceptable2Max: null,
+              stress1Min: null,     stress1Max: null,      stress2Min: null,      stress2Max: null },
+      do:   { optimalMin: 5,    acceptableMin: 3,   stressMin: null },
+      turb: { optimalMax: 70,   acceptableMax: 100, stressMax: null, warnMax: null },
     },
   },
   shrimp: {
     name: 'Shrimp',
     species: 'shrimp',
     thresholds: {
-      ph:   { optimalMin: 7.0,  optimalMax: 8.5,
-              acceptable1Min: 6.5,  acceptable1Max: 6.99, acceptable2Min: 8.51, acceptable2Max: 9.0,
-              stress1Min: 6.0,      stress1Max: 6.49,     stress2Min: 9.01,     stress2Max: 9.5 },
-      temp: { optimalMin: 26,   optimalMax: 30,
-              acceptable1Min: 23,   acceptable1Max: 25.99, acceptable2Min: 30.01, acceptable2Max: 33,
-              stress1Min: 20,       stress1Max: 22.99,     stress2Min: 33.01,    stress2Max: 36 },
-      do:   { optimalMin: 6,    acceptableMin: 5,   stressMin: 3 },
-      turb: { optimalMax: 10,   acceptableMax: 25,  stressMax: 50,  warnMax: null },
+      ph:   { optimalMin: 7.2,  optimalMax: 8.5,
+              acceptable1Min: null, acceptable1Max: 7.19, acceptable2Min: 8.51, acceptable2Max: null,
+              stress1Min: null,     stress1Max: null,     stress2Min: null,     stress2Max: null },
+      temp: { optimalMin: 28,   optimalMax: 31,
+              acceptable1Min: null, acceptable1Max: 27.99, acceptable2Min: 31.01, acceptable2Max: null,
+              stress1Min: null,     stress1Max: null,      stress2Min: null,      stress2Max: null },
+      do:   { optimalMin: 3,    acceptableMin: null, stressMin: null },
+      turb: { optimalMax: 25,   acceptableMax: 50,  stressMax: 100, warnMax: null },
     },
   },
 };
@@ -133,38 +133,27 @@ export function getBadgeForSpecies(key, val) {
 
   if (key === 'turb') {
     const tb = t.turb;
-    if (val <= tb.optimalMax)    return { c: 'ok',         l: 'Optimal' };
-    if (val <= tb.acceptableMax) return { c: 'acceptable', l: 'Acceptable' };
-    if (val <= tb.stressMax)     return { c: 'stress',     l: 'Stress Risk' };
-    if (tb.warnMax != null && val <= tb.warnMax) return { c: 'warn', l: 'Poor' };
-    return                              { c: 'danger',     l: 'Critical' };
+    if (val <= tb.optimalMax)    return { c: 'ok',     l: 'Normal' };
+    if (val <= tb.acceptableMax) return { c: 'warn',   l: 'Warning' };
+    return                              { c: 'danger', l: 'Critical' };
   }
 
   if (key === 'do') {
     const db = t.do;
-    if (val >= db.optimalMin)                                return { c: 'ok',         l: 'Optimal' };
-    if (val >= db.acceptableMin && val < db.optimalMin)      return { c: 'acceptable', l: 'Acceptable' };
-    if (val >= db.stressMin     && val < db.acceptableMin)   return { c: 'stress',     l: 'Stress Risk' };
-    return                                                          { c: 'danger',     l: 'Critical' };
+    if (val >= db.optimalMin)                                return { c: 'ok',     l: 'Normal' };
+    if (db.acceptableMin && val >= db.acceptableMin)         return { c: 'warn',   l: 'Warning' };
+    return                                                          { c: 'danger', l: 'Critical' };
   }
 
   if (key === 'temp') {
     const tb = t.temp;
-    if (val >= tb.optimalMin && val <= tb.optimalMax) return { c: 'ok', l: 'Optimal' };
-    if ((val >= tb.acceptable1Min && val <= tb.acceptable1Max) ||
-        (val >= tb.acceptable2Min && val <= tb.acceptable2Max)) return { c: 'acceptable', l: 'Acceptable' };
-    if ((val >= tb.stress1Min && val <= tb.stress1Max) ||
-        (val >= tb.stress2Min && val <= tb.stress2Max)) return { c: 'stress', l: 'Stress Risk' };
-    return { c: 'danger', l: val < tb.optimalMin ? 'Critical (Too Cold)' : 'Critical (Too Hot)' };
+    if (val >= tb.optimalMin && val <= tb.optimalMax) return { c: 'ok', l: 'Normal' };
+    return { c: 'danger', l: 'Critical' };
   }
 
   if (key === 'ph') {
     const pb = t.ph;
-    if (val >= pb.optimalMin && val <= pb.optimalMax) return { c: 'ok', l: 'Optimal' };
-    if ((val >= pb.acceptable1Min && val <= pb.acceptable1Max) ||
-        (val >= pb.acceptable2Min && val <= pb.acceptable2Max)) return { c: 'acceptable', l: 'Acceptable' };
-    if ((val >= pb.stress1Min && val <= pb.stress1Max) ||
-        (val >= pb.stress2Min && val <= pb.stress2Max)) return { c: 'stress', l: 'Stress Risk' };
+    if (val >= pb.optimalMin && val <= pb.optimalMax) return { c: 'ok', l: 'Normal' };
     return { c: 'danger', l: 'Critical' };
   }
 
@@ -199,7 +188,28 @@ export async function seedSpeciesPresets() {
   for (const [species, preset] of Object.entries(SPECIES_PRESETS)) {
     await api('POST', '/api/configurations', {
       id: species, name: preset.name, species, thresholds: preset.thresholds,
-    }).catch(() => { /* already exists — ignore */ });
+    }).catch(() => { 
+      // If it already exists, update it with the new thresholds
+      return api('PATCH', `/api/configurations/${species}`, {
+        name: preset.name, species, thresholds: preset.thresholds,
+      }).catch(() => { /* ignore update failures */ });
+    });
+  }
+}
+
+export async function updateSpeciesPresets() {
+  // Force update all existing presets with new parameter values
+  for (const [species, preset] of Object.entries(SPECIES_PRESETS)) {
+    try {
+      await api('PATCH', `/api/configurations/${species}`, {
+        name: preset.name, species, thresholds: preset.thresholds,
+      });
+    } catch (e) {
+      // If it doesn't exist, create it
+      await api('POST', '/api/configurations', {
+        id: species, name: preset.name, species, thresholds: preset.thresholds,
+      }).catch(() => { /* ignore creation failures */ });
+    }
   }
 }
 

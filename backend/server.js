@@ -440,6 +440,20 @@ app.post('/api/configurations', verifyToken, requireRole('admin'), async (req, r
   }
 });
 
+/** PATCH /api/configurations/:id — update a global preset. Requires admin. */
+app.patch('/api/configurations/:id', verifyToken, requireRole('admin'), async (req, res) => {
+  const { name, species, thresholds } = req.body || {};
+  try {
+    await admin.firestore().collection('configurations').doc(req.params.id).set(
+      { name, species, thresholds, updatedAt: admin.firestore.FieldValue.serverTimestamp() },
+      { merge: true },
+    );
+    return res.json({ success: true });
+  } catch (e) {
+    return res.status(400).json({ error: e.message });
+  }
+});
+
 // Static files — registered after API routes so /api/* is never intercepted
 app.use(express.static(frontendPath, { etag: false, lastModified: false, maxAge: 0 }));
 // Also serve frontend assets (css, js, etc.)

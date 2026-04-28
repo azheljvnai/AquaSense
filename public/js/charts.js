@@ -168,7 +168,7 @@ export function initHistoricalChart(canvasEl) {
       ],
     },
     options: {
-      responsive: true,
+      responsive: false,
       maintainAspectRatio: false,
       animation: { duration: 350, easing: 'easeInOutQuart' },
       interaction: { mode: 'index', intersect: false },

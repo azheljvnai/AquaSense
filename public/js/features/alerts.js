@@ -51,15 +51,13 @@ const SENSOR_UNITS  = { ph: '',   do: ' mg/L',         turb: ' NTU',      temp: 
  * Severity map: badge class → alert severity level
  * Only store readings that are genuinely at risk:
  *   danger  → critical
- *   stress  → warning  (stress risk — at risk)
- *   warn    → warning  (poor/high — at risk)
- *   acceptable / ok → null (no alert stored)
+ *   warn    → warning
+ *   ok      → null (no alert stored)
  */
 function severityFromBadge(badgeClass) {
   if (badgeClass === 'danger') return 'critical';
-  if (badgeClass === 'stress') return 'warning';
   if (badgeClass === 'warn')   return 'warning';
-  return null; // acceptable / ok — not at risk, no alert
+  return null; // ok — not at risk, no alert
 }
 
 /**
@@ -104,7 +102,7 @@ function evaluateSensor(key, val, pondName) {
     val,
     severity,   // 'critical' | 'warning' | 'info'
     badge:      badge.c,
-    label:      `${badge.c === 'danger' ? 'Critical' : badge.c === 'stress' ? 'Stress Risk' : badge.c === 'warn' ? 'Warning' : 'Notice'}: ${label} in ${pondName}`,
+    label:      `${badge.c === 'danger' ? 'Critical' : badge.c === 'warn' ? 'Warning' : 'Notice'}: ${label} in ${pondName}`,
     description,
     pond:       pondName,
     resolved:   false,
@@ -164,6 +162,38 @@ export function init() {
     email?.addEventListener('change', () => saveSettings({ email: !!email.checked }));
     sms?.addEventListener('change',   () => saveSettings({ sms:   !!sms.checked }));
     push?.addEventListener('change',  () => saveSettings({ push:  !!push.checked }));
+  }
+
+  // ── Alert action buttons ───────────────────────────────────────────────────
+  const clearAllBtn = document.getElementById('btn-clear-all-alerts');
+  const markAllResolvedBtn = document.getElementById('btn-mark-all-resolved');
+
+  if (clearAllBtn) {
+    clearAllBtn.addEventListener('click', () => {
+      const allAlerts = loadAlerts();
+      const totalCount = allAlerts.length;
+      if (totalCount === 0) {
+        showToast('No alerts to clear', 'info');
+        return;
+      }
+      if (confirm(`Are you sure you want to clear all ${totalCount} alerts? This action cannot be undone.`)) {
+        clearAllAlerts();
+      }
+    });
+  }
+
+  if (markAllResolvedBtn) {
+    markAllResolvedBtn.addEventListener('click', () => {
+      const allAlerts = loadAlerts();
+      const unresolvedCount = allAlerts.filter(a => !a.resolved).length;
+      if (unresolvedCount === 0) {
+        showToast('No unresolved alerts to mark', 'info');
+        return;
+      }
+      if (confirm(`Mark all ${unresolvedCount} active alerts as resolved?`)) {
+        markAllAlertsAsResolved();
+      }
+    });
   }
 
   // ── Threshold display — driven by active pond config ───────────────────────
@@ -319,6 +349,7 @@ export function init() {
         const idx = all.findIndex(a => a.id === id);
         if (idx !== -1) { all[idx].resolved = true; saveAlerts(all); }
         renderAlertList();
+        window.dispatchEvent(new Event('alerts-updated'));
       });
     });
   }
@@ -358,6 +389,7 @@ export function init() {
       all.push(...newAlerts);
       saveAlerts(all);
       renderAlertList();
+      window.dispatchEvent(new Event('alerts-updated'));
     }
   });
 
@@ -368,4 +400,87 @@ export function init() {
     renderAlertList();
   });
   window.addEventListener('active-pond-changed', renderAlertList);
+}
+
+// ─── Alert Management Functions ───────────────────────────────────────────────
+
+/**
+ * Clear all alerts from localStorage
+ */
+function clearAllAlerts() {
+  try {
+    const allAlerts = loadAlerts();
+    const totalCount = allAlerts.length;
+    
+    if (totalCount === 0) {
+      showToast('No alerts to clear', 'info');
+      return;
+    }
+    
+    localStorage.removeItem(ALERT_STORAGE_KEY);
+    renderAlertList();
+    window.dispatchEvent(new Event('alerts-updated'));
+    showToast(`Successfully cleared ${totalCount} alerts`, 'success');
+  } catch (err) {
+    console.error('[clearAllAlerts] Error:', err);
+    showToast('Failed to clear alerts', 'error');
+  }
+}
+
+/**
+ * Mark all unresolved alerts as resolved
+ */
+function markAllAlertsAsResolved() {
+  try {
+    const allAlerts = loadAlerts();
+    const unresolvedAlerts = allAlerts.filter(alert => !alert.resolved);
+    
+    if (unresolvedAlerts.length === 0) {
+      showToast('No unresolved alerts to mark', 'info');
+      return;
+    }
+    
+    const updatedAlerts = allAlerts.map(alert => ({
+      ...alert,
+      resolved: true
+    }));
+    
+    saveAlerts(updatedAlerts);
+    renderAlertList();
+    window.dispatchEvent(new Event('alerts-updated'));
+    showToast(`Successfully marked ${unresolvedAlerts.length} alerts as resolved`, 'success');
+  } catch (err) {
+    console.error('[markAllAlertsAsResolved] Error:', err);
+    showToast('Failed to mark alerts as resolved', 'error');
+  }
+}
+
+/**
+ * Show a toast notification
+ */
+function showToast(message, type = 'info') {
+  const toast = document.createElement('div');
+  toast.className = `alert-toast alert-toast-${type}`;
+  toast.textContent = message;
+  toast.style.cssText = [
+    'position:fixed',
+    'bottom:24px',
+    'right:24px',
+    'z-index:9999',
+    'padding:12px 20px',
+    'border-radius:8px',
+    'font-size:0.875rem',
+    'max-width:360px',
+    'box-shadow:0 4px 12px rgba(0,0,0,0.15)',
+    'color:#fff',
+    `background:${type === 'error' ? '#ef4444' : type === 'success' ? '#22c55e' : '#3b82f6'}`,
+    'transition:opacity 0.3s ease',
+  ].join(';');
+
+  document.body.appendChild(toast);
+
+  setTimeout(() => {
+    toast.style.opacity = '0';
+    setTimeout(() => toast.remove(), 300);
+  }, 4000);
 }

@@ -1,6 +1,13 @@
 {
   "rules": {
     ".read": true,
-    ".write": true
+    ".write": true,
+    "devices": {
+      "$deviceId": {
+        "history": {
+          ".indexOn": ["ts"]
+        }
+      }
+    }
   }
 }

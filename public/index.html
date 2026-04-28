@@ -222,9 +222,7 @@
         <div class="card dash-alerts-card">
           <div class="panel-title"><svg class="icon icon-16"><use href="#icon-warning"/></svg> Recent Alerts</div>
           <div class="recent-alerts" id="recent-alerts">
-            <div class="alert-item warning">pH level slightly elevated in Pond 1 <div class="alert-time">2 hours ago</div></div>
-            <div class="alert-item info">Feeding schedule completed successfully <div class="alert-time">4 hours ago</div></div>
-            <div class="alert-item neutral">Temperature sensor calibration due <div class="alert-time">1 day ago</div></div>
+            <div style="padding:20px 0;text-align:center;color:var(--text-muted);font-size:0.82rem;">Loading alerts…</div>
           </div>
           <div class="panel-title" style="margin-top:16px">Activity Log</div>
           <ul id="loglist"></ul>
@@ -302,41 +300,33 @@
 
       <!-- Summary stat cards -->
       <div class="hist-stat-row">
-        <div class="hist-stat-card" id="hstat-ph">
-          <div class="hist-stat-icon" style="background:rgba(59,130,246,0.1);color:#3b82f6"><svg class="icon icon-16"><use href="#icon-droplet"/></svg></div>
-          <div class="hist-stat-body">
-            <div class="hist-stat-label">pH — Avg</div>
-            <div class="hist-stat-val" id="hstat-ph-avg">—</div>
-            <div class="hist-stat-range"><span id="hstat-ph-min">—</span> – <span id="hstat-ph-max">—</span></div>
-          </div>
-          <div class="hist-stat-badge" id="hstat-ph-badge"></div>
+        <div class="metric-card scard temp">
+          <div class="metric-icon" style="background:var(--red-light);color:var(--temp-c)"><svg class="icon icon-20"><use href="#icon-thermometer"/></svg></div>
+          <div class="scard-label">Water Temperature</div>
+          <div class="scard-val" id="hist-v-temp">—</div>
+          <div class="scard-badge ok" id="hist-b-temp">Normal</div>
+          <svg class="spark" id="hist-sp-temp"></svg>
         </div>
-        <div class="hist-stat-card" id="hstat-do">
-          <div class="hist-stat-icon" style="background:rgba(34,197,94,0.1);color:#22c55e"><svg class="icon icon-16"><use href="#icon-activity"/></svg></div>
-          <div class="hist-stat-body">
-            <div class="hist-stat-label">DO — Avg (mg/L)</div>
-            <div class="hist-stat-val" id="hstat-do-avg">—</div>
-            <div class="hist-stat-range"><span id="hstat-do-min">—</span> – <span id="hstat-do-max">—</span></div>
-          </div>
-          <div class="hist-stat-badge" id="hstat-do-badge"></div>
+        <div class="metric-card scard ph">
+          <div class="metric-icon" style="background:var(--blue-light);color:var(--ph-c)"><svg class="icon icon-20"><use href="#icon-droplet"/></svg></div>
+          <div class="scard-label">pH Level</div>
+          <div class="scard-val" id="hist-v-ph">—</div>
+          <div class="scard-badge ok" id="hist-b-ph">Normal</div>
+          <svg class="spark" id="hist-sp-ph"></svg>
         </div>
-        <div class="hist-stat-card" id="hstat-turb">
-          <div class="hist-stat-icon" style="background:rgba(245,158,11,0.1);color:#f59e0b"><svg class="icon icon-16"><use href="#icon-activity"/></svg></div>
-          <div class="hist-stat-body">
-            <div class="hist-stat-label">Turbidity — Avg (NTU)</div>
-            <div class="hist-stat-val" id="hstat-turb-avg">—</div>
-            <div class="hist-stat-range"><span id="hstat-turb-min">—</span> – <span id="hstat-turb-max">—</span></div>
-          </div>
-          <div class="hist-stat-badge" id="hstat-turb-badge"></div>
+        <div class="metric-card scard do">
+          <div class="metric-icon" style="background:var(--green-light);color:var(--do-c)"><svg class="icon icon-20"><use href="#icon-activity"/></svg></div>
+          <div class="scard-label">Dissolved Oxygen</div>
+          <div class="scard-val" id="hist-v-do">—</div>
+          <div class="scard-badge ok" id="hist-b-do">Normal</div>
+          <svg class="spark" id="hist-sp-do"></svg>
         </div>
-        <div class="hist-stat-card" id="hstat-temp">
-          <div class="hist-stat-icon" style="background:rgba(239,68,68,0.1);color:#ef4444"><svg class="icon icon-16"><use href="#icon-thermometer"/></svg></div>
-          <div class="hist-stat-body">
-            <div class="hist-stat-label">Temperature — Avg (°C)</div>
-            <div class="hist-stat-val" id="hstat-temp-avg">—</div>
-            <div class="hist-stat-range"><span id="hstat-temp-min">—</span> – <span id="hstat-temp-max">—</span></div>
-          </div>
-          <div class="hist-stat-badge" id="hstat-temp-badge"></div>
+        <div class="metric-card scard turb">
+          <div class="metric-icon" style="background:var(--yellow-light);color:var(--turb-c)"><svg class="icon icon-20"><use href="#icon-activity"/></svg></div>
+          <div class="scard-label">Turbidity (NTU)</div>
+          <div class="scard-val" id="hist-v-turb">—</div>
+          <div class="scard-badge ok" id="hist-b-turb">Normal</div>
+          <svg class="spark" id="hist-sp-turb"></svg>
         </div>
       </div>
 
@@ -354,8 +344,8 @@
           </div>
           <div class="hist-actions">
             <select id="hist-range">
-              <option value="24h">Last 24 Hours</option>
-              <option value="week" selected>This Week</option>
+              <option value="24h" selected>Last 24 Hours</option>
+              <option value="week">This Week</option>
               <option value="month">This Month</option>
               <option value="custom">Custom Range</option>
             </select>
@@ -625,25 +615,17 @@
             </button>
           </div>
           <div class="card" style="margin-bottom:16px;">
-            <details>
-              <summary style="cursor:pointer;font-weight:600;font-size:0.9rem;padding:4px 0;list-style:none;display:flex;align-items:center;gap:8px;">
-                <svg class="icon icon-16"><use href="#icon-bell"/></svg>
-                Notification Log
-              </summary>
-              <div style="margin-top:12px;">
-                <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
-                  <label style="font-size:0.8rem;color:var(--text-muted);">Filter:</label>
-                  <select id="notif-log-filter" style="font-size:0.8rem;padding:4px 8px;border:1px solid var(--border);border-radius:4px;">
-                    <option value="all">All</option>
-                    <option value="sent">Sent</option>
-                    <option value="failed">Failed</option>
-                  </select>
-                </div>
-                <div id="notif-log-list" style="font-size:0.8rem;max-height:240px;overflow-y:auto;">
-                  <p class="notif-log-empty" style="color:var(--text-muted);text-align:center;padding:16px 0;">No notification records yet.</p>
-                </div>
-              </div>
-            </details>
+            <h3 class="card-title">Alert Actions</h3>
+            <div style="display:flex;flex-direction:column;gap:8px;">
+              <button type="button" id="btn-clear-all-alerts" class="btn btn-outline" style="width:100%;font-size:0.85rem;">
+                <svg class="icon icon-16" style="vertical-align:middle;margin-right:6px;"><use href="#icon-trash"/></svg>
+                Clear All Alerts
+              </button>
+              <button type="button" id="btn-mark-all-resolved" class="btn btn-outline" style="width:100%;font-size:0.85rem;">
+                <svg class="icon icon-16" style="vertical-align:middle;margin-right:6px;"><use href="#icon-check"/></svg>
+                Mark All as Resolved
+              </button>
+            </div>
           </div>
           <div class="card">
             <h3 class="card-title">Alert Thresholds</h3>

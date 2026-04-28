@@ -198,31 +198,24 @@ export function init() {
 
     if (key === 'turb') {
       const tb = t.turb;
-      if (v <= tb.optimalMax)    return 'Optimal';
-      if (v <= tb.acceptableMax) return 'Acceptable';
-      if (v <= tb.stressMax)     return 'Stress Risk';
-      if (tb.warnMax != null && v <= tb.warnMax) return 'Poor';
+      if (v <= tb.optimalMax)    return 'Normal';
+      if (v <= tb.acceptableMax) return 'Warning';
       return 'Critical';
     }
     if (key === 'do') {
       const db = t.do;
-      if (v >= db.optimalMin)    return 'Optimal';
-      if (v >= db.acceptableMin) return 'Acceptable';
-      if (v >= db.stressMin)     return 'Stress Risk';
+      if (v >= db.optimalMin)                                return 'Normal';
+      if (db.acceptableMin && v >= db.acceptableMin)         return 'Warning';
       return 'Critical';
     }
     if (key === 'temp') {
       const tb = t.temp;
-      if (v >= tb.optimalMin && v <= tb.optimalMax) return 'Optimal';
-      if ((v >= tb.acceptable1Min && v <= tb.acceptable1Max) || (v >= tb.acceptable2Min && v <= tb.acceptable2Max)) return 'Acceptable';
-      if ((v >= tb.stress1Min && v <= tb.stress1Max) || (v >= tb.stress2Min && v <= tb.stress2Max)) return 'Stress Risk';
-      return v < tb.optimalMin ? 'Critical (Too Cold)' : 'Critical (Too Hot)';
+      if (v >= tb.optimalMin && v <= tb.optimalMax) return 'Normal';
+      return 'Critical';
     }
     if (key === 'ph') {
       const pb = t.ph;
-      if (v >= pb.optimalMin && v <= pb.optimalMax) return 'Optimal';
-      if ((v >= pb.acceptable1Min && v <= pb.acceptable1Max) || (v >= pb.acceptable2Min && v <= pb.acceptable2Max)) return 'Acceptable';
-      if ((v >= pb.stress1Min && v <= pb.stress1Max) || (v >= pb.stress2Min && v <= pb.stress2Max)) return 'Stress Risk';
+      if (v >= pb.optimalMin && v <= pb.optimalMax) return 'Normal';
       return 'Critical';
     }
     return '—';
@@ -338,7 +331,7 @@ export function init() {
     const rows = metrics.map(m => {
       const s      = stats(readings, m.key);
       const status = evalStatus(m.key, m.current, pondCfg?.thresholds);
-      const statusColor = { Optimal:'#166534', Acceptable:'#1d4ed8', 'Stress Risk':'#92400e', Poor:'#7c2d12', Critical:'#991b1b' }[status] || '#475569';
+      const statusColor = { Normal:'#166534', Warning:'#b45309', Critical:'#991b1b' }[status] || '#475569';
       return `<tr>
         <td>${m.label}</td>
         <td>${m.current||'—'}</td>

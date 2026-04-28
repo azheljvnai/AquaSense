@@ -6,7 +6,6 @@
  *   loadPrefs(uid)                      — read Firestore prefs
  *   savePrefs(uid, prefs)               — validate + write Firestore prefs
  *   handleAlert(alert)                  — orchestrate dispatch
- *   renderNotificationLog(uid, filter)  — render log UI
  */
 import {
   fbFirestore,
@@ -16,18 +15,9 @@ import {
   fbCollection,
   fbAddDoc,
   fbServerTimestamp,
-  fbQuery,
-  fbWhere,
-  fbGetDocs,
 } from '../firebase-client.js';
 import { getConfig } from '../config.js';
 import { getActiveThresholds } from '../pond-config.js';
-
-// orderBy and limit are not re-exported from firebase-client.js — import directly
-import {
-  orderBy as fbOrderBy,
-  limit as fbLimit,
-} from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -79,20 +69,6 @@ export async function init(user) {
       console.warn('[NotificationService] flushRetryQueue error:', err)
     );
   });
-
-  // Wire log filter
-  const logFilter = document.getElementById('notif-log-filter');
-  if (logFilter) {
-    logFilter.addEventListener('change', () => {
-      if (_currentUser?.uid) {
-        renderNotificationLog(_currentUser.uid, logFilter.value);
-      }
-    });
-    // Initial render
-    if (user?.uid) {
-      renderNotificationLog(user.uid, logFilter.value || 'all');
-    }
-  }
 }
 
 // ─── Exported: loadPrefs ──────────────────────────────────────────────────────
@@ -199,73 +175,7 @@ export async function handleAlert(alert) {
   }
 }
 
-// ─── Exported: renderNotificationLog ─────────────────────────────────────────
-
-/**
- * Queries the 50 most recent `notificationLog` records for the current user,
- * optionally filtered by status, and renders them into `#notif-log-list`.
- */
-export async function renderNotificationLog(uid, statusFilter) {
-  const container = document.getElementById('notif-log-list');
-  if (!container) return;
-
-  if (!uid) {
-    container.innerHTML = '<p class="notif-log-empty">Sign in to view notification history.</p>';
-    return;
-  }
-
-  try {
-    const col = fbCollection(fbFirestore(), 'notificationLog');
-    let q;
-    if (statusFilter && statusFilter !== 'all') {
-      q = fbQuery(col,
-        fbWhere('uid', '==', uid),
-        fbWhere('status', '==', statusFilter),
-        fbOrderBy('sentAt', 'desc'),
-        fbLimit(50)
-      );
-    } else {
-      q = fbQuery(col,
-        fbWhere('uid', '==', uid),
-        fbOrderBy('sentAt', 'desc'),
-        fbLimit(50)
-      );
-    }
-
-    const snap = await fbGetDocs(q);
-
-    if (snap.empty) {
-      container.innerHTML = '<p class="notif-log-empty">No notification records found.</p>';
-      return;
-    }
-
-    container.innerHTML = snap.docs.map(doc => {
-      const d = doc.data();
-      const ts = d.sentAt?.toDate ? d.sentAt.toDate() : new Date();
-      const timeStr = ts.toLocaleString();
-      const paramLabel = SENSOR_LABELS[d.parameter] || d.parameter || '—';
-      const severityClass = d.severity === 'critical' ? 'notif-badge-critical' : 'notif-badge-warning';
-      const statusClass   = d.status === 'sent' ? 'notif-badge-sent' : 'notif-badge-failed';
-
-      return `
-        <div class="notif-log-entry">
-          <span class="notif-log-icon" title="Email">
-            <svg class="icon icon-16"><use href="#icon-mail"/></svg>
-          </span>
-          <span class="notif-log-param">${paramLabel}</span>
-          <span class="notif-log-pond">${d.pondName || '—'}</span>
-          <span class="badge-pill ${severityClass}">${d.severity || '—'}</span>
-          <span class="badge-pill ${statusClass}">${d.status || '—'}</span>
-          <span class="notif-log-time">${timeStr}</span>
-        </div>`;
-    }).join('');
-  } catch (err) {
-    console.warn('[NotificationService] renderNotificationLog error:', err);
-    container.innerHTML = '<p class="notif-log-empty">Failed to load notification log.</p>';
-  }
-}
-
-// ─── Internal: initPrefsUI ────────────────────────────────────────────────────
+// ─── Internal: sendEmail ─────────────────────────────────────────────────────
 
 function initPrefsUI(user) {
   const toggle   = document.getElementById('notif-email-toggle');

@@ -230,10 +230,9 @@ function renderSidebarUser(profile) {
 }
 
 function badgeClassFromKey(key) {
-  if (key === 'ok')         return 'status-normal';
-  if (key === 'acceptable') return 'status-acceptable';
-  if (key === 'stress')     return 'status-stress';
-  if (key === 'warn')       return 'status-warning';
+  if (key === 'ok')     return 'status-normal';
+  if (key === 'warn')   return 'status-warning';
+  if (key === 'danger') return 'status-critical';
   return 'status-critical';
 }
 
@@ -283,9 +282,8 @@ export function updateCard(key, val) {
   window._spkData = spkData; // expose for reports module
   drawSpark(key, spkData[key], spkCol[key]);
   if (b.c === 'danger') log(`${key.toUpperCase()} CRITICAL: ${val.toFixed(1)}`, 'err');
-  else if (b.c === 'stress') log(`${key.toUpperCase()} STRESS RISK: ${val.toFixed(1)}`, 'warn');
-  else if (b.c === 'warn') log(`${key.toUpperCase()} HIGH/POOR: ${val.toFixed(1)}`, 'warn');
-  else if (b.c === 'acceptable') log(`${key.toUpperCase()} Acceptable: ${val.toFixed(1)}`, '');
+  else if (b.c === 'warn') log(`${key.toUpperCase()} WARNING: ${val.toFixed(1)}`, 'warn');
+  else log(`${key.toUpperCase()} Normal: ${val.toFixed(1)}`, '');
   const wqPh = document.getElementById('wq-avg-ph');
   const wqTemp = document.getElementById('wq-avg-temp');
   const wqDo = document.getElementById('wq-avg-do');
@@ -352,11 +350,6 @@ function setupTopbarPondSelector() {
     const pond = e.detail.pond;
     if (pond && select.value !== pond.id) select.value = pond.id;
     updateDashboardPondBadge(pond);
-    // Also sync the Configuration page pond-selector
-    const cfgSel = document.getElementById('pond-selector');
-    if (cfgSel && pond && cfgSel.value !== pond.id && cfgSel.querySelector(`option[value="${pond.id}"]`)) {
-      cfgSel.value = pond.id;
-    }
   });
 
   // User picks a pond in the topbar

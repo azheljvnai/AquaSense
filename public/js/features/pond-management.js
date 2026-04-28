@@ -8,7 +8,7 @@ import {
   getPonds, createPond, updatePond,
   assignConfigToPond, getPondConfigurations, setActivePondConfig,
   updatePondConfiguration, deletePondConfiguration, deactivatePondConfig,
-  loadActivePondConfig, seedSpeciesPresets,
+  loadActivePondConfig, seedSpeciesPresets, updateSpeciesPresets,
 } from '../pond-config.js';
 
 const SPECIES_LABELS = {
@@ -98,9 +98,26 @@ export async function init() {
     }
   });
 
+  // Sync pond-management UI when the active pond changes externally (e.g. topbar selector)
+  window.addEventListener('active-pond-changed', async (e) => {
+    const pond = e.detail?.pond;
+    if (!pond?.id) return;
+    const sel = document.getElementById('pond-selector');
+    if (!sel) return;
+    // Only react if the selector has this pond as an option and it's not already selected
+    if (sel.querySelector(`option[value="${pond.id}"]`) && sel.value !== pond.id) {
+      sel.value = pond.id;
+      _currentPondId = pond.id;
+      await onPondSelected(pond.id);
+    }
+  });
+
   // Expose loader — called by app.js after auth confirms
   window._pondMgmtOnUser = async () => {
-    try { await seedSpeciesPresets(); } catch { /* offline */ }
+    try { 
+      await seedSpeciesPresets(); 
+      await updateSpeciesPresets(); // Force update existing presets
+    } catch { /* offline */ }
     await refreshPonds();
   };
 }

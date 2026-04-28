@@ -81,33 +81,25 @@ export function getBadge(key, val) {
 
 function _crayfishBadge(key, val) {
   if (key === 'turb') {
-    if (val <= 20) return { c: 'ok',         l: 'Clear / Optimal' };
-    if (val <= 40) return { c: 'acceptable', l: 'Slightly Turbid / Acceptable' };
-    if (val <= 70) return { c: 'stress',     l: 'Moderate / Stress Risk' };
-    if (val <= 90) return { c: 'warn',       l: 'High / Poor' };
-    return                { c: 'danger',     l: 'Critical' };
+    if (val <= 40) return { c: 'ok',     l: 'Normal' };
+    if (val <= 90) return { c: 'warn',   l: 'Warning' };
+    return                { c: 'danger', l: 'Critical' };
   }
   if (key === 'temp') {
-    if (val >= 20 && val <= 26) return { c: 'ok',        l: 'Optimal' };
-    if ((val >= 17 && val <= 19) || (val >= 27 && val <= 29)) return { c: 'acceptable', l: 'Acceptable' };
-    if ((val >= 14 && val <= 16) || (val >= 30 && val <= 32)) return { c: 'stress',     l: 'Stress Risk' };
-    return                                                            { c: 'danger',     l: 'Critical' };
+    if (val >= 20 && val <= 30) return { c: 'ok',     l: 'Normal' };
+    return                              { c: 'danger', l: 'Critical' };
   }
   if (key === 'ph') {
-    if (val >= 6.5 && val <= 8.5) return { c: 'ok',        l: 'Optimal' };
-    if ((val >= 6.0 && val < 6.5) || (val > 8.5 && val <= 9.0)) return { c: 'acceptable', l: 'Acceptable' };
-    if ((val >= 5.5 && val < 6.0) || (val > 9.0 && val <= 9.5)) return { c: 'stress',     l: 'Stress Risk' };
-    return                                                               { c: 'danger',     l: 'Critical' };
+    if (val >= 6.5 && val <= 8.5) return { c: 'ok',     l: 'Normal' };
+    return                                { c: 'danger', l: 'Critical' };
   }
   if (key === 'do') {
-    if (val > 6)              return { c: 'ok',         l: 'Optimal' };
-    if (val >= 5 && val <= 6) return { c: 'acceptable', l: 'Acceptable' };
-    if (val >= 3 && val < 5)  return { c: 'stress',     l: 'Stress Risk' };
-    return                           { c: 'danger',     l: 'Critical' };
+    if (val >= 5) return { c: 'ok',     l: 'Normal' };
+    return               { c: 'danger', l: 'Critical' };
   }
   const t = thresh[key];
   if (!t) return { c: 'ok', l: 'Normal' };
-  if (val >= t.ok[0] && val <= t.ok[1]) return { c: 'ok', l: 'Optimal' };
+  if (val >= t.ok[0] && val <= t.ok[1]) return { c: 'ok', l: 'Normal' };
   return { c: 'danger', l: 'Critical' };
 }
 
