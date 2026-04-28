@@ -737,36 +737,86 @@
     <section id="page-account-password" class="page-section">
       <h1 class="page-title">Change Password</h1>
 
-      <div class="card acct-pw-card">
-        <p class="acct-pw-hint">Enter your current password to verify your identity, then choose a new strong password.</p>
+      <div class="acct-pw-layout">
+        <!-- Left: form -->
+        <div class="card acct-pw-form-card">
+          <div class="acct-pw-form-header">
+            <div class="acct-pw-form-icon">
+              <svg class="icon icon-20" style="color:white"><use href="#icon-key"/></svg>
+            </div>
+            <div>
+              <div class="acct-pw-form-title">Update your password</div>
+              <p class="acct-pw-hint">Enter your current password to verify your identity, then choose a new strong password.</p>
+            </div>
+          </div>
 
-        <div class="acct-pw-fields">
-          <div class="um-field">
-            <label for="acct-pw-current">Current Password</label>
-            <input id="acct-pw-current" type="password" autocomplete="current-password" placeholder="••••••••" />
+          <div class="acct-pw-fields">
+            <div class="um-field">
+              <label for="acct-pw-current">Current Password</label>
+              <input id="acct-pw-current" type="password" autocomplete="current-password" placeholder="••••••••" />
+            </div>
+            <div class="um-field">
+              <label for="acct-pw-new">New Password</label>
+              <input id="acct-pw-new" type="password" autocomplete="new-password" placeholder="Min 8 chars, mixed case + number" />
+            </div>
+            <div class="um-field">
+              <label for="acct-pw-confirm">Confirm New Password</label>
+              <input id="acct-pw-confirm" type="password" autocomplete="new-password" placeholder="Repeat new password" />
+            </div>
           </div>
-          <div class="um-field">
-            <label for="acct-pw-new">New Password</label>
-            <input id="acct-pw-new" type="password" autocomplete="new-password" placeholder="Min 8 chars, mixed case + number" />
-          </div>
-          <div class="um-field">
-            <label for="acct-pw-confirm">Confirm New Password</label>
-            <input id="acct-pw-confirm" type="password" autocomplete="new-password" placeholder="Repeat new password" />
+
+          <ul class="acct-pw-rules" id="acct-pw-rules">
+            <li id="rule-length">At least 8 characters</li>
+            <li id="rule-upper">Uppercase letter</li>
+            <li id="rule-lower">Lowercase letter</li>
+            <li id="rule-number">Number</li>
+          </ul>
+
+          <div id="acct-pw-error" class="acct-error" style="display:none;"></div>
+          <div id="acct-pw-success" class="acct-success" style="display:none;">Password updated successfully.</div>
+
+          <div class="acct-pw-actions">
+            <button type="button" class="btn btn-primary" id="acct-pw-save">
+              <svg class="icon icon-16"><use href="#icon-check"/></svg>
+              Update Password
+            </button>
           </div>
         </div>
 
-        <ul class="acct-pw-rules" id="acct-pw-rules">
-          <li id="rule-length">At least 8 characters</li>
-          <li id="rule-upper">Uppercase letter</li>
-          <li id="rule-lower">Lowercase letter</li>
-          <li id="rule-number">Number</li>
-        </ul>
+        <!-- Right: tips -->
+        <div class="acct-pw-tips-col">
+          <div class="card acct-pw-tips-card">
+            <div class="panel-title">
+              <svg class="icon icon-16"><use href="#icon-shield"/></svg>
+              Password Tips
+            </div>
+            <ul class="acct-pw-tip-list">
+              <li>
+                <div class="acct-pw-tip-icon" style="background:var(--blue-light);color:var(--blue)"><svg class="icon icon-14"><use href="#icon-check"/></svg></div>
+                <div>Use at least 8 characters with a mix of uppercase, lowercase, and numbers.</div>
+              </li>
+              <li>
+                <div class="acct-pw-tip-icon" style="background:var(--green-light);color:var(--green-dark)"><svg class="icon icon-14"><use href="#icon-check"/></svg></div>
+                <div>Avoid reusing passwords from other accounts or services.</div>
+              </li>
+              <li>
+                <div class="acct-pw-tip-icon" style="background:var(--yellow-light);color:var(--yellow-dark)"><svg class="icon icon-14"><use href="#icon-warning"/></svg></div>
+                <div>Never share your password with anyone, including administrators.</div>
+              </li>
+              <li>
+                <div class="acct-pw-tip-icon" style="background:var(--red-light);color:var(--red-dark)"><svg class="icon icon-14"><use href="#icon-warning"/></svg></div>
+                <div>If you suspect your account is compromised, change your password immediately.</div>
+              </li>
+            </ul>
+          </div>
 
-        <div id="acct-pw-error" class="acct-error" style="display:none;"></div>
-        <div id="acct-pw-success" class="acct-success" style="display:none;">Password updated successfully.</div>
-
-        <div class="acct-pw-actions">
-          <button type="button" class="btn btn-primary" id="acct-pw-save">Update Password</button>
+          <div class="card acct-pw-session-card">
+            <div class="panel-title">
+              <svg class="icon icon-16"><use href="#icon-info"/></svg>
+              After Changing
+            </div>
+            <p style="font-size:0.82rem;color:var(--text-muted);line-height:1.6;">You will remain signed in on this device. Other active sessions may require you to sign in again with your new password.</p>
+          </div>
         </div>
       </div>
     </section>
