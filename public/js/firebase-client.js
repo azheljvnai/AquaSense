@@ -19,7 +19,7 @@ import {
   onSnapshot,
   serverTimestamp,
 } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
-import { getDatabase, ref, onValue, set, query as rtdbQuery, orderByChild, startAt, endAt, get } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js';
+import { getDatabase, ref, onValue, set, query as rtdbQuery, orderByChild, orderByKey, startAt, endAt, get } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js';
 
 let app = null;
 let auth = null;
@@ -109,6 +109,7 @@ export const fbOnValue = onValue;
 export const fbSet = set;
 export const fbRtdbQuery = rtdbQuery;
 export const fbOrderByChild = orderByChild;
+export const fbOrderByKey = orderByKey;
 export const fbStartAt = startAt;
 export const fbEndAt = endAt;
 export const fbGet = get;

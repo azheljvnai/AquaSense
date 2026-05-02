@@ -20,6 +20,7 @@ import { getHistoryRange, getThresholds, saveThresholds, resetThresholds, spkDat
 function pad(n) { return String(n).padStart(2, '0'); }
 function fmtDate(d) { return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`; }
 function fmtTime(d) { return `${pad(d.getHours())}:${pad(d.getMinutes())}`; }
+function fmtDateTime(d) { return `${fmtDate(d)} ${fmtTime(d)}`; }
 
 const DAY_NAMES = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 
@@ -78,6 +79,8 @@ export function init() {
   let activeMetric = 'all';
   let customFrom   = '';
   let customTo     = '';
+  let pinnedToLatest = true;
+  let lastHourKey = '';
 
   // ── range selector ────────────────────────────────────────────────────────
   const rangeEl       = document.getElementById('hist-range');
@@ -182,13 +185,16 @@ export function init() {
 
   // ── chart helpers ─────────────────────────────────────────────────────────
 
-  /** Hours visible in the 24h chart window at once */
-  const VISIBLE_HOURS = 6;
+  /** Visible time buckets in the 24h chart viewport (iOS Health-style) */
+  const VISIBLE_BUCKETS = 6;
+
+  // Latest computed 24h bucketing (used for sizing the scrollable canvas)
+  let last24hBucketCount = 24;
 
   /**
-   * For the 24h range: expand the canvas to fit all 24 hourly buckets but
-   * only show VISIBLE_HOURS worth of width, then scroll to the right end so
-   * the most-recent hours are visible by default.
+   * For the 24h range: expand the canvas to fit the full 24h bucket series but
+   * only show VISIBLE_BUCKETS worth of width, then scroll to the right end so
+   * the most-recent buckets are visible by default.
    * For all other ranges: reset to full-width (no scroll).
    */
   function resizeAndScrollChart(rangeVal) {
@@ -200,8 +206,9 @@ export function init() {
     const containerHeight = chartWrap.clientHeight || 300;
 
     if (rangeVal === '24h') {
-      // Canvas is 24/6 = 4× the container width so each hour is equal-sized
-      const totalWidth = Math.round(containerWidth * (24 / VISIBLE_HOURS));
+      const bucketCount = Math.max(1, last24hBucketCount || 24);
+      // Canvas is bucketCount / VISIBLE_BUCKETS × the container width so each bucket is equal-sized
+      const totalWidth = Math.round(containerWidth * (bucketCount / VISIBLE_BUCKETS));
       canvas.style.width  = totalWidth + 'px';
       canvas.width        = totalWidth;
     } else {
@@ -214,48 +221,112 @@ export function init() {
     canvas.height       = containerHeight;
     histChart.resize();
 
-    // Always scroll to the right so the most recent data is in view
-    requestAnimationFrame(() => { chartWrap.scrollLeft = chartWrap.scrollWidth; });
+    // Only auto-follow latest if user hasn't scrolled away.
+    requestAnimationFrame(() => {
+      if (rangeVal === '24h' && pinnedToLatest) chartWrap.scrollLeft = chartWrap.scrollWidth;
+    });
+  }
+
+  function median(nums) {
+    const arr = nums.filter(n => typeof n === 'number' && Number.isFinite(n)).slice().sort((a, b) => a - b);
+    if (!arr.length) return null;
+    const mid = Math.floor(arr.length / 2);
+    return arr.length % 2 ? arr[mid] : (arr[mid - 1] + arr[mid]) / 2;
+  }
+
+  function pick24hBucketMs(readings) {
+    const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000;
+    // "Nice" bucket sizes; smaller = more detailed. Keep <= 288 buckets (5-min buckets).
+    const NICE = [
+      5 * 60 * 1000,   // 5m  → 288 buckets
+      10 * 60 * 1000,  // 10m → 144 buckets
+      15 * 60 * 1000,  // 15m → 96 buckets
+      30 * 60 * 1000,  // 30m → 48 buckets
+      60 * 60 * 1000,  // 1h  → 24 buckets
+      2 * 60 * 60 * 1000, // 2h → 12 buckets
+      3 * 60 * 60 * 1000, // 3h → 8 buckets
+      4 * 60 * 60 * 1000, // 4h → 6 buckets
+    ];
+
+    if (!Array.isArray(readings) || readings.length < 4) return 60 * 60 * 1000;
+
+    // Estimate sampling interval from recent data (robust to gaps)
+    const ts = readings.map(r => r.ts).filter(n => typeof n === 'number' && Number.isFinite(n)).sort((a, b) => a - b);
+    if (ts.length < 4) return 60 * 60 * 1000;
+
+    const dts = [];
+    for (let i = 1; i < ts.length; i++) {
+      const dt = ts[i] - ts[i - 1];
+      if (dt > 0 && dt <= 2 * 60 * 60 * 1000) dts.push(dt); // ignore big gaps
+      if (dts.length >= 250) break;
+    }
+    const medDt = median(dts) || 60 * 1000;
+
+    // Aim for ~30 samples per bucket, then snap upward to a "nice" bucket size.
+    const target = Math.max(60 * 1000, Math.min(4 * 60 * 60 * 1000, medDt * 30));
+    let chosen = NICE[NICE.length - 1];
+    for (const b of NICE) {
+      if (b >= target) { chosen = b; break; }
+    }
+
+    // Safety: keep bucket count reasonable (<=288) and >=6 so viewport makes sense.
+    let buckets = Math.round(TWENTY_FOUR_HOURS_MS / chosen);
+    if (buckets > 288) {
+      chosen = 10 * 60 * 1000;
+      buckets = Math.round(TWENTY_FOUR_HOURS_MS / chosen);
+    }
+    if (buckets < VISIBLE_BUCKETS) {
+      chosen = 4 * 60 * 60 * 1000;
+    }
+    return chosen;
   }
 
   /**
    * Build chart data from stored history for the current range.
    *
-   * - 24h:   one point per hour (hourly average), labels "00:00"–"23:00"
+   * - 24h:   time buckets (auto-picked size), show last 6 buckets by default
    * - week:  one point per day Mon–Sun (always all 7 days), label "Mon"–"Sun"
    * - month / custom: one point per calendar day, label "Apr 25" etc.
    */
-  function buildChartData(readings, rangeVal, rangeFrom) {
+  function buildChartData(readings, rangeVal, rangeFrom, rangeTo) {
     const avg = arr => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null;
 
-    // ── 24h: average per hour, always 24 buckets ──────────────────────────
+    // ── 24h: time buckets (dynamic), show 6 buckets at a time ─────────────
+    // The canvas is widened so only the most recent 6 buckets are visible by default,
+    // with horizontal scroll for earlier buckets (including across midnight).
     if (rangeVal === '24h') {
-      // Build 24 hour-buckets keyed 0–23 relative to the start of the range
-      const fromHour = new Date(rangeFrom);
-      fromHour.setMinutes(0, 0, 0);
-      const hourBuckets = Array.from({ length: 24 }, () => ({ ph: [], do: [], turb: [], temp: [] }));
+      const toMs = typeof rangeTo === 'number' && Number.isFinite(rangeTo) ? rangeTo : Date.now();
+      const bucketMs = pick24hBucketMs(readings);
+      const bucketCount = Math.max(1, Math.round((24 * 60 * 60 * 1000) / bucketMs));
+      // Ensure the 24h window ends at "toMs" (now) like iOS Health
+      const fromMs = toMs - bucketCount * bucketMs;
+      const buckets = Array.from({ length: bucketCount }, () => ({ ph: [], do: [], turb: [], temp: [] }));
 
       for (const r of readings) {
-        const diffMs = r.ts - fromHour.getTime();
-        const idx = Math.floor(diffMs / (60 * 60 * 1000));
-        if (idx >= 0 && idx < 24) {
+        const diffMs = r.ts - fromMs;
+        const idx = Math.floor(diffMs / bucketMs);
+        if (idx >= 0 && idx < bucketCount) {
           for (const k of ['ph', 'do', 'turb', 'temp']) {
-            if (typeof r[k] === 'number' && Number.isFinite(r[k])) hourBuckets[idx][k].push(r[k]);
+            if (typeof r[k] === 'number' && Number.isFinite(r[k])) buckets[idx][k].push(r[k]);
           }
         }
       }
 
-      const labels = hourBuckets.map((_, i) => {
-        const d = new Date(fromHour.getTime() + i * 60 * 60 * 1000);
-        return `${pad(d.getHours())}:00`;
+      const labels = buckets.map((_, i) => {
+        const bucketEnd = new Date(fromMs + (i + 1) * bucketMs);
+        const opts = bucketMs >= 60 * 60 * 1000
+          ? { hour: 'numeric' }
+          : { hour: 'numeric', minute: '2-digit' };
+        return bucketEnd.toLocaleTimeString([], opts);
       });
 
+      last24hBucketCount = bucketCount;
       return {
         labels,
-        ph:   hourBuckets.map(b => avg(b.ph)),
-        do:   hourBuckets.map(b => avg(b.do)),
-        turb: hourBuckets.map(b => avg(b.turb)),
-        temp: hourBuckets.map(b => avg(b.temp)),
+        ph:   buckets.map(b => avg(b.ph)),
+        do:   buckets.map(b => avg(b.do)),
+        turb: buckets.map(b => avg(b.turb)),
+        temp: buckets.map(b => avg(b.temp)),
       };
     }
 
@@ -287,12 +358,21 @@ export function init() {
     }
 
     // ── month / custom: average per calendar day ──────────────────────────
-    if (!readings.length) return { labels: [], ph: [], do: [], turb: [], temp: [] };
+    // Include all days in the selected range so missing days show as gaps.
+    const startDay = new Date(rangeFrom);
+    startDay.setHours(0, 0, 0, 0);
 
-    const dayBuckets = {};  // key: 'YYYY-MM-DD'
+    const endDay = new Date(
+      readings.length
+        ? Math.max(...readings.map(r => r.ts).filter(Number.isFinite))
+        : startDay.getTime(),
+    );
+    endDay.setHours(23, 59, 59, 999);
+
+    const dayBuckets = {}; // key: 'YYYY-MM-DD'
     for (const r of readings) {
       const d = new Date(r.ts);
-      const key = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+      const key = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
       if (!dayBuckets[key]) dayBuckets[key] = { ph: [], do: [], turb: [], temp: [], d };
       for (const k of ['ph', 'do', 'turb', 'temp']) {
         if (typeof r[k] === 'number' && Number.isFinite(r[k])) dayBuckets[key][k].push(r[k]);
@@ -300,13 +380,14 @@ export function init() {
     }
 
     const labels = [], ph = [], doArr = [], turb = [], temp = [];
-    for (const key of Object.keys(dayBuckets).sort()) {
+    for (let d = new Date(startDay); d <= endDay; d.setDate(d.getDate() + 1)) {
+      const key = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
       const b = dayBuckets[key];
-      labels.push(`${b.d.toLocaleString('default', { month: 'short' })} ${b.d.getDate()}`);
-      ph.push(avg(b.ph));
-      doArr.push(avg(b.do));
-      turb.push(avg(b.turb));
-      temp.push(avg(b.temp));
+      labels.push(`${d.toLocaleString('default', { month: 'short' })} ${d.getDate()}`);
+      ph.push(b ? avg(b.ph) : null);
+      doArr.push(b ? avg(b.do) : null);
+      turb.push(b ? avg(b.turb) : null);
+      temp.push(b ? avg(b.temp) : null);
     }
 
     return { labels, ph, do: doArr, turb, temp };
@@ -354,7 +435,7 @@ export function init() {
     if (noDataEl)  noDataEl.style.display  = 'none';
     if (chartWrap) chartWrap.style.display = 'block';
 
-    const { labels, ph, do: doArr, turb, temp } = buildChartData(readings, activeRange, from.getTime());
+    const { labels, ph, do: doArr, turb, temp } = buildChartData(readings, activeRange, from.getTime(), to.getTime());
     updateHistoricalChart(histChart, labels, { ph, do: doArr, turb, temp }, activeMetric);
     resizeAndScrollChart(activeRange);
   }
@@ -402,6 +483,31 @@ export function init() {
 
   // Initial render
   refresh();
+
+  // App-level auth hydration triggers this after login so charts can re-render
+  // with persisted RTDB records even if initial page load happened pre-auth.
+  window.addEventListener('history-cache-updated', () => {
+    refresh();
+  });
+
+  // Track whether user is following the "latest" end of the 24h scroller.
+  const chartWrap = document.getElementById('hist-chart-wrap');
+  chartWrap?.addEventListener('scroll', () => {
+    const slack = 24; // px tolerance
+    pinnedToLatest = (chartWrap.scrollLeft + chartWrap.clientWidth) >= (chartWrap.scrollWidth - slack);
+  }, { passive: true });
+
+  // Auto-advance the 24h chart as time progresses even if no new readings arrive.
+  // This keeps the initial 6h window truly "most recent 6 hours" over time,
+  // while not interrupting users who scroll back in history.
+  setInterval(() => {
+    if (activeRange !== '24h') return;
+    const now = new Date();
+    const hourKey = `${now.getFullYear()}-${now.getMonth()}-${now.getDate()}-${now.getHours()}`;
+    if (hourKey === lastHourKey) return;
+    lastHourKey = hourKey;
+    refresh();
+  }, 30_000);
 
   // Live append: when a new reading arrives, push it onto the chart if it
   // falls within the current range — exactly like pushChart on the dashboard.

@@ -122,26 +122,6 @@
       </div>
       <button class="btn btn-outline" id="btn-logout" type="button" style="margin-left:auto;padding:6px 10px;font-size:0.8rem;">Logout</button>
     </div>
-
-    <!-- Account popover (compact) -->
-    <div id="account-dropdown" class="account-popover" role="menu" aria-label="Account options" hidden>
-      <div class="account-popover-user">
-        <div class="account-popover-avatar" id="acct-pop-avatar">F</div>
-        <div class="account-popover-info">
-          <div class="account-popover-name" id="acct-pop-name">—</div>
-          <div class="account-popover-email" id="acct-pop-email">—</div>
-        </div>
-      </div>
-      <div class="account-popover-divider"></div>
-      <button class="account-popover-item" id="acct-profile-btn" role="menuitem">
-        <span class="account-popover-icon"><svg class="icon icon-15"><use href="#icon-edit"/></svg></span>
-        <span>My Profile</span>
-      </button>
-      <button class="account-popover-item" id="acct-password-btn" role="menuitem">
-        <span class="account-popover-icon"><svg class="icon icon-15"><use href="#icon-key"/></svg></span>
-        <span>Change Password</span>
-      </button>
-    </div>
   </aside>
 
   <div class="content-area">
@@ -573,14 +553,44 @@
         <div class="card"><div class="icon-wrap" style="background:#3b82f6;color:white"><svg class="icon icon-24"><use href="#icon-info"/></svg></div><div style="font-size:0.8rem;color:var(--text-muted);">Info</div><div class="count" id="alert-info">0</div></div>
         <div class="card"><div class="icon-wrap" style="background:#22c55e;color:white"><svg class="icon icon-24"><use href="#icon-check"/></svg></div><div style="font-size:0.8rem;color:var(--text-muted);">Resolved</div><div class="count" id="alert-resolved">0</div></div>
       </div>
-      <div style="display:grid;grid-template-columns:1fr 320px;gap:24px;">
+      <div class="alert-layout">
         <div class="card">
-          <h3 class="card-title">Recent Alerts &amp; Notifications</h3>
+          <div class="alert-card-head">
+            <h3 class="card-title" style="margin:0">Recent Alerts &amp; Notifications</h3>
+            <div class="alert-bulk-actions">
+              <div class="alert-email-toggle-row">
+                <span class="badge-pill" style="background:var(--blue-light);color:var(--blue-dark);border:1px solid rgba(59,130,246,0.2);">
+                  <svg class="icon icon-14" style="vertical-align:middle;margin-right:6px;"><use href="#icon-mail"/></svg>
+                  Email alerts
+                </span>
+                <label class="switch" title="Enable email alerts for your account">
+                  <input type="checkbox" id="notif-email-toggle">
+                  <span class="switch-ui" aria-hidden="true"></span>
+                </label>
+              </div>
+              <button type="button" id="btn-mark-all-resolved" class="btn btn-outline btn-sm">
+                <svg class="icon icon-16" style="vertical-align:middle"><use href="#icon-check"/></svg>
+                Mark all resolved
+              </button>
+              <button type="button" id="btn-clear-all-alerts" class="btn btn-outline btn-sm">
+                <svg class="icon icon-16" style="vertical-align:middle"><use href="#icon-trash"/></svg>
+                Clear all
+              </button>
+            </div>
+          </div>
+
           <div class="alert-toolbar">
             <div class="alert-pond-filters" id="alert-pond-filters">
               <button class="alert-pond-btn active" data-pond="all">All Ponds</button>
             </div>
           </div>
+
+          <!-- Email alerts toggle (recipient = logged-in user's email) -->
+          <div id="notif-config-warning" class="alert-inline-warning" style="display:none">
+            <svg class="icon icon-14" style="vertical-align:middle;margin-right:6px;"><use href="#icon-warning"/></svg>
+            EmailJS is not configured. Add <code>EMAILJS_PUBLIC_KEY</code>, <code>EMAILJS_SERVICE_ID</code>, and <code>EMAILJS_TEMPLATE_ID</code> to your <code>.env</code> file.
+          </div>
+
           <div class="alert-list-scroll">
             <div class="alert-list" id="alert-list-dynamic">
               <div class="alert-row" style="justify-content:center;padding:32px 0;color:var(--text-muted);font-size:0.9rem;">
@@ -590,52 +600,15 @@
             </div>
           </div>
         </div>
-        <div>
-          <div class="card settings-card" style="margin-bottom:16px;">
-            <h3 class="card-title"><svg class="icon icon-16"><use href="#icon-mail"/></svg> Email Notifications</h3>
-            <!-- Config warning banner — shown when EmailJS keys are absent -->
-            <div id="notif-config-warning" style="display:none;background:#fef3c7;border:1px solid #fbbf24;border-radius:6px;padding:10px 12px;font-size:0.8rem;color:#92400e;margin-bottom:12px;">
-              <svg class="icon icon-14" style="vertical-align:middle;margin-right:4px;"><use href="#icon-warning"/></svg>
-              EmailJS is not configured. Add <code>EMAILJS_PUBLIC_KEY</code>, <code>EMAILJS_SERVICE_ID</code>, and <code>EMAILJS_TEMPLATE_ID</code> to your <code>.env</code> file.
-            </div>
-            <div class="settings-toggle" style="margin-bottom:12px;">
-              <span class="settings-name"><svg class="icon icon-16"><use href="#icon-mail"/></svg> Enable Email Alerts</span>
-              <label class="switch">
-                <input type="checkbox" id="notif-email-toggle">
-                <span class="switch-ui" aria-hidden="true"></span>
-              </label>
-            </div>
-            <div style="margin-bottom:12px;">
-              <label style="font-size:0.8rem;color:var(--text-muted);display:block;margin-bottom:4px;">Recipient Email Address</label>
-              <input type="email" id="notif-email-address" placeholder="you@example.com"
-                style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:0.85rem;box-sizing:border-box;" />
-            </div>
-            <button type="button" id="notif-prefs-save" class="btn btn-primary" style="width:100%;font-size:0.85rem;">
-              Save Preferences
-            </button>
-          </div>
-          <div class="card" style="margin-bottom:16px;">
-            <h3 class="card-title">Alert Actions</h3>
-            <div style="display:flex;flex-direction:column;gap:8px;">
-              <button type="button" id="btn-clear-all-alerts" class="btn btn-outline" style="width:100%;font-size:0.85rem;">
-                <svg class="icon icon-16" style="vertical-align:middle;margin-right:6px;"><use href="#icon-trash"/></svg>
-                Clear All Alerts
-              </button>
-              <button type="button" id="btn-mark-all-resolved" class="btn btn-outline" style="width:100%;font-size:0.85rem;">
-                <svg class="icon icon-16" style="vertical-align:middle;margin-right:6px;"><use href="#icon-check"/></svg>
-                Mark All as Resolved
-              </button>
-            </div>
-          </div>
-          <div class="card">
-            <h3 class="card-title">Alert Thresholds</h3>
-            <div style="font-size:0.75rem;color:var(--text-muted);margin-bottom:8px;" id="alert-th-species">Default thresholds</div>
-            <div class="thresholds-grid">
-              <div class="item"><strong>pH Range</strong> <span id="alert-th-ph">—</span></div>
-              <div class="item"><strong>Temperature</strong> <span id="alert-th-temp">—</span></div>
-              <div class="item"><strong>Dissolved O₂</strong> <span id="alert-th-do">—</span></div>
-              <div class="item"><strong>Turbidity</strong> <span id="alert-th-turb">—</span></div>
-            </div>
+
+        <div class="card">
+          <h3 class="card-title">Alert Thresholds</h3>
+          <div style="font-size:0.75rem;color:var(--text-muted);margin-bottom:8px;" id="alert-th-species">Default thresholds</div>
+          <div class="thresholds-grid">
+            <div class="item"><strong>pH Range</strong> <span id="alert-th-ph">—</span></div>
+            <div class="item"><strong>Temperature</strong> <span id="alert-th-temp">—</span></div>
+            <div class="item"><strong>Dissolved O₂</strong> <span id="alert-th-do">—</span></div>
+            <div class="item"><strong>Turbidity</strong> <span id="alert-th-turb">—</span></div>
           </div>
         </div>
       </div>
@@ -839,7 +812,6 @@
                 <option value="all">All Ponds</option>
               </select>
             </div>
-            <button type="button" class="btn btn-primary">New Report</button>
           </div>
         </div>
         <div id="report-active-pond-bar" class="report-active-pond-bar" style="display:none">
@@ -1424,7 +1396,7 @@
 <!-- Hidden inputs for Firebase URL (used by app.js internally) -->
 <input id="fb-url" type="hidden" value="" />
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<script src="vendor/chart.umd.min.js"></script>
 <script type="module" src="js/app.js"></script>
 
 <!-- Account popover — lives on body so sidebar overflow:auto doesn't clip it -->
@@ -1447,6 +1419,6 @@
   </button>
 </div>
 
-<script type="text/javascript" src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
+<script type="text/javascript" src="vendor/email.min.js"></script>
 </body>
 </html>

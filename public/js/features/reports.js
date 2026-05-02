@@ -4,7 +4,7 @@
  * for daily / weekly / monthly / custom periods.
  * Every generated report is saved to a localStorage-backed history list.
  */
-import { getHistoryRange } from '../utils.js';
+import { getHistoryRange, mergeHistoryEntries } from '../utils.js';
 import { getActivePond, getPondList, onActivePondChange } from '../pond-context.js';
 import { getPondConfigurations, SPECIES_PRESETS } from '../pond-config.js';
 
@@ -265,6 +265,15 @@ export function init() {
 
   async function buildCsv({ period, type, customFrom, customTo }) {
     const range    = getDateRange(period, customFrom, customTo);
+    // Ensure we pull persisted telemetry from RTDB (data recorded while browser was closed).
+    if (typeof window.fetchHistoryFromRTDB === 'function') {
+      try {
+        const rtdbEntries = await window.fetchHistoryFromRTDB(range.from.getTime(), range.to.getTime());
+        if (rtdbEntries?.length) mergeHistoryEntries(rtdbEntries);
+      } catch {
+        // RTDB unavailable — fall back to local cache silently
+      }
+    }
     const readings = getHistoryRange(range.from.getTime(), range.to.getTime());
     const snap     = getLiveSnapshot();
     const pond     = getReportPond();
@@ -367,6 +376,14 @@ export function init() {
 
   async function openPrintableReport({ period, type, customFrom, customTo }) {
     const range    = getDateRange(period, customFrom, customTo);
+    if (typeof window.fetchHistoryFromRTDB === 'function') {
+      try {
+        const rtdbEntries = await window.fetchHistoryFromRTDB(range.from.getTime(), range.to.getTime());
+        if (rtdbEntries?.length) mergeHistoryEntries(rtdbEntries);
+      } catch {
+        // ignore
+      }
+    }
     const readings = getHistoryRange(range.from.getTime(), range.to.getTime());
     const snap     = getLiveSnapshot();
     const pond     = getReportPond();

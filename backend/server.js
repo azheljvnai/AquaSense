@@ -131,21 +131,47 @@ app.get('/api/config', (_req, res) => {
 
 /**
  * PATCH /api/users/me — let any authenticated user update their own profile.
- * Allowed fields: displayName, phone. Role and status cannot be self-modified.
+ * Allowed fields: displayName, email, phone, farm (name/location/size/capacity/established/manager).
+ * Role and status cannot be self-modified.
  */
 app.patch('/api/users/me', verifyToken, async (req, res) => {
-  const { displayName, phone } = req.body || {};
-  if (!displayName && phone === undefined) {
-    return res.status(400).json({ error: 'Provide at least one of: displayName, phone.' });
+  const { displayName, email, phone, farm } = req.body || {};
+  const hasFarmPatch = !!(farm && typeof farm === 'object');
+  if (!displayName && !email && phone === undefined && !hasFarmPatch) {
+    return res.status(400).json({ error: 'Provide at least one of: displayName, email, phone, farm.' });
   }
   try {
+    const fs = admin.firestore();
+    const userRef = fs.collection('users').doc(req.auth.uid);
+    const userSnap = await userRef.get();
+    const current = userSnap.exists ? userSnap.data() : {};
     const update = { updatedAt: admin.firestore.FieldValue.serverTimestamp() };
     if (displayName) {
       update.displayName = displayName;
       await admin.auth().updateUser(req.auth.uid, { displayName });
     }
+    if (email) {
+      update.email = email;
+      await admin.auth().updateUser(req.auth.uid, { email });
+    }
     if (phone !== undefined) update.phone = phone;
-    await admin.firestore().collection('users').doc(req.auth.uid).set(update, { merge: true });
+    await userRef.set(update, { merge: true });
+
+    if (hasFarmPatch) {
+      const farmId = current?.farmId || '';
+      if (farmId) {
+        const farmUpdate = {
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        };
+        if ('name' in farm) farmUpdate.name = String(farm.name || '');
+        if ('location' in farm) farmUpdate.location = String(farm.location || '');
+        if ('size' in farm) farmUpdate.size = String(farm.size || '');
+        if ('capacity' in farm) farmUpdate.capacity = String(farm.capacity || '');
+        if ('manager' in farm) farmUpdate.manager = String(farm.manager || '');
+        if ('established' in farm) farmUpdate.established = String(farm.established || '');
+        await fs.collection('farms').doc(farmId).set(farmUpdate, { merge: true });
+      }
+    }
     return res.status(200).json({ success: true });
   } catch (e) {
     console.error('[PATCH /api/users/me]', e.message);

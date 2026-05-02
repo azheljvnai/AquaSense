@@ -195,35 +195,37 @@ function initPrefsUI(user) {
 
   if (!user?.uid) return;
 
-  // Load prefs and populate form
+  // Load prefs and populate state
   loadPrefs(user.uid).then(prefs => {
     if (toggle)  toggle.checked  = !!prefs?.email?.enabled;
-    if (address) {
-      address.value = prefs?.email?.address || user.email || '';
-    }
+    // Recipient is always the logged-in user's email (no input UI required)
+    if (address) address.value = prefs?.email?.address || user.email || '';
   }).catch(() => {
-    if (address && !address.value && user.email) {
-      address.value = user.email;
-    }
+    if (address && !address.value && user.email) address.value = user.email;
   });
 
-  // Wire save button
-  if (saveBtn) {
-    saveBtn.addEventListener('click', async () => {
-      const prefs = {
-        email: {
-          enabled: toggle ? toggle.checked : false,
-          address: address ? address.value.trim() : '',
-        },
-      };
-      try {
-        await savePrefs(user.uid, prefs);
-        showToast('Notification preferences saved.', 'success');
-      } catch (err) {
-        showToast(`Failed to save preferences: ${err.message}`, 'error');
-      }
-    });
+  async function persist() {
+    const prefs = {
+      email: {
+        enabled: toggle ? toggle.checked : false,
+        address: user.email || (address ? address.value.trim() : ''),
+      },
+    };
+    try {
+      await savePrefs(user.uid, prefs);
+      showToast('Notification preferences saved.', 'success');
+    } catch (err) {
+      showToast(`Failed to save preferences: ${err.message}`, 'error');
+    }
   }
+
+  // Auto-save on toggle change (single-toggle UX)
+  toggle?.addEventListener('change', () => {
+    persist();
+  });
+
+  // Backward compatibility: if the old Save button still exists, keep it working.
+  saveBtn?.addEventListener('click', () => persist());
 }
 
 // ─── Internal: cooldown helpers ───────────────────────────────────────────────

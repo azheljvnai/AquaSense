@@ -125,14 +125,16 @@ export function init() {
 
     const farmName = farm.name || 'Farm';
     const location = farm.location || '—';
+    const manager = farm.manager || displayName;
     els.farmName.textContent = farmName;
     if (els.farmName2) els.farmName2.textContent = farmName;
     if (els.farmLocation) els.farmLocation.textContent = location;
     if (els.farmLocation2) els.farmLocation2.textContent = location;
     if (els.farmCreated) els.farmCreated.textContent = fmtYear(farm.createdAt);
-    if (els.farmEstablished) els.farmEstablished.textContent = fmtYear(farm.createdAt);
+    if (els.farmEstablished) els.farmEstablished.textContent = farm.established || fmtYear(farm.createdAt);
     if (els.farmSize) els.farmSize.textContent = farm.size || '—';
     if (els.farmCapacity) els.farmCapacity.textContent = farm.capacity || '—';
+    if (els.farmManager) els.farmManager.textContent = manager;
 
     const memCol = fbCollection(fs, 'farms', farmId, 'members');
     const memSnap = await fbGetDocs(memCol);

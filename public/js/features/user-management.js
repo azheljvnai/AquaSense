@@ -120,7 +120,7 @@ function renderTable() {
 
     const toggleBtn = ((isAdmin && !isSelf) || ownerCanAct)
       ? `<button class="um-btn-icon${disabled ? ' success' : ' warn'}" title="${disabled ? 'Enable account' : 'Disable account'}" data-action="toggle" data-uid="${u.id}" data-disabled="${disabled}">
-           <svg class="icon icon-14"><use href="${disabled ? '#icon-check-circle' : '#icon-ban'}"/></svg>
+           <svg class="icon icon-14"><use href="${disabled ? '#icon-check' : '#icon-warning'}"/></svg>
          </button>`
       : '';
 

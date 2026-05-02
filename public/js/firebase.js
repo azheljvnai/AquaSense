@@ -2,7 +2,7 @@
  * Firebase Realtime Database integration.
  * Uses the shared Firebase app instance from firebase-client.js.
  */
-import { fbDatabase, fbRef as ref, fbOnValue as onValue, fbSet as set, fbRtdbQuery as rtdbQuery, fbOrderByChild as orderByChild, fbStartAt as startAt, fbEndAt as endAt, fbGet as get } from './firebase-client.js';
+import { fbDatabase, fbRef as ref, fbOnValue as onValue, fbSet as set, fbRtdbQuery as rtdbQuery, fbOrderByChild as orderByChild, fbOrderByKey as orderByKey, fbStartAt as startAt, fbEndAt as endAt, fbGet as get } from './firebase-client.js';
 import { fbOnAuthStateChanged, fbFirestore, fbDoc, fbGetDoc } from './firebase-client.js';
 import { log, recordSensorReading } from './utils.js';
 
@@ -186,18 +186,142 @@ export function triggerFeed(deviceId = 'device001') {
  * Uses orderByChild('ts') + startAt/endAt for efficient range queries.
  */
 export async function fetchHistoryFromRTDB(deviceId, fromMs, toMs) {
-  if (!fbDb) return [];
+  // Allow reports/graphs to query history even if connect() hasn't run yet.
+  // fbDatabase() will succeed as soon as initFirebase() has been called.
+  if (!fbDb) {
+    try { fbDb = fbDatabase(); } catch { return []; }
+  }
   try {
     const histRef = ref(fbDb, `/devices/${deviceId}/history`);
-    const q = rtdbQuery(histRef, orderByChild('ts'), startAt(fromMs), endAt(toMs));
-    const snap = await get(q);
-    if (!snap.exists()) return [];
-    const entries = [];
-    snap.forEach(child => {
-      const d = child.val();
-      if (d && typeof d.ts === 'number') entries.push(d);
-    });
-    return entries.sort((a, b) => a.ts - b.ts);
+
+    const toNum = (v) => {
+      const n = Number(v);
+      return Number.isFinite(n) ? n : null;
+    };
+    const parseTimestamp = (value) => {
+      if (value == null || value === '') return null;
+      const n = Number(value);
+      if (Number.isFinite(n)) {
+        return n > 0 && n < 100000000000 ? n * 1000 : n;
+      }
+      const normalized = String(value).trim().replace(' ', 'T');
+      const ms = Date.parse(normalized);
+      return Number.isFinite(ms) ? ms : null;
+    };
+    const toKeyStamp = (ms) => {
+      const d = new Date(ms);
+      const pad = (n) => String(n).padStart(2, '0');
+      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}_${pad(d.getHours())}-${pad(d.getMinutes())}-${pad(d.getSeconds())}`;
+    };
+    const toKeyStampAlt = (ms) => {
+      // Some RTDB setups use keys like "YYYY-MM-DD HH:MM:SS"
+      const d = new Date(ms);
+      const pad = (n) => String(n).padStart(2, '0');
+      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+    };
+    const firstNumber = (...values) => {
+      for (const v of values) {
+        const n = toNum(v);
+        if (n != null) return n;
+      }
+      return null;
+    };
+    const parseRawEntry = (raw, keyFallback) => {
+      const obj = raw && typeof raw === 'object' ? raw : {};
+      const ts = parseTimestamp(obj.ts ?? obj.timestamp ?? obj.time ?? obj.createdAt ?? keyFallback);
+      if (!Number.isFinite(ts)) return null;
+      return {
+        ts,
+        ph: firstNumber(obj.ph, obj.pH, obj.PH),
+        do: firstNumber(obj.do, obj.dO, obj.dissolvedOxygen, obj.dissolved_oxygen, obj.oxygen),
+        turb: firstNumber(obj.turb, obj.turbidity, obj.ntu),
+        temp: firstNumber(obj.temp, obj.temperature, obj.waterTemp),
+      };
+    };
+    const parseEntry = (child) => parseRawEntry(child.val() || {}, child.key);
+
+    /**
+     * Some deployments store history grouped by date/hour (nested objects) instead
+     * of a flat list of entries. This flattens common nested shapes:
+     *   /history/YYYY-MM-DD/{entryKey:{...}}
+     *   /history/YYYY-MM-DD_HH/{entryKey:{...}}
+     *   /history/{pushId}/{...}
+     */
+    const collectEntriesFromSnapshot = (snap) => {
+      const out = [];
+      if (!snap?.exists?.() || !snap.exists()) return out;
+
+      // Snapshot might itself be a single entry object (not a map of children)
+      try {
+        const rootVal = snap.val?.();
+        const rootEntry = parseRawEntry(rootVal, null);
+        if (rootEntry) out.push(rootEntry);
+      } catch {
+        // ignore
+      }
+
+      snap.forEach((child) => {
+        const raw = child.val();
+
+        // 1) Flat entry
+        const direct = parseRawEntry(raw, child.key);
+        if (direct) {
+          out.push(direct);
+          return;
+        }
+
+        // 2) Nested map of entries (date bucket, hour bucket, etc.)
+        if (raw && typeof raw === 'object') {
+          for (const [k, v] of Object.entries(raw)) {
+            const nested = parseRawEntry(v, k);
+            if (nested) out.push(nested);
+          }
+        }
+      });
+
+      return out;
+    };
+
+    // Preferred: ESP32-style key stored as YYYY-MM-DD_HH-MM-SS
+    const q3 = rtdbQuery(
+      histRef,
+      orderByKey(),
+      startAt(toKeyStamp(fromMs)),
+      endAt(toKeyStamp(toMs)),
+    );
+    const snap3 = await get(q3);
+    const entries3 = collectEntriesFromSnapshot(snap3).filter(e => e.ts >= fromMs && e.ts <= toMs);
+    if (entries3.length) return entries3.sort((a, b) => a.ts - b.ts);
+
+    // Fallback: alternate key format "YYYY-MM-DD HH:MM:SS"
+    const q3b = rtdbQuery(
+      histRef,
+      orderByKey(),
+      startAt(toKeyStampAlt(fromMs)),
+      endAt(toKeyStampAlt(toMs)),
+    );
+    const snap3b = await get(q3b);
+    const entries3b = collectEntriesFromSnapshot(snap3b).filter(e => e.ts >= fromMs && e.ts <= toMs);
+    if (entries3b.length) return entries3b.sort((a, b) => a.ts - b.ts);
+
+    // Fallback: ts child (works for frontend-generated numeric `ts` entries)
+    const q1 = rtdbQuery(histRef, orderByChild('ts'), startAt(fromMs), endAt(toMs));
+    const snap1 = await get(q1);
+    const entries1 = collectEntriesFromSnapshot(snap1).filter(e => e.ts >= fromMs && e.ts <= toMs);
+    if (entries1.length) return entries1.sort((a, b) => a.ts - b.ts);
+
+    // Fallback: timestamp-as-key (common pattern: /history/{tsMs})
+    const q2 = rtdbQuery(histRef, orderByKey(), startAt(String(fromMs)), endAt(String(toMs)));
+    const snap2 = await get(q2);
+    const entries2 = collectEntriesFromSnapshot(snap2).filter(e => e.ts >= fromMs && e.ts <= toMs);
+    if (entries2.length) return entries2.sort((a, b) => a.ts - b.ts);
+
+    // Final fallback: fetch everything and filter client-side for legacy shapes.
+    const snap4 = await get(histRef);
+    const entries4 = collectEntriesFromSnapshot(snap4).filter(e => e.ts >= fromMs && e.ts <= toMs);
+    if (entries4.length) return entries4.sort((a, b) => a.ts - b.ts);
+
+    return [];
   } catch (e) {
     log('History fetch error: ' + e.message, 'err');
     return [];

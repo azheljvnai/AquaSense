@@ -20,7 +20,7 @@ import {
 } from './firebase-client.js';
 import { connect, triggerFeed, saveSchedules, initRoleTracking, fetchHistoryFromRTDB } from './firebase.js';
 import { log } from './utils.js';
-import { getBadge, spkData, spkCol, drawSpark, recordSensorReading } from './utils.js';
+import { getBadge, spkData, spkCol, drawSpark, recordSensorReading, mergeHistoryEntries } from './utils.js';
 import { getBadgeForSpecies, recordPondSensorReading } from './pond-config.js';
 import { init as initPondManagement } from './features/pond-management.js';
 import { setPondList, setActivePond, getActivePond, onActivePondChange } from './pond-context.js';
@@ -41,6 +41,7 @@ let connectStarted = false;
 let firebaseDatabaseUrl = '';
 let currentUser = null;
 let currentProfile = null;
+let hydratedHistoryForUid = '';
 
 const STORAGE_FB_URL = 'aquasense.fbUrl.v1';
 const STORAGE_AUTO_CONNECT = 'aquasense.autoConnect.v1';
@@ -499,6 +500,26 @@ window.triggerFeed = () => triggerFeed(deviceId);
 window.saveSchedules = () => saveSchedules(deviceId);
 window.fetchHistoryFromRTDB = (fromMs, toMs) => fetchHistoryFromRTDB(deviceId, fromMs, toMs);
 
+async function hydrateHistoryFromRTDB() {
+  if (!currentUser || hydratedHistoryForUid === currentUser.uid) return;
+  if (typeof window.fetchHistoryFromRTDB !== 'function') return;
+  try {
+    const toMs = Date.now();
+    const fromMs = toMs - (35 * 24 * 60 * 60 * 1000);
+    const entries = await window.fetchHistoryFromRTDB(fromMs, toMs);
+    if (entries?.length) {
+      mergeHistoryEntries(entries);
+      window.dispatchEvent(new CustomEvent('history-cache-updated', {
+        detail: { source: 'rtdb-hydrate', count: entries.length, fromMs, toMs },
+      }));
+      log(`Loaded ${entries.length} historical records from RTDB.`, 'feed');
+    }
+    hydratedHistoryForUid = currentUser.uid;
+  } catch (e) {
+    log('Historical sync skipped: ' + (e?.message || String(e)), 'warn');
+  }
+}
+
 // ── Account Menu ─────────────────────────────────────────────────────────────
 
 function setupAccountMenu() {
@@ -518,8 +539,8 @@ function setupAccountMenu() {
     // Prefer above the avatar; fall back to below if not enough room
     const spaceAbove = rect.top - 8;
     const top = spaceAbove >= popH ? rect.top - popH - 8 : rect.bottom + 8;
-    // Align left edge with avatar, clamp to viewport
-    const left = Math.min(rect.left, window.innerWidth - popW - 8);
+    // Align to avatar while keeping popover fully within viewport
+    const left = Math.min(Math.max(8, rect.left), window.innerWidth - popW - 8);
     dropdown.style.left = left + 'px';
     dropdown.style.top  = top + 'px';
     avatarBtn.setAttribute('aria-expanded', 'true');
@@ -544,6 +565,8 @@ function setupAccountMenu() {
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') closeDropdown();
   });
+  window.addEventListener('resize', closeDropdown);
+  window.addEventListener('scroll', closeDropdown, true);
 
   // ── Navigate to a page (reuses the existing nav system) ──────────────────
   function navigateTo(pageId, titleText) {
@@ -552,6 +575,10 @@ function setupAccountMenu() {
     document.querySelectorAll('.page-section').forEach((s) => s.classList.remove('active'));
     const el = document.getElementById(pageId);
     if (el) el.classList.add('active');
+    // Keep nav highlight consistent when account menu opens account pages
+    const navPage = pageId.replace(/^page-/, '');
+    const navLink = document.querySelector(`.sidebar-nav a[data-page="${navPage}"]`);
+    if (navLink) navLink.classList.add('active');
     const titleEl = document.getElementById('topbar-page-title');
     if (titleEl) titleEl.textContent = titleText;
     document.body.classList.remove('sidebar-open');
@@ -613,6 +640,24 @@ function setupAccountMenu() {
 
   function openEditProfileDialog() {
     const p = currentProfile || {};
+    const readText = (id) => (document.getElementById(id)?.textContent || '').trim();
+    const farmRaw = {
+      name: readText('farm-name-2') || readText('farm-name'),
+      location: readText('farm-location-2') || readText('farm-location'),
+      size: readText('farm-size'),
+      capacity: readText('farm-capacity'),
+      established: readText('farm-established'),
+      manager: readText('farm-manager'),
+    };
+    const clean = (v) => (v === '—' || v === 'No farm assigned' ? '' : v);
+    const farm = {
+      name: clean(farmRaw.name),
+      location: clean(farmRaw.location),
+      size: clean(farmRaw.size),
+      capacity: clean(farmRaw.capacity),
+      established: clean(farmRaw.established),
+      manager: clean(farmRaw.manager),
+    };
     const esc = (s) => String(s || '').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');
     const dlg = document.createElement('dialog');
     dlg.className = 'um-modal';
@@ -621,7 +666,7 @@ function setupAccountMenu() {
         <div class="um-modal-head">
           <div>
             <div class="um-modal-title">Edit Profile</div>
-            <div class="um-modal-sub">Update your display name and phone number.</div>
+            <div class="um-modal-sub">Update your profile and pond details in one place.</div>
           </div>
           <button class="um-modal-close" aria-label="Close" id="ep-x">
             <svg class="icon icon-16"><use href="#icon-x"/></svg>
@@ -633,8 +678,36 @@ function setupAccountMenu() {
             <input id="ep-name" type="text" value="${esc(p.displayName)}" placeholder="Your name" />
           </div>
           <div class="um-field">
+            <label>Email</label>
+            <input id="ep-email" type="email" value="${esc(p.email || currentUser?.email || '')}" placeholder="you@example.com" />
+          </div>
+          <div class="um-field">
             <label>Phone Number</label>
             <input id="ep-phone" type="tel" value="${esc(p.phone)}" placeholder="+1 555 000 0000" />
+          </div>
+          <div class="um-field">
+            <label>Manager</label>
+            <input id="ep-farm-manager" type="text" value="${esc(farm.manager)}" placeholder="Manager name" />
+          </div>
+          <div class="um-field">
+            <label>Pond Name</label>
+            <input id="ep-farm-name" type="text" value="${esc(farm.name)}" placeholder="Main pond" />
+          </div>
+          <div class="um-field">
+            <label>Location</label>
+            <input id="ep-farm-location" type="text" value="${esc(farm.location)}" placeholder="City, Province" />
+          </div>
+          <div class="um-field">
+            <label>Size</label>
+            <input id="ep-farm-size" type="text" value="${esc(farm.size)}" placeholder="e.g. 2,500 m²" />
+          </div>
+          <div class="um-field">
+            <label>Capacity</label>
+            <input id="ep-farm-capacity" type="text" value="${esc(farm.capacity)}" placeholder="e.g. 8,000 pcs" />
+          </div>
+          <div class="um-field">
+            <label>Established</label>
+            <input id="ep-farm-established" type="text" value="${esc(farm.established)}" placeholder="e.g. 2022" />
           </div>
         </div>
         <div id="ep-error" style="color:var(--red-dark,#ef4444);font-size:0.8rem;margin-bottom:8px;display:none;"></div>
@@ -655,20 +728,37 @@ function setupAccountMenu() {
       const errEl  = dlg.querySelector('#ep-error');
       const saveBtn = dlg.querySelector('#ep-save');
       const name  = (dlg.querySelector('#ep-name')?.value || '').trim();
+      const email = (dlg.querySelector('#ep-email')?.value || '').trim();
       const phone = (dlg.querySelector('#ep-phone')?.value || '').trim();
+      const farmPayload = {
+        name: (dlg.querySelector('#ep-farm-name')?.value || '').trim(),
+        location: (dlg.querySelector('#ep-farm-location')?.value || '').trim(),
+        size: (dlg.querySelector('#ep-farm-size')?.value || '').trim(),
+        capacity: (dlg.querySelector('#ep-farm-capacity')?.value || '').trim(),
+        established: (dlg.querySelector('#ep-farm-established')?.value || '').trim(),
+        manager: (dlg.querySelector('#ep-farm-manager')?.value || '').trim(),
+      };
       if (!name) { errEl.textContent = 'Display name is required.'; errEl.style.display = 'block'; return; }
+      if (!email) { errEl.textContent = 'Email is required.'; errEl.style.display = 'block'; return; }
       saveBtn.disabled = true; saveBtn.textContent = 'Saving…';
       try {
         const token = await fbGetIdToken();
         const resp = await fetch('/api/users/me', {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-          body: JSON.stringify({ displayName: name, phone }),
+          body: JSON.stringify({ displayName: name, email, phone, farm: farmPayload }),
         });
         const data = await resp.json();
         if (!resp.ok) throw new Error(data.error || 'Save failed.');
-        if (currentProfile) { currentProfile.displayName = name; currentProfile.phone = phone; }
+        if (currentProfile) {
+          currentProfile.displayName = name;
+          currentProfile.email = email;
+          currentProfile.phone = phone;
+        }
         renderSidebarUser(currentProfile);
+        if (typeof window._farmProfileOnUser === 'function' && currentUser) {
+          await window._farmProfileOnUser(currentUser);
+        }
         populateProfilePage();
         close();
       } catch (e) {
@@ -862,6 +952,7 @@ function init() {
 
       if (!user) {
         currentProfile = null;
+        hydratedHistoryForUid = '';
         renderSidebarUser(null);
         showAuthScreen(true);
         enableFeedBtn(false);
@@ -906,6 +997,10 @@ function init() {
       } else {
         log('Set Firebase URL in backend config, then connect.', 'warn');
       }
+
+      // Always hydrate historical cache after login so history/reports include
+      // data captured while the app was not running.
+      hydrateHistoryFromRTDB();
     });
   }).catch((err) => {
     console.error('[Init] Failed to load config:', err);
