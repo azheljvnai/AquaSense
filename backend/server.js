@@ -20,25 +20,55 @@ import admin from 'firebase-admin';
 // Initialise Firebase Admin SDK once
 function initAdmin() {
   if (admin.apps.length) return;
-  const saPath = process.env.FIREBASE_SERVICE_ACCOUNT_PATH
-    ? path.resolve(__dirname, '..', process.env.FIREBASE_SERVICE_ACCOUNT_PATH)
-    : null;
+  // Preferred: JSON contents via env var (best for hosts without secret files).
+  const saJson = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
+  if (saJson) {
+    const serviceAccount = JSON.parse(saJson);
+    admin.initializeApp({
+      credential: admin.credential.cert(serviceAccount),
+      databaseURL: process.env.FIREBASE_DATABASE_URL,
+    });
+    console.log('[Admin SDK] Initialised with FIREBASE_SERVICE_ACCOUNT_JSON');
+    return;
+  }
 
-  if (saPath && fs.existsSync(saPath)) {
+  // Next: explicit path (local dev) OR secret-file mount path (Render/etc).
+  // - If relative, resolve from repo root (one level up from backend/)
+  // - If absolute, use as-is
+  const candidates = [];
+
+  if (process.env.FIREBASE_SERVICE_ACCOUNT_PATH) {
+    const p = process.env.FIREBASE_SERVICE_ACCOUNT_PATH;
+    candidates.push(path.isAbsolute(p) ? p : path.resolve(__dirname, '..', p));
+  }
+
+  // Common convention: Google sets this env var when using a credential file.
+  if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
+    candidates.push(process.env.GOOGLE_APPLICATION_CREDENTIALS);
+  }
+
+  // Render Secret Files typically mount under /etc/secrets/<filename>
+  // (not guaranteed, but this helps when FIREBASE_SERVICE_ACCOUNT_PATH wasn't set).
+  candidates.push(path.join(path.sep, 'etc', 'secrets', 'serviceAccountKey.json'));
+
+  const saPath = candidates.find(p => p && fs.existsSync(p)) || null;
+
+  if (saPath) {
     const serviceAccount = JSON.parse(fs.readFileSync(saPath, 'utf8'));
     admin.initializeApp({
       credential: admin.credential.cert(serviceAccount),
       databaseURL: process.env.FIREBASE_DATABASE_URL,
     });
     console.log('[Admin SDK] Initialised with service account:', saPath);
-  } else {
-    // Fallback: Application Default Credentials (gcloud auth / Cloud Run / etc.)
-    admin.initializeApp({
-      credential: admin.credential.applicationDefault(),
-      databaseURL: process.env.FIREBASE_DATABASE_URL,
-    });
-    console.log('[Admin SDK] Initialised with Application Default Credentials');
+    return;
   }
+
+  // Fallback: Application Default Credentials (gcloud auth / Cloud Run / etc.)
+  admin.initializeApp({
+    credential: admin.credential.applicationDefault(),
+    databaseURL: process.env.FIREBASE_DATABASE_URL,
+  });
+  console.log('[Admin SDK] Initialised with Application Default Credentials');
 }
 
 try {

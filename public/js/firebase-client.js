@@ -80,7 +80,9 @@ export async function fbUpdatePassword(newPassword) {
 export async function fbGetIdToken() {
   const user = fbAuth().currentUser;
   if (!user) throw new Error('No authenticated user.');
-  return getIdToken(user, /* forceRefresh */ false);
+  // Always force refresh so backend calls don't fail
+  // with "Invalid or expired token" after the page is open a while.
+  return getIdToken(user, /* forceRefresh */ true);
 }
 
 // Firestore helpers
