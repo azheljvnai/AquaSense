@@ -20,7 +20,7 @@ import {
 } from './firebase-client.js';
 import { connect, triggerFeed, saveSchedules, initRoleTracking, fetchHistoryFromRTDB } from './firebase.js';
 import { log } from './utils.js';
-import { getBadge, spkData, spkCol, drawSpark, recordSensorReading, mergeHistoryEntries } from './utils.js';
+import { getBadge, spkData, spkCol, drawSpark, recordSensorReading, mergeRtdbEntries } from './utils.js';
 import { getBadgeForSpecies, recordPondSensorReading } from './pond-config.js';
 import { init as initPondManagement } from './features/pond-management.js';
 import { setPondList, setActivePond, getActivePond, onActivePondChange } from './pond-context.js';
@@ -508,7 +508,7 @@ async function hydrateHistoryFromRTDB() {
     const fromMs = toMs - (35 * 24 * 60 * 60 * 1000);
     const entries = await window.fetchHistoryFromRTDB(fromMs, toMs);
     if (entries?.length) {
-      mergeHistoryEntries(entries);
+      mergeRtdbEntries(entries);
       window.dispatchEvent(new CustomEvent('history-cache-updated', {
         detail: { source: 'rtdb-hydrate', count: entries.length, fromMs, toMs },
       }));

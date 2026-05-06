@@ -107,13 +107,24 @@ export const spkData = { ph: [], do: [], turb: [], temp: [] };
 export const spkCol = { ph: '#22c55e', do: '#3b82f6', turb: '#eab308', temp: '#ef4444' };
 
 // ---------------------------------------------------------------------------
-// Sensor History — persists timestamped readings to localStorage
-// Each entry: { ts: number (ms), ph: number, do: number, turb: number, temp: number }
-// Keeps up to MAX_HISTORY entries; prunes entries older than MAX_AGE_DAYS days.
+// Sensor History — two-tier storage:
+//
+//   localStorage (_history): short-term real-time buffer (~2 hours).
+//     Written by recordSensorReading() on every live sensor update.
+//     Pruned to MAX_HISTORY entries / MAX_BUFFER_HOURS hours so it never
+//     grows large enough to evict older readings.
+//
+//   RTDB: authoritative long-term store (written by ESP32).
+//     Historical views (week / month / custom) always query RTDB directly
+//     via fetchHistoryFromRTDB() and merge the result into _history for the
+//     current page session only — RTDB data is never written back to
+//     localStorage, so it can never displace the real-time buffer.
+//
+// Each entry: { ts: number (ms), ph, do, turb, temp }
 // ---------------------------------------------------------------------------
 const STORAGE_KEY_HISTORY = 'aquasense.sensorHistory.v1';
-const MAX_HISTORY = 5000;
-const MAX_AGE_DAYS = 35; // keep ~5 weeks so monthly reports always have data
+const MAX_HISTORY    = 2000;  // ~1–2 h at 30-second intervals
+const MAX_BUFFER_HOURS = 2;   // prune localStorage to this rolling window
 
 let _history = [];
 
@@ -126,8 +137,9 @@ function loadHistory() {
   }
 }
 
+/** Prune the localStorage buffer to the last MAX_BUFFER_HOURS hours. */
 function pruneHistory() {
-  const cutoff = Date.now() - MAX_AGE_DAYS * 24 * 60 * 60 * 1000;
+  const cutoff = Date.now() - MAX_BUFFER_HOURS * 60 * 60 * 1000;
   _history = _history.filter((e) => e.ts >= cutoff);
   if (_history.length > MAX_HISTORY) _history = _history.slice(-MAX_HISTORY);
 }
@@ -145,10 +157,14 @@ function saveHistory() {
 loadHistory();
 
 /**
- * Merge entries fetched from RTDB into local history (deduplicates by ts).
- * Call this after fetchHistoryFromRTDB to keep localStorage in sync.
+ * Merge RTDB entries into the in-memory history for the current page session.
+ *
+ * Unlike mergeHistoryEntries(), this does NOT write to localStorage and does
+ * NOT prune — RTDB data is authoritative and must not be evicted by the
+ * short-term buffer logic. The merged data is available to getHistoryRange()
+ * for the lifetime of the current page load only.
  */
-export function mergeHistoryEntries(entries) {
+export function mergeRtdbEntries(entries) {
   if (!entries || !entries.length) return;
   const existing = new Set(_history.map(e => e.ts));
   let added = 0;
@@ -160,9 +176,18 @@ export function mergeHistoryEntries(entries) {
   }
   if (added > 0) {
     _history.sort((a, b) => a.ts - b.ts);
-    pruneHistory();
-    saveHistory();
+    // Do NOT call pruneHistory() or saveHistory() here — RTDB data must not
+    // be written to localStorage or pruned by the real-time buffer logic.
   }
+}
+
+/**
+ * @deprecated Use mergeRtdbEntries() for RTDB data.
+ * Kept for backward compatibility with any callers that haven't been updated.
+ * Behaves identically to mergeRtdbEntries() — in-memory only, no localStorage write.
+ */
+export function mergeHistoryEntries(entries) {
+  mergeRtdbEntries(entries);
 }
 
 /**

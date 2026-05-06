@@ -13,7 +13,7 @@
  *   custom → user-supplied dates, label: MM-DD HH:MM
  */
 import { initHistoricalChart, updateHistoricalChart } from '../charts.js';
-import { getHistoryRange, getThresholds, saveThresholds, resetThresholds, spkData, mergeHistoryEntries } from '../utils.js';
+import { getHistoryRange, getThresholds, saveThresholds, resetThresholds, spkData, mergeRtdbEntries } from '../utils.js';
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
@@ -472,7 +472,7 @@ export function init() {
       try {
         const { from, to } = getRange(activeRange, customFrom, customTo);
         const rtdbEntries = await window.fetchHistoryFromRTDB(from.getTime(), to.getTime());
-        if (rtdbEntries.length) mergeHistoryEntries(rtdbEntries);
+        if (rtdbEntries.length) mergeRtdbEntries(rtdbEntries);
       } catch {
         // RTDB unavailable — fall back to local cache silently
       }

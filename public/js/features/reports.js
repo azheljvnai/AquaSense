@@ -4,7 +4,7 @@
  * for daily / weekly / monthly / custom periods.
  * Every generated report is saved to a localStorage-backed history list.
  */
-import { getHistoryRange, mergeHistoryEntries } from '../utils.js';
+import { getHistoryRange, mergeRtdbEntries } from '../utils.js';
 import { getActivePond, getPondList, onActivePondChange } from '../pond-context.js';
 import { getPondConfigurations, SPECIES_PRESETS } from '../pond-config.js';
 
@@ -269,7 +269,7 @@ export function init() {
     if (typeof window.fetchHistoryFromRTDB === 'function') {
       try {
         const rtdbEntries = await window.fetchHistoryFromRTDB(range.from.getTime(), range.to.getTime());
-        if (rtdbEntries?.length) mergeHistoryEntries(rtdbEntries);
+        if (rtdbEntries?.length) mergeRtdbEntries(rtdbEntries);
       } catch {
         // RTDB unavailable — fall back to local cache silently
       }
@@ -379,7 +379,7 @@ export function init() {
     if (typeof window.fetchHistoryFromRTDB === 'function') {
       try {
         const rtdbEntries = await window.fetchHistoryFromRTDB(range.from.getTime(), range.to.getTime());
-        if (rtdbEntries?.length) mergeHistoryEntries(rtdbEntries);
+        if (rtdbEntries?.length) mergeRtdbEntries(rtdbEntries);
       } catch {
         // ignore
       }
