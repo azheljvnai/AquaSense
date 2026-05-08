@@ -315,6 +315,9 @@ function setupNavigation() {
       const el = document.getElementById('page-' + page);
       if (el) el.classList.add('active');
 
+      // Notify feature modules that a page became visible so they can resize/redraw.
+      window.dispatchEvent(new CustomEvent('page-activated', { detail: { page } }));
+
       // Reload users when navigating to user management
       if (page === 'user-management') loadUsers();
 

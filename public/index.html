@@ -335,10 +335,6 @@
               <input type="date" id="hist-to" class="hist-date-input" />
               <button type="button" class="btn btn-primary" id="btn-hist-apply" style="padding:6px 12px;font-size:0.8rem">Apply</button>
             </div>
-            <button type="button" class="btn btn-outline" id="btn-edit-thresholds">
-              <svg class="icon icon-16" style="vertical-align:middle"><use href="#icon-edit"/></svg>
-              Thresholds
-            </button>
             <button type="button" class="btn btn-outline" id="btn-hist-download">
               <svg class="icon icon-16" style="vertical-align:middle"><use href="#icon-download"/></svg>
               Export CSV
@@ -359,69 +355,6 @@
           <div class="chart-legend-item"><div class="chart-legend-dot" style="background:var(--temp-c)"></div>Temperature</div>
         </div>
       </div>
-
-
-
-      <dialog id="thresh-dlg" class="thresh-dlg">
-        <form method="dialog" class="thresh-form" id="thresh-form">
-          <div class="thresh-head">
-            <div>
-              <div class="thresh-title">Edit Water Quality Thresholds</div>
-              <div class="thresh-sub">Used for Normal / Warning / Critical indicators.</div>
-            </div>
-            <button class="btn btn-outline thresh-close" value="cancel" aria-label="Close">
-              <svg class="icon icon-16" style="vertical-align:middle"><use href="#icon-x"/></svg>
-            </button>
-          </div>
-
-          <div class="thresh-grid">
-            <div class="thresh-row">
-              <div class="thresh-name">pH</div>
-              <div class="thresh-fields">
-                <label>Normal Min <input type="number" step="0.1" data-th="ph.ok.0"></label>
-                <label>Normal Max <input type="number" step="0.1" data-th="ph.ok.1"></label>
-                <label>Warn Min <input type="number" step="0.1" data-th="ph.warn.0"></label>
-                <label>Warn Max <input type="number" step="0.1" data-th="ph.warn.1"></label>
-              </div>
-            </div>
-            <div class="thresh-row">
-              <div class="thresh-name">Dissolved O₂ (mg/L)</div>
-              <div class="thresh-fields">
-                <label>Normal Min <input type="number" step="0.1" data-th="do.ok.0"></label>
-                <label>Normal Max <input type="number" step="0.1" data-th="do.ok.1"></label>
-                <label>Warn Min <input type="number" step="0.1" data-th="do.warn.0"></label>
-                <label>Warn Max <input type="number" step="0.1" data-th="do.warn.1"></label>
-              </div>
-            </div>
-            <div class="thresh-row">
-              <div class="thresh-name">Turbidity (NTU)</div>
-              <div class="thresh-fields">
-                <label>Normal Min <input type="number" step="0.1" data-th="turb.ok.0"></label>
-                <label>Normal Max <input type="number" step="0.1" data-th="turb.ok.1"></label>
-                <label>Warn Min <input type="number" step="0.1" data-th="turb.warn.0"></label>
-                <label>Warn Max <input type="number" step="0.1" data-th="turb.warn.1"></label>
-              </div>
-            </div>
-            <div class="thresh-row">
-              <div class="thresh-name">Temperature (°C)</div>
-              <div class="thresh-fields">
-                <label>Normal Min <input type="number" step="0.1" data-th="temp.ok.0"></label>
-                <label>Normal Max <input type="number" step="0.1" data-th="temp.ok.1"></label>
-                <label>Warn Min <input type="number" step="0.1" data-th="temp.warn.0"></label>
-                <label>Warn Max <input type="number" step="0.1" data-th="temp.warn.1"></label>
-              </div>
-            </div>
-          </div>
-
-          <div class="thresh-actions">
-            <button type="button" class="btn btn-outline" id="btn-thresh-reset">Reset Defaults</button>
-            <div class="thresh-actions-right">
-              <button type="button" class="btn btn-outline" id="btn-thresh-cancel">Cancel</button>
-              <button type="button" class="btn btn-primary" id="btn-thresh-save">Save Thresholds</button>
-            </div>
-          </div>
-        </form>
-      </dialog>
     </section>
 
     <!-- Feeding -->

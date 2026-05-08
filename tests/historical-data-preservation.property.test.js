@@ -297,9 +297,7 @@ describe('Historical Data Dashboard Card Mismatch — Preservation Properties', 
     const customTo = histSection.querySelector('#hist-to');
     expect(customFrom).toBeTruthy();
     expect(customTo).toBeTruthy();
-
-    // Verify threshold edit button exists
-    const thresholdBtn = histSection.querySelector('#btn-edit-thresholds');
-    expect(thresholdBtn).toBeTruthy();
+    // Threshold editor UI is intentionally not present on this page.
+    expect(histSection.querySelector('#btn-edit-thresholds')).toBeNull();
   });
 });

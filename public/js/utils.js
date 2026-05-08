@@ -109,7 +109,7 @@ export const spkCol = { ph: '#22c55e', do: '#3b82f6', turb: '#eab308', temp: '#e
 // ---------------------------------------------------------------------------
 // Sensor History — two-tier storage:
 //
-//   localStorage (_history): short-term real-time buffer (~2 hours).
+//   localStorage (_liveHistory): short-term real-time buffer (~2 hours).
 //     Written by recordSensorReading() on every live sensor update.
 //     Pruned to MAX_HISTORY entries / MAX_BUFFER_HOURS hours so it never
 //     grows large enough to evict older readings.
@@ -126,31 +126,32 @@ const STORAGE_KEY_HISTORY = 'aquasense.sensorHistory.v1';
 const MAX_HISTORY    = 2000;  // ~1–2 h at 30-second intervals
 const MAX_BUFFER_HOURS = 2;   // prune localStorage to this rolling window
 
-let _history = [];
+let _liveHistory = [];
+let _rtdbHistory = [];
 
 function loadHistory() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY_HISTORY);
-    if (raw) _history = JSON.parse(raw);
+    if (raw) _liveHistory = JSON.parse(raw);
   } catch {
-    _history = [];
+    _liveHistory = [];
   }
 }
 
 /** Prune the localStorage buffer to the last MAX_BUFFER_HOURS hours. */
 function pruneHistory() {
   const cutoff = Date.now() - MAX_BUFFER_HOURS * 60 * 60 * 1000;
-  _history = _history.filter((e) => e.ts >= cutoff);
-  if (_history.length > MAX_HISTORY) _history = _history.slice(-MAX_HISTORY);
+  _liveHistory = _liveHistory.filter((e) => e.ts >= cutoff);
+  if (_liveHistory.length > MAX_HISTORY) _liveHistory = _liveHistory.slice(-MAX_HISTORY);
 }
 
 function saveHistory() {
   try {
-    localStorage.setItem(STORAGE_KEY_HISTORY, JSON.stringify(_history));
+    localStorage.setItem(STORAGE_KEY_HISTORY, JSON.stringify(_liveHistory));
   } catch {
     // quota exceeded — trim aggressively and retry once
-    _history = _history.slice(-Math.floor(MAX_HISTORY / 2));
-    try { localStorage.setItem(STORAGE_KEY_HISTORY, JSON.stringify(_history)); } catch { /* ignore */ }
+    _liveHistory = _liveHistory.slice(-Math.floor(MAX_HISTORY / 2));
+    try { localStorage.setItem(STORAGE_KEY_HISTORY, JSON.stringify(_liveHistory)); } catch { /* ignore */ }
   }
 }
 
@@ -166,16 +167,16 @@ loadHistory();
  */
 export function mergeRtdbEntries(entries) {
   if (!entries || !entries.length) return;
-  const existing = new Set(_history.map(e => e.ts));
+  const existing = new Set(_rtdbHistory.map(e => e.ts));
   let added = 0;
   for (const e of entries) {
     if (!existing.has(e.ts)) {
-      _history.push(e);
+      _rtdbHistory.push(e);
       added++;
     }
   }
   if (added > 0) {
-    _history.sort((a, b) => a.ts - b.ts);
+    _rtdbHistory.sort((a, b) => a.ts - b.ts);
     // Do NOT call pruneHistory() or saveHistory() here — RTDB data must not
     // be written to localStorage or pruned by the real-time buffer logic.
   }
@@ -196,7 +197,7 @@ export function mergeHistoryEntries(entries) {
  */
 export function recordSensorReading(ph, doVal, turb, temp, ts) {
   pruneHistory();
-  _history.push({ ts: ts && Number.isFinite(ts) ? ts : Date.now(), ph, do: doVal, turb, temp });
+  _liveHistory.push({ ts: ts && Number.isFinite(ts) ? ts : Date.now(), ph, do: doVal, turb, temp });
   saveHistory();
 }
 
@@ -204,14 +205,27 @@ export function recordSensorReading(ph, doVal, turb, temp, ts) {
  * Returns all stored readings within [fromMs, toMs] (inclusive).
  */
 export function getHistoryRange(fromMs, toMs) {
-  return _history.filter((e) => e.ts >= fromMs && e.ts <= toMs);
+  const inRange = (e) => e.ts >= fromMs && e.ts <= toMs;
+  const live = _liveHistory.filter(inRange);
+  const rtdb = _rtdbHistory.filter(inRange);
+  if (!live.length) return rtdb;
+  if (!rtdb.length) return live;
+
+  // Merge two sorted-ish arrays, dedupe by ts (RTDB wins if both exist).
+  const byTs = new Map();
+  for (const e of live) byTs.set(e.ts, e);
+  for (const e of rtdb) byTs.set(e.ts, e);
+  return Array.from(byTs.values()).sort((a, b) => a.ts - b.ts);
 }
 
 /**
  * Returns the full history array (read-only copy).
  */
 export function getAllHistory() {
-  return [..._history];
+  const byTs = new Map();
+  for (const e of _liveHistory) byTs.set(e.ts, e);
+  for (const e of _rtdbHistory) byTs.set(e.ts, e);
+  return Array.from(byTs.values()).sort((a, b) => a.ts - b.ts);
 }
 
 export function drawSpark(id, data, color) {

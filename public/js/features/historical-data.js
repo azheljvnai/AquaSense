@@ -13,7 +13,7 @@
  *   custom → user-supplied dates, label: MM-DD HH:MM
  */
 import { initHistoricalChart, updateHistoricalChart } from '../charts.js';
-import { getHistoryRange, getThresholds, saveThresholds, resetThresholds, spkData, mergeRtdbEntries } from '../utils.js';
+import { getHistoryRange, getThresholds, spkData, mergeRtdbEntries } from '../utils.js';
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
@@ -81,6 +81,15 @@ export function init() {
   let customTo     = '';
   let pinnedToLatest = true;
   let lastHourKey = '';
+  let isPageActive = false;
+
+  // Determine initial visibility (in case the app loads directly on this page).
+  try {
+    const pageEl = document.getElementById('page-historical-data');
+    isPageActive = !!pageEl?.classList?.contains('active');
+  } catch {
+    // ignore
+  }
 
   // ── range selector ────────────────────────────────────────────────────────
   const rangeEl       = document.getElementById('hist-range');
@@ -134,53 +143,8 @@ export function init() {
   });
 
   // ── threshold dialog ──────────────────────────────────────────────────────
-  const btn  = document.getElementById('btn-edit-thresholds');
-  const dlg  = document.getElementById('thresh-dlg');
-  const form = document.getElementById('thresh-form');
-
-  if (btn && dlg && form) {
-    const inputs = Array.from(form.querySelectorAll('input[data-th]'));
-    const getByPath = (obj, path) => path.split('.').reduce((c, p) => c?.[p], obj);
-    const setByPath = (obj, path, val) => {
-      const parts = path.split('.');
-      let c = obj;
-      for (let i = 0; i < parts.length - 1; i++) { c = c[parts[i]]; if (!c) return; }
-      c[parts[parts.length - 1]] = val;
-    };
-    const populate = () => {
-      const t = getThresholds();
-      inputs.forEach(inp => {
-        const v = getByPath(t, inp.getAttribute('data-th') || '');
-        inp.value = typeof v === 'number' ? String(v) : '';
-      });
-    };
-    const readForm = () => {
-      const next = JSON.parse(JSON.stringify(getThresholds()));
-      inputs.forEach(inp => {
-        const n = Number(inp.value);
-        if (Number.isFinite(n)) setByPath(next, inp.getAttribute('data-th') || '', n);
-      });
-      return next;
-    };
-
-    btn.addEventListener('click', () => {
-      const perms = window._rbacPerms;
-      if (perms && !perms.canEditThresholds) { alert('Access denied: Owner or Admin required.'); return; }
-      populate();
-      if (typeof dlg.showModal === 'function') dlg.showModal();
-    });
-    document.getElementById('btn-thresh-cancel')?.addEventListener('click', () => dlg.close());
-    document.getElementById('btn-thresh-reset')?.addEventListener('click', () => {
-      resetThresholds(); populate();
-      window.dispatchEvent(new CustomEvent('thresholds-changed'));
-    });
-    document.getElementById('btn-thresh-save')?.addEventListener('click', () => {
-      saveThresholds(readForm());
-      window.dispatchEvent(new CustomEvent('thresholds-changed'));
-      dlg.close();
-    });
-  }
-
+  // Threshold editor UI intentionally removed from Historical Data.
+  // If thresholds are changed elsewhere, refreshing keeps badges/stat cards in sync.
   window.addEventListener('thresholds-changed', () => refresh());
 
   // ── chart helpers ─────────────────────────────────────────────────────────
@@ -220,6 +184,8 @@ export function init() {
     canvas.style.height = '100%';
     canvas.height       = containerHeight;
     histChart.resize();
+    // Chart.js may not repaint after a manual canvas resize unless we force a redraw.
+    histChart.update('none');
 
     // Only auto-follow latest if user hasn't scrolled away.
     requestAnimationFrame(() => {
@@ -496,6 +462,32 @@ export function init() {
     const slack = 24; // px tolerance
     pinnedToLatest = (chartWrap.scrollLeft + chartWrap.clientWidth) >= (chartWrap.scrollWidth - slack);
   }, { passive: true });
+
+  // When the Historical Data page becomes visible, force a resize + redraw.
+  window.addEventListener('page-activated', (e) => {
+    const page = e?.detail?.page;
+    isPageActive = page === 'historical-data';
+    if (!isPageActive) return;
+    // Ensure the chart uses the correct (now-visible) container size.
+    resizeAndScrollChart(activeRange);
+    // If the chart previously blanked due to a hidden resize, this forces a repaint.
+    histChart?.update('none');
+  });
+
+  // If layout changes while active (window resize, sidebar collapse, etc.), keep canvas in sync.
+  if (typeof ResizeObserver === 'function') {
+    const ro = new ResizeObserver(() => {
+      if (!isPageActive) return;
+      resizeAndScrollChart(activeRange);
+    });
+    const wrap = document.getElementById('hist-chart-wrap');
+    if (wrap) ro.observe(wrap);
+  } else {
+    window.addEventListener('resize', () => {
+      if (!isPageActive) return;
+      resizeAndScrollChart(activeRange);
+    }, { passive: true });
+  }
 
   // Auto-advance the 24h chart as time progresses even if no new readings arrive.
   // This keeps the initial 6h window truly "most recent 6 hours" over time,
