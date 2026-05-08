@@ -133,6 +133,32 @@ function requireRole(...allowedRoles) {
   };
 }
 
+// ─── UniSMS helpers ───────────────────────────────────────────────────────────
+
+function getUniSmsAuthHeader() {
+  const secretKey = process.env.UNISMS_SECRET_KEY || '';
+  if (!secretKey) return null;
+  const token = Buffer.from(`${secretKey}:`, 'utf8').toString('base64');
+  return `Basic ${token}`;
+}
+
+function normalizePhPhoneToE164(input) {
+  // UniSMS expects E.164, commonly +639xxxxxxxxx for PH.
+  const raw = String(input || '').trim();
+  if (!raw) return '';
+  const cleaned = raw.replace(/[^\d+]/g, ''); // keep digits and leading +
+
+  // Already E.164 +639XXXXXXXXX
+  if (/^\+639\d{9}$/.test(cleaned)) return cleaned;
+  // Missing + (e.g. 63917...)
+  if (/^639\d{9}$/.test(cleaned)) return `+${cleaned}`;
+  // Local PH format 09XXXXXXXXX
+  if (/^09\d{9}$/.test(cleaned)) return `+63${cleaned.slice(1)}`;
+
+  // Fall back to cleaned (may be non-PH international E.164)
+  return cleaned;
+}
+
 // Avoid confusion: legacy file should always load the SPA entry.
 app.get('/dashboard.html', (_req, res) => res.redirect('/'));
 
@@ -157,6 +183,74 @@ app.get('/api/config', (_req, res) => {
     emailjsServiceId: process.env.EMAILJS_SERVICE_ID || '',
     emailjsTemplateId: process.env.EMAILJS_TEMPLATE_ID || '',
   });
+});
+
+/**
+ * POST /api/notifications/sms — send an SMS via UniSMS
+ * Body: { recipient: string, content: string, metadata?: object }
+ * Auth: Firebase ID token (Bearer) via verifyToken
+ */
+app.post('/api/notifications/sms', verifyToken, async (req, res) => {
+  const { recipient, content, metadata, sender_id } = req.body || {};
+
+  const authHeader = getUniSmsAuthHeader();
+  if (!authHeader) {
+    return res.status(503).json({ error: 'UniSMS is not configured (missing UNISMS_SECRET_KEY).' });
+  }
+
+  const to = normalizePhPhoneToE164(recipient);
+  const msg = String(content || '').trim();
+  if (!to) return res.status(400).json({ error: 'recipient is required.' });
+  if (!msg) return res.status(400).json({ error: 'content is required.' });
+  if (msg.length > 160) return res.status(400).json({ error: 'content must be <= 160 characters.' });
+
+  try {
+    const senderId = String(sender_id || process.env.UNISMS_SENDER_ID || '').trim();
+
+    const baseBody = {
+      recipient: to,
+      content: msg,
+    };
+    if (metadata && typeof metadata === 'object') {
+      baseBody.metadata = metadata;
+    }
+
+    async function trySend(includeSenderId) {
+      const body = { ...baseBody };
+      if (includeSenderId && senderId) body.sender_id = senderId;
+      const resp = await fetch('https://unismsapi.com/api/sms', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': authHeader,
+        },
+        body: JSON.stringify(body),
+      });
+      const data = await resp.json().catch(() => ({}));
+      return { resp, data };
+    }
+
+    // First attempt: respect configured sender_id.
+    let { resp, data } = await trySend(true);
+
+    // If UniSMS rejects sender_id with 422, retry once without it.
+    if (!resp.ok && resp.status === 422 && senderId) {
+      const msgStr = String(data?.error || data?.message || '').toLowerCase();
+      if (msgStr.includes('sender') || msgStr.includes('sender_id')) {
+        ({ resp, data } = await trySend(false));
+      }
+    }
+
+    if (!resp.ok) {
+      const detail = data?.error || data?.message || `UniSMS request failed with ${resp.status}`;
+      return res.status(resp.status).json({ error: detail });
+    }
+
+    const referenceId = data?.message?.reference_id || null;
+    return res.status(200).json({ success: true, reference_id: referenceId, provider: 'unisms' });
+  } catch (e) {
+    return res.status(500).json({ error: e?.message || 'Failed to send SMS.' });
+  }
 });
 
 /**

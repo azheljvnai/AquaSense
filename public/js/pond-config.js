@@ -91,8 +91,8 @@ async function api(method, path, body) {
 
 let _activePondId     = null;
 let _activeConfigId   = null;
-let _activeSpecies    = 'crayfish';
-let _activeThresholds = SPECIES_PRESETS.crayfish.thresholds;
+let _activeSpecies    = null;
+let _activeThresholds = null;
 
 const _listeners = new Set();
 
@@ -119,10 +119,12 @@ function _notify() {
 
 export function applyConfig(cfg) {
   if (!cfg) return;
-  const species = cfg.species || 'crayfish';
-  const preset  = SPECIES_PRESETS[species] || SPECIES_PRESETS.crayfish;
+  const species = cfg.species || null;
+  const preset  = species ? (SPECIES_PRESETS[species] || null) : null;
   _activeSpecies    = species;
-  _activeThresholds = cfg.thresholds ? { ...preset.thresholds, ...cfg.thresholds } : preset.thresholds;
+  _activeThresholds = preset
+    ? (cfg.thresholds ? { ...preset.thresholds, ...cfg.thresholds } : preset.thresholds)
+    : (cfg.thresholds || null);
   _notify();
 }
 
@@ -130,6 +132,7 @@ export function applyConfig(cfg) {
 
 export function getBadgeForSpecies(key, val) {
   const t = _activeThresholds;
+  if (!t) return { c: 'ok', l: '—' };
 
   if (key === 'turb') {
     const tb = t.turb;
@@ -247,8 +250,8 @@ export async function deactivatePondConfig(pondId, pondConfigId) {
   await api('POST', `/api/pond-configurations/${pondConfigId}/deactivate`);
   // Clear active state
   _activeConfigId   = null;
-  _activeSpecies    = 'crayfish';
-  _activeThresholds = SPECIES_PRESETS.crayfish.thresholds;
+  _activeSpecies    = null;
+  _activeThresholds = null;
   _notify();
 }
 
@@ -261,8 +264,8 @@ export async function loadActivePondConfig(pondId) {
     applyConfig(active);
   } else {
     _activeConfigId   = null;
-    _activeSpecies    = 'crayfish';
-    _activeThresholds = SPECIES_PRESETS.crayfish.thresholds;
+    _activeSpecies    = null;
+    _activeThresholds = null;
     _notify();
   }
   return active;

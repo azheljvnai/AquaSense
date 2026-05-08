@@ -15,6 +15,7 @@ import {
   fbCollection,
   fbAddDoc,
   fbServerTimestamp,
+  fbGetIdToken,
 } from '../firebase-client.js';
 import { getConfig } from '../config.js';
 import { getActiveThresholds } from '../pond-config.js';
@@ -31,7 +32,7 @@ const SENSOR_UNITS  = { ph: '',   do: ' mg/L',         turb: ' NTU',      temp: 
 
 // ─── Module State ─────────────────────────────────────────────────────────────
 
-const _cooldownMap = new Map();   // `${pondId}:${sensorKey}` → last-sent ms
+const _cooldownMap = new Map();   // `${channel}:${pondId}:${sensorKey}` → last-sent ms
 
 let _currentUser        = null;
 let _emailjsPublicKey   = '';
@@ -78,7 +79,7 @@ export async function init(user) {
  * Returns a default prefs object if the document does not exist.
  */
 export async function loadPrefs(uid) {
-  const defaultPrefs = { email: { enabled: false, address: '' } };
+  const defaultPrefs = { email: { enabled: false, address: '' }, sms: { enabled: false } };
   if (!uid) return defaultPrefs;
   try {
     const ref  = fbDoc(fbFirestore(), 'users', uid, 'notificationPrefs', 'settings');
@@ -89,6 +90,9 @@ export async function loadPrefs(uid) {
       email: {
         enabled: typeof data?.email?.enabled === 'boolean' ? data.email.enabled : false,
         address: data?.email?.address || '',
+      },
+      sms: {
+        enabled: typeof data?.sms?.enabled === 'boolean' ? data.sms.enabled : false,
       },
     };
   } catch (err) {
@@ -119,6 +123,9 @@ export async function savePrefs(uid, prefs) {
       enabled: !!prefs?.email?.enabled,
       address: prefs?.email?.address || '',
     },
+    sms: {
+      enabled: !!prefs?.sms?.enabled,
+    },
     updatedAt: fbServerTimestamp(),
   }, { merge: true });
 }
@@ -146,32 +153,36 @@ export async function handleAlert(alert) {
     return;
   }
 
-  // 4. Email channel must be enabled
-  if (!prefs?.email?.enabled) return;
-
-  // 5. Cooldown guard — skip if still within the 15-min window
   const pondId    = alert.pond || 'default';
   const sensorKey = alert.key;
-  if (isCooledDown(pondId, sensorKey)) return;
 
-  // 6. Offline — enqueue and bail
+  const channels = [];
+  if (prefs?.email?.enabled) channels.push('email');
+  if (prefs?.sms?.enabled) channels.push('sms');
+  if (!channels.length) return;
+
+  // 5. Offline — enqueue and bail
   if (!navigator.onLine) {
-    enqueueRetry(uid, alert);
+    enqueueRetry(uid, alert, channels);
     return;
   }
 
-  // 7. Send email
-  markSent(pondId, sensorKey);
-  const result = await sendEmail(prefs, alert);
+  // 6. Dispatch enabled channels
+  for (const channel of channels) {
+    if (isCooledDown(channel, pondId, sensorKey)) continue;
+    markSent(channel, pondId, sensorKey);
 
-  // 8. Write log
-  const status      = result.success ? 'sent' : 'failed';
-  const errorDetail = result.success ? null : (result.error?.message || String(result.error) || 'Unknown error');
-  await writeLog(uid, alert, status, errorDetail);
+    const result = channel === 'email'
+      ? await sendEmail(prefs, alert)
+      : await sendSms(uid, alert);
 
-  // 9. Toast on failure
-  if (!result.success) {
-    showToast(`Email notification failed: ${errorDetail}`, 'error');
+    const status      = result.success ? 'sent' : 'failed';
+    const errorDetail = result.success ? null : (result.error?.message || String(result.error) || 'Unknown error');
+    await writeLog(uid, channel, alert, status, errorDetail);
+
+    if (!result.success) {
+      showToast(`${channel.toUpperCase()} notification failed: ${errorDetail}`, 'error');
+    }
   }
 }
 
@@ -182,6 +193,8 @@ function initPrefsUI(user) {
   const address  = document.getElementById('notif-email-address');
   const saveBtn  = document.getElementById('notif-prefs-save');
   const warning  = document.getElementById('notif-config-warning');
+  const smsToggle = document.getElementById('notif-sms-toggle');
+  const smsWarning = document.getElementById('notif-sms-warning');
 
   // Show config warning and disable toggle if EmailJS is not configured
   if (!_emailjsPublicKey) {
@@ -200,15 +213,30 @@ function initPrefsUI(user) {
     if (toggle)  toggle.checked  = !!prefs?.email?.enabled;
     // Recipient is always the logged-in user's email (no input UI required)
     if (address) address.value = prefs?.email?.address || user.email || '';
+    if (smsToggle) smsToggle.checked = !!prefs?.sms?.enabled;
   }).catch(() => {
     if (address && !address.value && user.email) address.value = user.email;
   });
 
+  async function syncSmsUiState() {
+    const phone = await getUserPhone(user.uid).catch(() => '');
+    const hasPhone = !!String(phone || '').trim();
+    if (smsWarning) smsWarning.style.display = hasPhone ? 'none' : '';
+    if (smsToggle) smsToggle.disabled = !hasPhone;
+    if (smsToggle && !hasPhone) smsToggle.checked = false;
+    return hasPhone;
+  }
+
   async function persist() {
+    await syncSmsUiState();
+
     const prefs = {
       email: {
         enabled: toggle ? toggle.checked : false,
         address: user.email || (address ? address.value.trim() : ''),
+      },
+      sms: {
+        enabled: smsToggle ? smsToggle.checked : false,
       },
     };
     try {
@@ -223,9 +251,15 @@ function initPrefsUI(user) {
   toggle?.addEventListener('change', () => {
     persist();
   });
+  smsToggle?.addEventListener('change', () => {
+    persist();
+  });
 
   // Backward compatibility: if the old Save button still exists, keep it working.
   saveBtn?.addEventListener('click', () => persist());
+
+  // Evaluate phone state on load (async) to show warning/disable as needed (no Firestore write)
+  syncSmsUiState().catch(() => {/* ignore */});
 }
 
 // ─── Internal: cooldown helpers ───────────────────────────────────────────────
@@ -234,15 +268,15 @@ function initPrefsUI(user) {
  * Returns true if the pond/sensor combo is WITHIN the 15-min cooldown window
  * (i.e. a notification was recently sent — do NOT send again yet).
  */
-function isCooledDown(pondId, sensorKey) {
-  const key  = `${pondId}:${sensorKey}`;
+function isCooledDown(channel, pondId, sensorKey) {
+  const key  = `${channel}:${pondId}:${sensorKey}`;
   const last = _cooldownMap.get(key);
   if (last == null) return false;
   return (Date.now() - last) < COOLDOWN_MS;
 }
 
-function markSent(pondId, sensorKey) {
-  _cooldownMap.set(`${pondId}:${sensorKey}`, Date.now());
+function markSent(channel, pondId, sensorKey) {
+  _cooldownMap.set(`${channel}:${pondId}:${sensorKey}`, Date.now());
 }
 
 // ─── Internal: sendEmail ─────────────────────────────────────────────────────
@@ -283,13 +317,99 @@ async function sendEmail(prefs, alert) {
   }
 }
 
+// ─── Internal: sendSms ────────────────────────────────────────────────────────
+
+async function getUserPhone(uid) {
+  const snap = await fbGetDoc(fbDoc(fbFirestore(), 'users', uid));
+  if (!snap.exists()) return '';
+  return String(snap.data()?.phone || '').trim();
+}
+
+function normalizePhPhoneToE164(input) {
+  // UniSMS expects E.164. For PH, accept 09XXXXXXXXX or 639XXXXXXXXX and normalize.
+  const raw = String(input || '').trim();
+  if (!raw) return '';
+  const cleaned = raw.replace(/[^\d+]/g, '');
+  if (/^\+639\d{9}$/.test(cleaned)) return cleaned;
+  if (/^639\d{9}$/.test(cleaned)) return `+${cleaned}`;
+  if (/^09\d{9}$/.test(cleaned)) return `+63${cleaned.slice(1)}`;
+  return cleaned;
+}
+
+function buildSmsContent(alert) {
+  const severity = alert?.severity === 'critical' ? 'Critical' : 'Warning';
+  const pond = String(alert?.pond || 'Pond').trim() || 'Pond';
+  const sensor = SENSOR_LABELS[alert?.key] || alert?.key || 'Value';
+  const value = formatValue(alert?.key, alert?.val);
+
+  // Requested pattern (kept short). Include sensor label before the value.
+  let content = `AquaSenseAlert: Threshold Exceeded - ${severity} with ${sensor} ${value}. Please inspect ${pond} for corrective actions`;
+
+  // Hard cap to 160 chars (UniSMS content limit). Trim pond name first.
+  if (content.length > 160) {
+    const maxPond = Math.max(8, Math.min(32, pond.length));
+    const trimmedPond = pond.length > maxPond ? pond.slice(0, maxPond - 1) + '…' : pond;
+    content = `AquaSenseAlert: Threshold Exceeded - ${severity} with ${sensor} ${value}. Please inspect ${trimmedPond} for corrective actions`;
+  }
+  if (content.length > 160) {
+    // Final fallback: drop sensor label
+    content = `AquaSenseAlert: Threshold Exceeded - ${severity} with ${value}. Please inspect ${pond} for corrective actions`;
+  }
+  if (content.length > 160) {
+    // Final hard trim
+    content = content.slice(0, 160);
+  }
+  return content;
+}
+
+async function sendSms(uid, alert) {
+  try {
+    const rawPhone = await getUserPhone(uid);
+    if (!rawPhone) throw new Error('No phone number on profile.');
+    const phone = normalizePhPhoneToE164(rawPhone);
+    // If it still doesn't look like E.164, fail early with a clear message.
+    if (!phone.startsWith('+')) {
+      throw new Error('Phone number must be in E.164 format (e.g., +639123456789).');
+    }
+    const token = await fbGetIdToken();
+    const content = buildSmsContent(alert);
+
+    const resp = await fetch('/api/notifications/sms', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        recipient: phone,
+        content,
+        metadata: {
+          source: 'aquasense',
+          alertId: alert?.id || '',
+          pond: alert?.pond || '',
+          key: alert?.key || '',
+          severity: alert?.severity || '',
+        },
+      }),
+    });
+
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok) {
+      throw new Error(data?.error || 'SMS send failed.');
+    }
+    return { success: true, reference_id: data?.reference_id || null };
+  } catch (err) {
+    return { success: false, error: err };
+  }
+}
+
 // ─── Internal: writeLog ───────────────────────────────────────────────────────
 
-async function writeLog(uid, alert, status, errorDetail) {
+async function writeLog(uid, channel, alert, status, errorDetail) {
   try {
     await fbAddDoc(fbCollection(fbFirestore(), 'notificationLog'), {
       uid,
-      channel:     'email',
+      channel:     channel || 'email',
       alertId:     alert.id || '',
       pondName:    alert.pond || '',
       parameter:   alert.key || '',
@@ -305,7 +425,7 @@ async function writeLog(uid, alert, status, errorDetail) {
 
 // ─── Internal: offline retry queue ───────────────────────────────────────────
 
-function enqueueRetry(uid, alert) {
+function enqueueRetry(uid, alert, channels) {
   let queue = [];
   try {
     queue = JSON.parse(sessionStorage.getItem(RETRY_QUEUE_KEY) || '[]');
@@ -317,6 +437,7 @@ function enqueueRetry(uid, alert) {
     queue.push({
       uid,
       alert,
+      channels: Array.isArray(channels) && channels.length ? [...new Set(channels)] : ['email'],
       attempts:    0,
       nextRetryAt: Date.now() + RETRY_INTERVAL_MS,
     });
@@ -349,21 +470,36 @@ async function flushRetryQueue() {
 
     try {
       const prefs = await loadPrefs(item.uid);
-      if (!prefs?.email?.enabled) continue;         // user disabled — drop
+      const channels = Array.isArray(item.channels) && item.channels.length ? item.channels : ['email'];
+      const results = [];
 
-      const result = await sendEmail(prefs, item.alert);
-      const status = result.success ? 'sent' : 'failed';
-      const errorDetail = result.success
-        ? null
-        : (result.error?.message || String(result.error) || 'Unknown error');
+      for (const channel of channels) {
+        if (channel === 'email' && !prefs?.email?.enabled) continue;
+        if (channel === 'sms' && !prefs?.sms?.enabled) continue;
 
-      await writeLog(item.uid, item.alert, status, errorDetail);
+        const pondId = item.alert?.pond || 'default';
+        const sensorKey = item.alert?.key;
+        if (sensorKey && isCooledDown(channel, pondId, sensorKey)) continue;
+        if (sensorKey) markSent(channel, pondId, sensorKey);
 
-      if (!result.success && item.attempts < MAX_ATTEMPTS) {
+        const result = channel === 'email'
+          ? await sendEmail(prefs, item.alert)
+          : await sendSms(item.uid, item.alert);
+
+        const status = result.success ? 'sent' : 'failed';
+        const errorDetail = result.success
+          ? null
+          : (result.error?.message || String(result.error) || 'Unknown error');
+        await writeLog(item.uid, channel, item.alert, status, errorDetail);
+        results.push(result);
+      }
+
+      const allOk = results.length ? results.every(r => r.success) : true;
+      if (!allOk && item.attempts < MAX_ATTEMPTS) {
         item.nextRetryAt = now + RETRY_INTERVAL_MS;
         remaining.push(item);
       }
-      // success — drop from queue
+      // if allOk — drop from queue
     } catch {
       if (item.attempts < MAX_ATTEMPTS) {
         item.nextRetryAt = now + RETRY_INTERVAL_MS;

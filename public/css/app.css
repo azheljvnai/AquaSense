@@ -1353,30 +1353,54 @@ body.sidebar-open .sidebar { transform: translateX(0); }
 
 /* ─── Pond Management ──────────────────────────────────────────────────────── */
 
-.pond-selector-row {
+.pm-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.pm-title { display: flex; align-items: center; gap: 10px; }
+.pm-h { font-weight: 800; font-size: 1.05rem; letter-spacing: -0.02em; }
+.pm-sub { font-size: 0.82rem; color: var(--text-muted); margin-top: 2px; line-height: 1.45; }
+
+.pm-toolbar {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 12px;
+  align-items: end;
+  margin-top: 16px;
+}
+.pm-pond { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.pm-label { font-size: 0.78rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; }
+.pm-select {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1.5px solid var(--border2);
+  border-radius: 12px;
+  background: var(--panel);
+  color: var(--text);
+  font-size: 0.9rem;
+  font-weight: 600;
+  outline: none;
+  transition: border-color var(--transition), box-shadow var(--transition);
+}
+.pm-select:focus { border-color: var(--blue); box-shadow: 0 0 0 3px var(--blue-glow); }
+.pm-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+
+.pm-status {
   display: flex;
-  align-items: flex-end;
+  align-items: center;
+  justify-content: space-between;
   gap: 12px;
   flex-wrap: wrap;
   margin-top: 14px;
+  padding: 14px 14px;
+  background: linear-gradient(135deg, var(--bg), var(--panel));
+  border-radius: 16px;
+  border: 1px solid var(--border);
 }
-.pond-selector-wrap { display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 180px; }
-.pond-selector-label { font-size: 0.78rem; font-weight: 600; color: var(--text-muted); }
-.pond-selector-select {
-  padding: 7px 10px; border: 1px solid var(--border); border-radius: 8px;
-  font-size: 0.9rem; background: var(--surface); color: var(--text); min-width: 180px;
-}
-.pond-selector-btns { display: flex; gap: 8px; flex-wrap: wrap; }
+.pm-status-main { min-width: 0; }
+.pm-status-label { font-size: 0.72rem; font-weight: 800; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.08em; }
+.pm-status-value { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 6px; }
+.pm-active-name { font-size: 1rem; font-weight: 800; letter-spacing: -0.02em; color: var(--text); }
+.pm-status-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
 
-.pond-active-cfg-bar {
-  display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap;
-  gap: 10px; margin-top: 14px; padding: 10px 14px;
-  background: var(--surface-2, #f8fafc); border-radius: 8px; border: 1px solid var(--border);
-}
-.pond-active-cfg-info { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.pond-active-cfg-lbl { font-size: 0.8rem; color: var(--text-muted); font-weight: 500; }
-.pond-active-cfg-name { font-size: 0.9rem; font-weight: 600; color: var(--text); }
-
+.pm-configs { margin-top: 14px; display: flex; flex-direction: column; gap: 10px; }
 .pond-config-list { margin-top: 14px; display: flex; flex-direction: column; gap: 8px; }
 .pond-cfg-loading, .pond-cfg-empty { font-size: 0.85rem; color: var(--text-muted); padding: 10px 0; }
 .pond-cfg-row {
@@ -1388,6 +1412,31 @@ body.sidebar-open .sidebar { transform: translateX(0); }
 .pond-cfg-info { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .pond-cfg-name { font-size: 0.88rem; font-weight: 600; color: var(--text); }
 .pond-cfg-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+
+.pm-configs details {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--panel);
+  overflow: hidden;
+}
+.pm-configs summary {
+  cursor: pointer;
+  list-style: none;
+  padding: 12px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  user-select: none;
+  font-weight: 800;
+  font-size: 0.82rem;
+  color: var(--text-2);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  background: var(--bg);
+}
+.pm-configs summary::-webkit-details-marker { display: none; }
+.pm-configs .pm-configs-body { padding: 12px 12px 6px; display: flex; flex-direction: column; gap: 8px; }
 
 /* Species badges */
 .species-badge { font-size: 0.68rem; font-weight: 700; text-transform: capitalize; }
@@ -1414,4 +1463,10 @@ body.sidebar-open .sidebar { transform: translateX(0); }
 /* Active preset label in cfg-head */
 .cfg-preset-label {
   font-size: 0.72rem; color: var(--text-muted); font-style: italic;
+}
+
+@media (max-width: 700px) {
+  .pm-toolbar { grid-template-columns: 1fr; }
+  .pm-actions { justify-content: flex-start; }
+  .pm-status-actions .btn { flex: 1 1 auto; justify-content: center; }
 }

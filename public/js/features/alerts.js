@@ -17,9 +17,42 @@ const ALERT_STORAGE_KEY = 'aquasense.alerts.v1';
 const MAX_ALERTS = 200;
 const MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 
+function normalizeAlerts(raw) {
+  if (!Array.isArray(raw)) return [];
+  const out = [];
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue;
+    let ts = Number(item.ts);
+    if (!Number.isFinite(ts)) continue;
+    // Migrate legacy second-based timestamps to ms.
+    if (ts > 0 && ts < 1e12) ts *= 1000;
+
+    const badge = typeof item.badge === 'string' ? item.badge : '';
+    const severity =
+      typeof item.severity === 'string'
+        ? item.severity
+        : (badge === 'danger' ? 'critical' : badge === 'warn' ? 'warning' : 'info');
+
+    out.push({
+      id: typeof item.id === 'string' && item.id ? item.id : `migrated-${ts}-${Math.random().toString(36).slice(2, 7)}`,
+      ts,
+      key: typeof item.key === 'string' ? item.key : '',
+      val: typeof item.val === 'number' && Number.isFinite(item.val) ? item.val : Number(item.val),
+      severity,
+      badge,
+      label: typeof item.label === 'string' ? item.label : '',
+      description: typeof item.description === 'string' ? item.description : '',
+      pond: typeof item.pond === 'string' ? item.pond : '',
+      resolved: typeof item.resolved === 'boolean' ? item.resolved : false,
+    });
+  }
+  return out;
+}
+
 function loadAlerts() {
   try {
-    return JSON.parse(localStorage.getItem(ALERT_STORAGE_KEY) || '[]');
+    const raw = JSON.parse(localStorage.getItem(ALERT_STORAGE_KEY) || '[]');
+    return normalizeAlerts(raw);
   } catch {
     return [];
   }
@@ -213,15 +246,15 @@ export function init() {
       if (doEl)   doEl.textContent   = `Optimal: ≥ ${t.do?.optimalMin ?? '—'} mg/L`;
       if (turbEl) turbEl.textContent = `Optimal: ≤ ${t.turb?.optimalMax ?? '—'} NTU`;
     } else {
-      if (phEl)   phEl.textContent   = 'Optimal: 6.5 – 8.5';
-      if (tempEl) tempEl.textContent = 'Optimal: 20 – 26 °C';
-      if (doEl)   doEl.textContent   = 'Optimal: ≥ 6 mg/L';
-      if (turbEl) turbEl.textContent = 'Optimal: ≤ 20 NTU';
+      if (phEl)   phEl.textContent   = 'Not configured';
+      if (tempEl) tempEl.textContent = 'Not configured';
+      if (doEl)   doEl.textContent   = 'Not configured';
+      if (turbEl) turbEl.textContent = 'Not configured';
     }
 
     if (specEl) {
       const names = { crayfish: 'Crayfish', tilapia: 'Tilapia', catfish: 'Catfish', shrimp: 'Shrimp' };
-      specEl.textContent = species ? `Active config: ${names[species] || species}` : 'Default thresholds';
+      specEl.textContent = species ? `Active config: ${names[species] || species}` : 'No active config';
     }
   }
 
@@ -409,18 +442,11 @@ export function init() {
  */
 function clearAllAlerts() {
   try {
-    const allAlerts = loadAlerts();
-    const totalCount = allAlerts.length;
-    
-    if (totalCount === 0) {
-      showToast('No alerts to clear', 'info');
-      return;
-    }
-    
+    const totalCount = loadAlerts().length;
     localStorage.removeItem(ALERT_STORAGE_KEY);
     renderAlertList();
     window.dispatchEvent(new Event('alerts-updated'));
-    showToast(`Successfully cleared ${totalCount} alerts`, 'success');
+    showToast(totalCount ? `Successfully cleared ${totalCount} alerts` : 'Alerts cleared', 'success');
   } catch (err) {
     console.error('[clearAllAlerts] Error:', err);
     showToast('Failed to clear alerts', 'error');
@@ -439,13 +465,9 @@ function markAllAlertsAsResolved() {
       showToast('No unresolved alerts to mark', 'info');
       return;
     }
-    
-    const updatedAlerts = allAlerts.map(alert => ({
-      ...alert,
-      resolved: true
-    }));
-    
-    saveAlerts(updatedAlerts);
+
+    for (const a of allAlerts) a.resolved = true;
+    saveAlerts(allAlerts);
     renderAlertList();
     window.dispatchEvent(new Event('alerts-updated'));
     showToast(`Successfully marked ${unresolvedAlerts.length} alerts as resolved`, 'success');

@@ -13,7 +13,7 @@
  *   custom → user-supplied dates, label: MM-DD HH:MM
  */
 import { initHistoricalChart, updateHistoricalChart } from '../charts.js';
-import { getHistoryRange, getThresholds, spkData, mergeRtdbEntries } from '../utils.js';
+import { getHistoryRange, spkData, mergeRtdbEntries, getBadge } from '../utils.js';
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
@@ -62,11 +62,8 @@ function statsOf(readings, key) {
 }
 
 function badgeClass(key, val) {
-  const t = getThresholds()[key];
-  if (!t || val == null) return 'ok';
-  if (val >= t.ok[0] && val <= t.ok[1]) return 'ok';
-  if (val >= t.warn[0] && val <= t.warn[1]) return 'warn';
-  return 'danger';
+  if (val == null) return 'ok';
+  return getBadge(key, val).c;
 }
 
 // ─── main init ──────────────────────────────────────────────────────────────

@@ -12,14 +12,24 @@ const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 let _cooldownMap;
 
 function isCooledDown(pondId, sensorKey, now = Date.now()) {
-  const key = `${pondId}:${sensorKey}`;
+  const channel = 'email';
+  return isCooledDownChannel(channel, pondId, sensorKey, now);
+}
+
+function isCooledDownChannel(channel, pondId, sensorKey, now = Date.now()) {
+  const key = `${channel}:${pondId}:${sensorKey}`;
   const last = _cooldownMap.get(key);
   if (last == null) return false;
   return (now - last) < COOLDOWN_MS;
 }
 
 function markSent(pondId, sensorKey, now = Date.now()) {
-  _cooldownMap.set(`${pondId}:${sensorKey}`, now);
+  const channel = 'email';
+  markSentChannel(channel, pondId, sensorKey, now);
+}
+
+function markSentChannel(channel, pondId, sensorKey, now = Date.now()) {
+  _cooldownMap.set(`${channel}:${pondId}:${sensorKey}`, now);
 }
 
 function isValidEmail(str) {
@@ -51,13 +61,33 @@ describe('NotificationService — Property-Based Tests', () => {
           for (let i = 0; i < alertCount; i++) {
             // All alerts within 15-minute window (0 to 14 min 59 sec after base)
             const now = baseTime + i * 60_000; // 1 minute apart, all within 15 min
-            if (!isCooledDown(pondId, sensorKey, now)) {
+            if (!isCooledDownChannel('email', pondId, sensorKey, now)) {
               sendCallCount.n++;
-              markSent(pondId, sensorKey, now);
+              markSentChannel('email', pondId, sensorKey, now);
             }
           }
 
           return sendCallCount.n <= 1;
+        }
+      ),
+      { numRuns: 100 }
+    );
+  });
+
+  // Property 1b: Cooldown is per-channel (email and sms do not block each other)
+  it('Property 1b: cooldown — email and sms cooldown keys are independent', () => {
+    fc.assert(
+      fc.property(
+        fc.string({ minLength: 1, maxLength: 20 }),   // pondId
+        fc.constantFrom('ph', 'do', 'turb', 'temp'),  // sensorKey
+        (pondId, sensorKey) => {
+          _cooldownMap = new Map();
+          const t0 = Date.now();
+          markSentChannel('email', pondId, sensorKey, t0);
+          // Within cooldown window, email is cooled down but sms is not (unless explicitly marked)
+          const t1 = t0 + 60_000;
+          return isCooledDownChannel('email', pondId, sensorKey, t1) === true
+            && isCooledDownChannel('sms', pondId, sensorKey, t1) === false;
         }
       ),
       { numRuns: 100 }
@@ -95,6 +125,32 @@ describe('NotificationService — Property-Based Tests', () => {
             return !sendCalled;
           }
           return true; // when both conditions allow, send is expected
+        }
+      ),
+      { numRuns: 100 }
+    );
+  });
+
+  // Property 2b: Disabled SMS channel produces no SMS dispatch
+  it('Property 2b: disabled channel — sms not dispatched when sms disabled', () => {
+    fc.assert(
+      fc.property(
+        fc.record({
+          id:       fc.string({ minLength: 1 }),
+          key:      fc.constantFrom('ph', 'do', 'turb', 'temp'),
+          val:      fc.float({ min: 0, max: 100 }),
+          severity: fc.constantFrom('critical', 'warning'),
+          pond:     fc.string({ minLength: 1 }),
+          ts:       fc.integer({ min: 0 }),
+          resolved: fc.boolean(),
+        }),
+        fc.boolean(), // smsEnabled
+        (alert, smsEnabled) => {
+          const shouldSkip = !smsEnabled || alert.resolved;
+          let smsCalled = false;
+          if (!alert.resolved && smsEnabled) smsCalled = true;
+          if (shouldSkip) return !smsCalled;
+          return true;
         }
       ),
       { numRuns: 100 }
@@ -200,6 +256,56 @@ describe('NotificationService — Property-Based Tests', () => {
         (email) => isValidEmail(email)
       ),
       { numRuns: 100 }
+    );
+  });
+
+  // Property 6: SMS template is short and stable (<=160 chars for typical inputs)
+  it('Property 6: sms template — includes prefix and stays within 160 chars', () => {
+    const SENSOR_LABELS = { ph: 'pH', do: 'Dissolved O₂', turb: 'Turbidity', temp: 'Temperature' };
+    const SENSOR_UNITS  = { ph: '', do: ' mg/L', turb: ' NTU', temp: '°C' };
+
+    function formatValue(key, val) {
+      if (val == null) return '—';
+      const unit = SENSOR_UNITS[key] || '';
+      if (key === 'ph') return `${Number(val).toFixed(2)}${unit}`;
+      return `${Number(val).toFixed(1)}${unit}`;
+    }
+
+    function buildSmsContent(alert) {
+      const severity = alert?.severity === 'critical' ? 'Critical' : 'Warning';
+      const pond = String(alert?.pond || 'Pond').trim() || 'Pond';
+      const sensor = SENSOR_LABELS[alert?.key] || alert?.key || 'Value';
+      const value = formatValue(alert?.key, alert?.val);
+      let content = `AquaSenseAlert: Threshold Exceeded - ${severity} with ${sensor} ${value}. Please inspect ${pond} for corrective actions`;
+      if (content.length > 160) {
+        const maxPond = Math.max(8, Math.min(32, pond.length));
+        const trimmedPond = pond.length > maxPond ? pond.slice(0, maxPond - 1) + '…' : pond;
+        content = `AquaSenseAlert: Threshold Exceeded - ${severity} with ${sensor} ${value}. Please inspect ${trimmedPond} for corrective actions`;
+      }
+      if (content.length > 160) {
+        content = `AquaSenseAlert: Threshold Exceeded - ${severity} with ${value}. Please inspect ${pond} for corrective actions`;
+      }
+      if (content.length > 160) content = content.slice(0, 160);
+      return content;
+    }
+
+    fc.assert(
+      fc.property(
+        fc.record({
+          key: fc.constantFrom('ph', 'do', 'turb', 'temp'),
+          val: fc.float({ min: 0, max: 100 }),
+          severity: fc.constantFrom('critical', 'warning'),
+          pond: fc.string({ minLength: 1, maxLength: 60 }),
+        }),
+        (alert) => {
+          const msg = buildSmsContent(alert);
+          return typeof msg === 'string'
+            && msg.startsWith('AquaSenseAlert:')
+            && msg.length > 0
+            && msg.length <= 160;
+        }
+      ),
+      { numRuns: 200 }
     );
   });
 });

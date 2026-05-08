@@ -6,9 +6,38 @@ import { initDashboardChart } from '../charts.js';
 const ALERT_STORAGE_KEY = 'aquasense.alerts.v1';
 const RECENT_ALERTS_LIMIT = 5;
 
+function normalizeAlerts(raw) {
+  if (!Array.isArray(raw)) return [];
+  const out = [];
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue;
+    let ts = Number(item.ts);
+    if (!Number.isFinite(ts)) continue;
+    if (ts > 0 && ts < 1e12) ts *= 1000;
+
+    const badge = typeof item.badge === 'string' ? item.badge : '';
+    const severity =
+      typeof item.severity === 'string'
+        ? item.severity
+        : (badge === 'danger' ? 'critical' : badge === 'warn' ? 'warning' : 'info');
+
+    out.push({
+      id: typeof item.id === 'string' ? item.id : '',
+      ts,
+      severity,
+      badge,
+      label: typeof item.label === 'string' ? item.label : '',
+      pond: typeof item.pond === 'string' ? item.pond : '',
+      resolved: typeof item.resolved === 'boolean' ? item.resolved : false,
+    });
+  }
+  return out;
+}
+
 function loadAlerts() {
   try {
-    return JSON.parse(localStorage.getItem(ALERT_STORAGE_KEY) || '[]');
+    const raw = JSON.parse(localStorage.getItem(ALERT_STORAGE_KEY) || '[]');
+    return normalizeAlerts(raw);
   } catch {
     return [];
   }

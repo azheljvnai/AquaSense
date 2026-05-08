@@ -44,6 +44,11 @@ export async function init() {
     openAssignConfigDialog(_currentPondId, () => renderPondConfigs(_currentPondId));
   });
 
+  document.getElementById('btn-create-custom-config')?.addEventListener('click', () => {
+    if (!_currentPondId) return alert('Select a pond first.');
+    openCreateCustomConfigDialog(_currentPondId, () => renderPondConfigs(_currentPondId));
+  });
+
   document.getElementById('pond-selector')?.addEventListener('change', async (e) => {
     const pondId = e.target.value;
     if (!pondId) return;
@@ -95,6 +100,10 @@ export async function init() {
 
     if (btn.id === 'btn-assign-first') {
       openAssignConfigDialog(_currentPondId, () => renderPondConfigs(_currentPondId));
+    }
+
+    if (btn.id === 'btn-create-custom-first') {
+      openCreateCustomConfigDialog(_currentPondId, () => renderPondConfigs(_currentPondId));
     }
   });
 
@@ -227,13 +236,20 @@ async function renderPondConfigs(pondId) {
   }
 
   if (!configs.length) {
-    list.innerHTML = `<div class="pond-cfg-empty">No configurations assigned to this pond.
-      <button class="btn btn-sm btn-outline" id="btn-assign-first" style="margin-left:8px;">Assign Species Config</button>
-    </div>`;
+    list.innerHTML = `
+      <div class="pond-cfg-empty">
+        No configurations assigned to this pond.
+        <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;">
+          <button class="btn btn-sm btn-outline" id="btn-assign-first">Assign Preset</button>
+          <button class="btn btn-sm btn-primary" id="btn-create-custom-first">Create Custom Config</button>
+        </div>
+      </div>`;
     return;
   }
 
   const hasActive = configs.some(c => c.isActive);
+  const activeCfg = configs.find(c => c.isActive) || null;
+  const inactive = configs.filter(c => !c.isActive);
 
   // If no config is active, show a prominent "not configured" notice
   // plus a collapsed list of available (inactive) configs to re-activate
@@ -259,26 +275,51 @@ async function renderPondConfigs(pondId) {
           <div class="pond-not-configured-title">Not Configured</div>
           <div class="pond-not-configured-sub">This pond has no active configuration. Set one of the configs below as active, or assign a new one.</div>
         </div>
-        ${canEdit() ? `<button class="btn btn-sm btn-primary" id="btn-assign-first">Assign Config</button>` : ''}
+        ${canEdit() ? `<div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <button class="btn btn-sm btn-outline" id="btn-assign-first">Assign Preset</button>
+          <button class="btn btn-sm btn-primary" id="btn-create-custom-first">Create Custom Config</button>
+        </div>` : ''}
       </div>
-      <div class="pond-cfg-inactive-list">${inactiveRows}</div>`;
+      <details open>
+        <summary>Available Configurations <span style="opacity:0.7;font-weight:700;font-size:0.72rem;letter-spacing:0.06em;">(${configs.length})</span></summary>
+        <div class="pm-configs-body pond-cfg-inactive-list">${inactiveRows}</div>
+      </details>`;
     return;
   }
 
-  list.innerHTML = configs.map(cfg => `
-    <div class="pond-cfg-row${cfg.isActive ? ' pond-cfg-active' : ''}">
+  const activeRow = activeCfg ? `
+    <div class="pond-cfg-row pond-cfg-active">
+      <div class="pond-cfg-info">
+        <span class="pond-cfg-name">${activeCfg.name || activeCfg.species}</span>
+        <span class="badge-pill species-badge species-${activeCfg.species}">${SPECIES_LABELS[activeCfg.species] || activeCfg.species}</span>
+        <span class="badge-pill status-normal" style="font-size:0.65rem;">Active</span>
+      </div>
+      <div class="pond-cfg-actions">
+        ${canEdit() ? `<button class="btn btn-sm btn-warning-outline btn-deactivate-cfg" data-id="${activeCfg.id}">Deactivate</button>` : ''}
+        ${canEdit() ? `<button class="btn btn-sm btn-outline btn-edit-cfg" data-id="${activeCfg.id}">Edit thresholds</button>` : ''}
+      </div>
+    </div>` : '';
+
+  const inactiveRows = inactive.map(cfg => `
+    <div class="pond-cfg-row">
       <div class="pond-cfg-info">
         <span class="pond-cfg-name">${cfg.name || cfg.species}</span>
         <span class="badge-pill species-badge species-${cfg.species}">${SPECIES_LABELS[cfg.species] || cfg.species}</span>
-        ${cfg.isActive ? '<span class="badge-pill status-normal" style="font-size:0.65rem;">Active</span>' : ''}
+        <span class="badge-pill" style="background:#f1f5f9;color:#64748b;font-size:0.65rem;">Inactive</span>
       </div>
       <div class="pond-cfg-actions">
-        ${!cfg.isActive && canEdit() ? `<button class="btn btn-sm btn-outline btn-set-active" data-id="${cfg.id}">Set Active</button>` : ''}
-        ${cfg.isActive && canEdit() ? `<button class="btn btn-sm btn-warning-outline btn-deactivate-cfg" data-id="${cfg.id}">Deactivate</button>` : ''}
-        ${canEdit() ? `<button class="btn btn-sm btn-outline btn-edit-cfg" data-id="${cfg.id}">Edit</button>` : ''}
-        ${canEdit() && !cfg.isActive ? `<button class="btn btn-sm btn-danger-outline btn-del-cfg" data-id="${cfg.id}">Remove</button>` : ''}
+        ${canEdit() ? `<button class="btn btn-sm btn-outline btn-set-active" data-id="${cfg.id}">Set Active</button>` : ''}
+        ${canEdit() ? `<button class="btn btn-sm btn-outline btn-edit-cfg" data-id="${cfg.id}">Edit thresholds</button>` : ''}
+        ${canEdit() ? `<button class="btn btn-sm btn-danger-outline btn-del-cfg" data-id="${cfg.id}">Remove</button>` : ''}
       </div>
     </div>`).join('');
+
+  list.innerHTML = `
+    ${activeRow}
+    <details ${inactive.length ? '' : 'open'} style="${inactive.length ? '' : 'display:none'}">
+      <summary>Inactive Configurations <span style="opacity:0.7;font-weight:700;font-size:0.72rem;letter-spacing:0.06em;">(${inactive.length})</span></summary>
+      <div class="pm-configs-body">${inactiveRows}</div>
+    </details>`;
 }
 
 // ─── Dialogs ──────────────────────────────────────────────────────────────────
@@ -374,6 +415,100 @@ function openAssignConfigDialog(pondId, onSaved) {
     const preset = SPECIES_PRESETS[species];
     try {
       await assignConfigToPond(pondId, { name, species, thresholds: preset.thresholds });
+      close();
+      await onSaved();
+    } catch (e) {
+      errEl.textContent = 'Failed: ' + (e?.message || String(e));
+      errEl.style.display = 'block';
+    }
+  });
+}
+
+function openCreateCustomConfigDialog(pondId, onSaved) {
+  if (!canEdit()) return alert('Owner/Admin required.');
+
+  const dlg = document.createElement('dialog');
+  dlg.className = 'um-modal um-modal-wide';
+  dlg.innerHTML = `
+    <div class="um-modal-inner">
+      <div class="um-modal-head">
+        <div>
+          <div class="um-modal-title">Create Custom Configuration</div>
+          <div class="um-modal-sub">Start from a species preset, then customize thresholds.</div>
+        </div>
+        <button class="um-modal-close" id="cc-x" aria-label="Close"><svg class="icon icon-16"><use href="#icon-x"/></svg></button>
+      </div>
+
+      <div class="um-form-grid" style="grid-template-columns:1fr 1fr;">
+        <div class="um-field">
+          <label>Config Name</label>
+          <input id="cc-name" type="text" placeholder="e.g. Tilapia – Nursery" />
+        </div>
+        <div class="um-field">
+          <label>Species Preset</label>
+          <select id="cc-species">
+            ${Object.entries(SPECIES_PRESETS).map(([k, v]) => `<option value="${k}">${v.name}</option>`).join('')}
+          </select>
+        </div>
+
+        <div class="um-field"><label>pH Optimal Min</label><input id="cc-ph-min" type="number" step="0.1" /></div>
+        <div class="um-field"><label>pH Optimal Max</label><input id="cc-ph-max" type="number" step="0.1" /></div>
+        <div class="um-field"><label>Temp Optimal Min (°C)</label><input id="cc-temp-min" type="number" step="0.1" /></div>
+        <div class="um-field"><label>Temp Optimal Max (°C)</label><input id="cc-temp-max" type="number" step="0.1" /></div>
+        <div class="um-field"><label>DO Optimal Min (mg/L)</label><input id="cc-do-min" type="number" step="0.1" /></div>
+        <div class="um-field"><label>Turbidity Optimal Max (NTU)</label><input id="cc-turb-max" type="number" step="1" /></div>
+      </div>
+
+      <div id="cc-error" style="color:var(--red-dark);font-size:0.8rem;margin-bottom:8px;display:none;"></div>
+      <div class="um-modal-footer">
+        <button type="button" class="btn btn-outline" id="cc-cancel">Cancel</button>
+        <button type="button" class="btn btn-outline" id="cc-reset">Reset to Preset</button>
+        <button type="button" class="btn btn-primary" id="cc-save">Create</button>
+      </div>
+    </div>`;
+
+  document.body.appendChild(dlg);
+  dlg.showModal();
+  const close = () => { dlg.close(); setTimeout(() => dlg.remove(), 0); };
+  dlg.querySelector('#cc-x').addEventListener('click', close);
+  dlg.querySelector('#cc-cancel').addEventListener('click', close);
+  dlg.addEventListener('close', () => setTimeout(() => dlg.remove(), 0));
+
+  const n = (root, sel) => {
+    const v = Number(root.querySelector(sel)?.value);
+    return Number.isFinite(v) ? v : null;
+  };
+
+  function applyPresetToInputs(species) {
+    const p = SPECIES_PRESETS[species]?.thresholds || {};
+    dlg.querySelector('#cc-ph-min').value   = p.ph?.optimalMin   ?? '';
+    dlg.querySelector('#cc-ph-max').value   = p.ph?.optimalMax   ?? '';
+    dlg.querySelector('#cc-temp-min').value = p.temp?.optimalMin ?? '';
+    dlg.querySelector('#cc-temp-max').value = p.temp?.optimalMax ?? '';
+    dlg.querySelector('#cc-do-min').value   = p.do?.optimalMin   ?? '';
+    dlg.querySelector('#cc-turb-max').value = p.turb?.optimalMax ?? '';
+  }
+
+  const speciesSel = dlg.querySelector('#cc-species');
+  applyPresetToInputs(speciesSel.value);
+  speciesSel.addEventListener('change', () => applyPresetToInputs(speciesSel.value));
+  dlg.querySelector('#cc-reset').addEventListener('click', () => applyPresetToInputs(speciesSel.value));
+
+  dlg.querySelector('#cc-save').addEventListener('click', async () => {
+    const errEl = dlg.querySelector('#cc-error');
+    const species = speciesSel.value;
+    const preset = SPECIES_PRESETS[species]?.thresholds || {};
+    const name = dlg.querySelector('#cc-name').value.trim() || `${SPECIES_LABELS[species] || species} – Custom`;
+
+    const thresholds = {
+      ph:   { ...preset.ph,   optimalMin: n(dlg, '#cc-ph-min')   ?? preset.ph?.optimalMin,   optimalMax: n(dlg, '#cc-ph-max')   ?? preset.ph?.optimalMax },
+      temp: { ...preset.temp, optimalMin: n(dlg, '#cc-temp-min') ?? preset.temp?.optimalMin, optimalMax: n(dlg, '#cc-temp-max') ?? preset.temp?.optimalMax },
+      do:   { ...preset.do,   optimalMin: n(dlg, '#cc-do-min')   ?? preset.do?.optimalMin },
+      turb: { ...preset.turb, optimalMax: n(dlg, '#cc-turb-max') ?? preset.turb?.optimalMax },
+    };
+
+    try {
+      await assignConfigToPond(pondId, { name, species, thresholds });
       close();
       await onSaved();
     } catch (e) {

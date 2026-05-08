@@ -28,23 +28,6 @@ function syncActiveConfigToUtils() {
 
 export function init() {
   const els = {
-    email: document.getElementById('cfg-email'),
-    sms: document.getElementById('cfg-sms'),
-    push: document.getElementById('cfg-push'),
-    dailySummary: document.getElementById('cfg-daily-summary'),
-    notifFrequency: document.getElementById('cfg-notif-frequency'),
-    refresh: document.getElementById('cfg-refresh'),
-    timezone: document.getElementById('cfg-timezone'),
-    datefmt: document.getElementById('cfg-datefmt'),
-    units: document.getElementById('cfg-units'),
-    dark: document.getElementById('cfg-dark'),
-    autosave: document.getElementById('cfg-autosave'),
-    retention: document.getElementById('cfg-retention'),
-    backup: document.getElementById('cfg-backup'),
-    exportfmt: document.getElementById('cfg-exportfmt'),
-    export: document.getElementById('cfg-export'),
-    clear: document.getElementById('cfg-clear'),
-    reset: document.getElementById('cfg-reset'),
     save: document.getElementById('cfg-save'),
 
     // Thresholds + temperature (top cards)
@@ -64,21 +47,6 @@ export function init() {
 
   const KEY = 'aquasense.settings.v1';
   const defaults = {
-    email: true,
-    sms: true,
-    push: false,
-    dailySummary: true,
-    notifFrequency: 'immediate',
-    refresh: '30',
-    timezone: 'Central (CST)',
-    datefmt: 'MM/DD/YYYY',
-    units: 'Imperial',
-    dark: false,
-    autosave: true,
-    retention: '1 year',
-    backup: 'Daily',
-    exportfmt: 'CSV',
-
     autoAdjust: false,
     tempMin: 20,
     tempMax: 26,
@@ -153,21 +121,6 @@ export function init() {
 
   function readState() {
     return {
-      email: !!els.email?.checked,
-      sms: !!els.sms?.checked,
-      push: !!els.push?.checked,
-      dailySummary: !!els.dailySummary?.checked,
-      notifFrequency: els.notifFrequency?.value || defaults.notifFrequency,
-      refresh: els.refresh?.value || defaults.refresh,
-      timezone: els.timezone?.value || defaults.timezone,
-      datefmt: els.datefmt?.value || defaults.datefmt,
-      units: els.units?.value || defaults.units,
-      dark: !!els.dark?.checked,
-      autosave: !!els.autosave?.checked,
-      retention: els.retention?.value || defaults.retention,
-      backup: els.backup?.value || defaults.backup,
-      exportfmt: els.exportfmt?.value || defaults.exportfmt,
-
       autoAdjust: !!els.autoAdjust?.checked,
       tempMin: Number(els.tempMin?.value) || defaults.tempMin,
       tempMax: Number(els.tempMax?.value) || defaults.tempMax,
@@ -178,21 +131,6 @@ export function init() {
   }
 
   function applyState(s) {
-    if (els.email) els.email.checked = !!s.email;
-    if (els.sms) els.sms.checked = !!s.sms;
-    if (els.push) els.push.checked = !!s.push;
-    if (els.dailySummary) els.dailySummary.checked = !!s.dailySummary;
-    if (els.notifFrequency) els.notifFrequency.value = s.notifFrequency ?? defaults.notifFrequency;
-    if (els.refresh) els.refresh.value = s.refresh ?? defaults.refresh;
-    if (els.timezone) els.timezone.value = s.timezone ?? defaults.timezone;
-    if (els.datefmt) els.datefmt.value = s.datefmt ?? defaults.datefmt;
-    if (els.units) els.units.value = s.units ?? defaults.units;
-    if (els.dark) els.dark.checked = !!s.dark;
-    if (els.autosave) els.autosave.checked = s.autosave ?? true;
-    if (els.retention) els.retention.value = s.retention ?? defaults.retention;
-    if (els.backup) els.backup.value = s.backup ?? defaults.backup;
-    if (els.exportfmt) els.exportfmt.value = s.exportfmt ?? defaults.exportfmt;
-
     if (els.autoAdjust) els.autoAdjust.checked = !!s.autoAdjust;
     // tempMin/tempMax are driven by the active pond config — only apply from localStorage if no active config
     if (!getActiveThresholds()) {
@@ -203,7 +141,7 @@ export function init() {
     if (els.tempSens) els.tempSens.value = String(s.tempSens ?? defaults.tempSens);
     if (els.tempMonitor) els.tempMonitor.checked = s.tempMonitor ?? true;
 
-    document.body.classList.toggle('theme-dark', !!s.dark);
+    // Theme controls were removed from the Configuration UI.
   }
 
   function load() {
@@ -269,28 +207,16 @@ export function init() {
 
   // Auto-save on changes when enabled
   const watch = [
-    els.email, els.sms, els.push, els.dailySummary,
-    els.notifFrequency, els.refresh, els.timezone, els.datefmt, els.units,
-    els.dark, els.autosave,
-    els.retention, els.backup, els.exportfmt,
-
     els.autoAdjust, els.tempMin, els.tempMax, els.tempOpt, els.tempSens, els.tempMonitor,
     els.thPhMin, els.thPhMax, els.thDoMin, els.thTurbMax,
   ].filter(Boolean);
 
   for (const el of watch) {
     el.addEventListener('change', () => {
-      if (els.autosave?.checked) save();
-      else {
-        applyState(readState());
-        // keep thresholds in sync with the visible values even before save
-        saveThresholdInputs();
-      }
+      // Auto-save controls were removed from the Configuration UI.
+      // Keep local settings applied and thresholds in sync as the user edits.
+      applyState(readState());
+      saveThresholdInputs();
     });
   }
-
-  // Data buttons (placeholder actions)
-  els.export?.addEventListener('click', () => alert('Export started (demo UI).'));
-  els.clear?.addEventListener('click', () => alert('Cache cleared (demo UI).'));
-  els.reset?.addEventListener('click', reset);
 }

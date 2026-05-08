@@ -368,7 +368,7 @@ function setupTopbarPondSelector() {
         const pond   = ponds.find(p => p.id === id);
         if (pond) {
           const isConfigured = !!(active?.isActive);
-          setActivePond({ ...pond, species: isConfigured ? (active.species || '') : '' });
+          setActivePond({ ...pond, species: isConfigured ? (active.species || '') : null });
         } else {
           setActivePond(id);
         }

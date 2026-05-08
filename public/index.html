@@ -501,6 +501,16 @@
                   <span class="switch-ui" aria-hidden="true"></span>
                 </label>
               </div>
+              <div class="alert-email-toggle-row">
+                <span class="badge-pill" style="background:var(--green-light);color:var(--green-dark);border:1px solid rgba(34,197,94,0.2);">
+                  <svg class="icon icon-14" style="vertical-align:middle;margin-right:6px;"><use href="#icon-message"/></svg>
+                  SMS alerts
+                </span>
+                <label class="switch" title="Enable SMS alerts for your account (requires phone number)">
+                  <input type="checkbox" id="notif-sms-toggle">
+                  <span class="switch-ui" aria-hidden="true"></span>
+                </label>
+              </div>
               <button type="button" id="btn-mark-all-resolved" class="btn btn-outline btn-sm">
                 <svg class="icon icon-16" style="vertical-align:middle"><use href="#icon-check"/></svg>
                 Mark all resolved
@@ -522,6 +532,10 @@
           <div id="notif-config-warning" class="alert-inline-warning" style="display:none">
             <svg class="icon icon-14" style="vertical-align:middle;margin-right:6px;"><use href="#icon-warning"/></svg>
             EmailJS is not configured. Add <code>EMAILJS_PUBLIC_KEY</code>, <code>EMAILJS_SERVICE_ID</code>, and <code>EMAILJS_TEMPLATE_ID</code> to your <code>.env</code> file.
+          </div>
+          <div id="notif-sms-warning" class="alert-inline-warning" style="display:none">
+            <svg class="icon icon-14" style="vertical-align:middle;margin-right:6px;"><use href="#icon-warning"/></svg>
+            SMS alerts require a phone number. Add one in <strong>My Profile</strong>, then return here to enable SMS alerts.
           </div>
 
           <div class="alert-list-scroll">
@@ -927,19 +941,25 @@
 
       <!-- Pond Selector -->
       <div class="card cfg-topcard" id="pond-mgmt-section">
-        <div class="cfg-top-title">
-          <svg class="icon icon-16"><use href="#icon-droplet"/></svg>
-          <div>
-            <div class="cfg-top-h">Pond Management</div>
-            <div class="cfg-top-sub">Select a pond to manage its species configurations and thresholds</div>
+        <div class="pm-head">
+          <div class="pm-head-left">
+            <div class="pm-title">
+              <svg class="icon icon-16"><use href="#icon-droplet"/></svg>
+              <div>
+                <div class="pm-h">Pond Management</div>
+                <div class="pm-sub">Manage pond configurations and thresholds. Changes apply instantly across monitoring.</div>
+              </div>
+            </div>
           </div>
         </div>
-        <div class="pond-selector-row">
-          <div class="pond-selector-wrap">
-            <label for="pond-selector" class="pond-selector-label">Active Pond</label>
-            <select id="pond-selector" class="pond-selector-select"></select>
+
+        <div class="pm-toolbar">
+          <div class="pm-pond">
+            <label for="pond-selector" class="pm-label">Active Pond</label>
+            <select id="pond-selector" class="pm-select"></select>
           </div>
-          <div class="pond-selector-btns">
+
+          <div class="pm-actions" aria-label="Pond actions">
             <button type="button" class="btn btn-outline btn-sm" id="btn-add-pond">
               <svg class="icon icon-14"><use href="#icon-plus"/></svg> Add Pond
             </button>
@@ -949,20 +969,25 @@
           </div>
         </div>
 
-        <!-- Active Config Status -->
-        <div class="pond-active-cfg-bar">
-          <div class="pond-active-cfg-info">
-            <span class="pond-active-cfg-lbl">Active Configuration:</span>
-            <span id="pond-active-config-label" class="pond-active-cfg-name">—</span>
-            <span id="pond-active-species" class="badge-pill species-badge">—</span>
+        <div class="pm-status">
+          <div class="pm-status-main">
+            <div class="pm-status-label">Active Configuration</div>
+            <div class="pm-status-value">
+              <span id="pond-active-config-label" class="pm-active-name">—</span>
+              <span id="pond-active-species" class="badge-pill species-badge" style="display:none">—</span>
+            </div>
           </div>
-          <button type="button" class="btn btn-sm btn-outline" id="btn-assign-config">
-            <svg class="icon icon-14"><use href="#icon-plus"/></svg> Assign Config
-          </button>
+          <div class="pm-status-actions">
+            <button type="button" class="btn btn-sm btn-outline" id="btn-assign-config">
+              <svg class="icon icon-14"><use href="#icon-plus"/></svg> Assign Preset
+            </button>
+            <button type="button" class="btn btn-sm btn-primary" id="btn-create-custom-config">
+              <svg class="icon icon-14"><use href="#icon-plus"/></svg> Create Custom Config
+            </button>
+          </div>
         </div>
 
-        <!-- Pond Config List -->
-        <div id="pond-config-list" class="pond-config-list">
+        <div id="pond-config-list" class="pm-configs" aria-label="Pond configurations">
           <div class="pond-cfg-empty">Select a pond to view its configurations.</div>
         </div>
       </div>
@@ -1080,165 +1105,6 @@
               </label>
             </div>
           </div>
-        </div>
-      </div>
-
-      <div class="config-grid">
-        <div class="card cfg-card">
-          <div class="cfg-head">
-            <div class="cfg-head-title"><svg class="icon icon-16"><use href="#icon-bell"/></svg> Notification Preferences</div>
-          </div>
-
-          <div class="cfg-list">
-            <div class="cfg-item">
-              <div class="cfg-item-main">
-                <div class="cfg-item-title">Email Notifications</div>
-                <div class="cfg-item-sub">Receive alerts via email</div>
-              </div>
-              <label class="switch">
-                <input type="checkbox" id="cfg-email" checked>
-                <span class="switch-ui" aria-hidden="true"></span>
-              </label>
-            </div>
-            <div class="cfg-item">
-              <div class="cfg-item-main">
-                <div class="cfg-item-title">SMS Alerts</div>
-                <div class="cfg-item-sub">Critical alerts via SMS</div>
-              </div>
-              <label class="switch">
-                <input type="checkbox" id="cfg-sms" checked>
-                <span class="switch-ui" aria-hidden="true"></span>
-              </label>
-            </div>
-            <div class="cfg-item">
-              <div class="cfg-item-main">
-                <div class="cfg-item-title">Push Notifications</div>
-                <div class="cfg-item-sub">Browser push notifications</div>
-              </div>
-              <label class="switch">
-                <input type="checkbox" id="cfg-push">
-                <span class="switch-ui" aria-hidden="true"></span>
-              </label>
-            </div>
-            <div class="cfg-item">
-              <div class="cfg-item-main">
-                <div class="cfg-item-title">Daily Summary</div>
-                <div class="cfg-item-sub">Daily report at 6 AM</div>
-              </div>
-              <label class="switch">
-                <input type="checkbox" id="cfg-daily-summary" checked>
-                <span class="switch-ui" aria-hidden="true"></span>
-              </label>
-            </div>
-
-            <div class="cfg-field">
-              <label for="cfg-notif-frequency">Notification Frequency</label>
-              <select id="cfg-notif-frequency">
-                <option value="immediate">Immediate</option>
-                <option value="hourly">Hourly digest</option>
-                <option value="daily">Daily digest</option>
-              </select>
-            </div>
-          </div>
-        </div>
-
-        <div class="card cfg-card">
-          <div class="cfg-head">
-            <div class="cfg-head-title">System Settings</div>
-          </div>
-
-          <div class="cfg-list">
-            <div class="cfg-field">
-              <label for="cfg-refresh">Data Refresh Interval</label>
-              <select id="cfg-refresh">
-                <option value="10">10 seconds</option>
-                <option value="30" selected>30 seconds</option>
-                <option value="60">60 seconds</option>
-              </select>
-            </div>
-            <div class="cfg-field">
-              <label for="cfg-timezone">Time Zone</label>
-              <select id="cfg-timezone">
-                <option>Central (CST)</option>
-                <option>UTC</option>
-                <option>Asia/Manila</option>
-              </select>
-            </div>
-            <div class="cfg-field">
-              <label for="cfg-datefmt">Date Format</label>
-              <select id="cfg-datefmt">
-                <option>MM/DD/YYYY</option>
-                <option>DD/MM/YYYY</option>
-                <option>YYYY-MM-DD</option>
-              </select>
-            </div>
-            <div class="cfg-field">
-              <label for="cfg-units">Unit System</label>
-              <select id="cfg-units">
-                <option>Imperial</option>
-                <option>Metric</option>
-              </select>
-            </div>
-
-            <div class="cfg-item">
-              <div class="cfg-item-main">
-                <div class="cfg-item-title">Dark Mode</div>
-                <div class="cfg-item-sub">Switch to dark theme</div>
-              </div>
-              <label class="switch">
-                <input type="checkbox" id="cfg-dark">
-                <span class="switch-ui" aria-hidden="true"></span>
-              </label>
-            </div>
-            <div class="cfg-item">
-              <div class="cfg-item-main">
-                <div class="cfg-item-title">Auto-Save</div>
-                <div class="cfg-item-sub">Automatically save changes</div>
-              </div>
-              <label class="switch">
-                <input type="checkbox" id="cfg-autosave" checked>
-                <span class="switch-ui" aria-hidden="true"></span>
-              </label>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div class="card cfg-card cfg-data">
-        <div class="cfg-head">
-          <div class="cfg-head-title">Data Management</div>
-        </div>
-        <div class="cfg-data-grid">
-          <div class="cfg-field">
-            <label for="cfg-retention">Data Retention Period</label>
-            <select id="cfg-retention">
-              <option>3 months</option>
-              <option>6 months</option>
-              <option selected>1 year</option>
-              <option>2 years</option>
-            </select>
-          </div>
-          <div class="cfg-field">
-            <label for="cfg-backup">Backup Frequency</label>
-            <select id="cfg-backup">
-              <option>Weekly</option>
-              <option selected>Daily</option>
-              <option>Hourly</option>
-            </select>
-          </div>
-          <div class="cfg-field">
-            <label for="cfg-exportfmt">Export Format</label>
-            <select id="cfg-exportfmt">
-              <option selected>CSV</option>
-              <option>Excel</option>
-              <option>PDF</option>
-            </select>
-          </div>
-        </div>
-        <div class="cfg-btnrow">
-          <button type="button" class="btn btn-outline" id="cfg-export">Export All Data</button>
-          <button type="button" class="btn btn-outline" id="cfg-clear">Clear Cache</button>
-          <button type="button" class="btn btn-outline" id="cfg-reset">Reset to Defaults</button>
         </div>
       </div>
 
