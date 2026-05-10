@@ -859,6 +859,14 @@ function setupAccountMenu() {
 // ─────────────────────────────────────────────────────────────────────────────
 
 function init() {
+  // Initialize theme manager FIRST to prevent flash of unstyled content
+  if (typeof ThemeManager !== 'undefined' && typeof ThemeToggle !== 'undefined') {
+    ThemeManager.init((isDark) => {
+      ThemeToggle.updateIcon(isDark);
+    });
+    ThemeToggle.init();
+  }
+
   setupNavigation();
   setupHamburger();
   setupClock();

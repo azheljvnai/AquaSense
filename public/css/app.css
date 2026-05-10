@@ -277,6 +277,28 @@ pre, code { max-width: 100%; }
 }
 .topbar-pond-select:focus { outline: none; }
 
+/* Theme toggle button */
+.theme-toggle-btn {
+  display: flex; align-items: center; justify-content: center;
+  width: 32px; height: 32px;
+  background: var(--panel); border: 1px solid var(--border);
+  border-radius: 8px; cursor: pointer;
+  box-shadow: var(--shadow-sm);
+  transition: background 0.2s ease, border-color 0.2s ease;
+}
+.theme-toggle-btn:hover {
+  background: var(--hover);
+  border-color: var(--border-hover);
+}
+.theme-toggle-btn:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
+}
+.theme-toggle-btn .icon {
+  color: var(--text-2);
+  transition: color 0.2s ease;
+}
+
 /* Dashboard pond badge */
 .page-title-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 4px; }
 .page-title-row .page-title { margin-bottom: 0; }

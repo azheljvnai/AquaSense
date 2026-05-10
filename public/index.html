@@ -6,6 +6,19 @@
 <title>CrayFarm — Dashboard</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/app.css">
+<script>
+  // Apply saved theme immediately to prevent flash of unstyled content (FOUC)
+  (function() {
+    try {
+      const saved = localStorage.getItem('aquasense.theme.v1');
+      if (saved === 'dark') {
+        document.documentElement.classList.add('theme-dark');
+      }
+    } catch (e) {
+      // localStorage unavailable, use default light theme
+    }
+  })();
+</script>
 </head>
 <body>
 <svg xmlns="http://www.w3.org/2000/svg" style="display:none" aria-hidden="true">
@@ -139,6 +152,9 @@
             <option value="">Loading ponds…</option>
           </select>
         </div>
+        <button id="theme-toggle-btn" class="theme-toggle-btn" aria-label="Switch to dark mode" title="Toggle theme">
+          <svg class="icon icon-18"><use href="#icon-moon"/></svg>
+        </button>
         <span id="fb-lbl" class="status-chip offline">OFFLINE</span>
         <span id="hclock" class="topbar-clock">--:--:--</span>
       </div>
@@ -326,11 +342,9 @@
           <div id="hist-week-nav" class="hist-navigator" style="display:none">
             <button type="button" id="hist-week-prev" class="btn btn-outline btn-sm" aria-label="Previous week">
               <svg class="icon icon-14"><use href="#icon-chevron-left"/></svg>
-              Previous
             </button>
             <span id="hist-week-label" class="hist-period-label" role="status">Mon 05 May – Sun 11 May 2025</span>
             <button type="button" id="hist-week-next" class="btn btn-outline btn-sm" aria-label="Next week">
-              Next
               <svg class="icon icon-14"><use href="#icon-chevron-right"/></svg>
             </button>
           </div>
@@ -338,11 +352,9 @@
           <div id="hist-month-nav" class="hist-navigator" style="display:none">
             <button type="button" id="hist-month-prev" class="btn btn-outline btn-sm" aria-label="Previous month">
               <svg class="icon icon-14"><use href="#icon-chevron-left"/></svg>
-              Previous
             </button>
             <span id="hist-month-label" class="hist-period-label" role="status">May 2025</span>
             <button type="button" id="hist-month-next" class="btn btn-outline btn-sm" aria-label="Next month">
-              Next
               <svg class="icon icon-14"><use href="#icon-chevron-right"/></svg>
             </button>
           </div>
@@ -1068,16 +1080,7 @@
               </div>
             </div>
 
-            <div class="cfg-item cfg-item-tight">
-              <div class="cfg-item-main">
-                <div class="cfg-item-title">Auto-Adjust Parameters</div>
-                <div class="cfg-item-sub">Automatically adjust based on population</div>
-              </div>
-              <label class="switch">
-                <input type="checkbox" id="cfg-auto-adjust">
-                <span class="switch-ui" aria-hidden="true"></span>
-              </label>
-            </div>
+
           </div>
         </div>
 
@@ -1118,16 +1121,7 @@
               </div>
             </div>
 
-            <div class="cfg-item cfg-item-tight">
-              <div class="cfg-item-main">
-                <div class="cfg-item-title">Temperature Monitoring</div>
-                <div class="cfg-item-sub">Real-time temperature tracking</div>
-              </div>
-              <label class="switch">
-                <input type="checkbox" id="cfg-temp-monitor" checked>
-                <span class="switch-ui" aria-hidden="true"></span>
-              </label>
-            </div>
+
           </div>
         </div>
       </div>
@@ -1220,6 +1214,8 @@
 <input id="fb-url" type="hidden" value="" />
 
 <script src="vendor/chart.umd.min.js"></script>
+<script src="js/theme-manager.js"></script>
+<script src="js/theme-toggle.js"></script>
 <script type="module" src="js/app.js"></script>
 
 <!-- Account popover — lives on body so sidebar overflow:auto doesn't clip it -->

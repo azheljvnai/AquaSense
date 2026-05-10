@@ -35,24 +35,20 @@ export function init() {
     thPhMax: document.getElementById('cfg-th-ph-max'),
     thDoMin: document.getElementById('cfg-th-do-min'),
     thTurbMax: document.getElementById('cfg-th-turb-max'),
-    autoAdjust: document.getElementById('cfg-auto-adjust'),
     tempMin: document.getElementById('cfg-temp-min'),
     tempMax: document.getElementById('cfg-temp-max'),
     tempOpt: document.getElementById('cfg-temp-opt'),
     tempSens: document.getElementById('cfg-temp-sens'),
-    tempMonitor: document.getElementById('cfg-temp-monitor'),
   };
 
   if (!els.save) return;
 
   const KEY = 'aquasense.settings.v1';
   const defaults = {
-    autoAdjust: false,
     tempMin: 20,
     tempMax: 26,
     tempOpt: 23,
     tempSens: 65,
-    tempMonitor: true,
   };
 
   function populateThresholdInputs() {
@@ -121,17 +117,14 @@ export function init() {
 
   function readState() {
     return {
-      autoAdjust: !!els.autoAdjust?.checked,
       tempMin: Number(els.tempMin?.value) || defaults.tempMin,
       tempMax: Number(els.tempMax?.value) || defaults.tempMax,
       tempOpt: Number(els.tempOpt?.value) || defaults.tempOpt,
       tempSens: Number(els.tempSens?.value) || defaults.tempSens,
-      tempMonitor: !!els.tempMonitor?.checked,
     };
   }
 
   function applyState(s) {
-    if (els.autoAdjust) els.autoAdjust.checked = !!s.autoAdjust;
     // tempMin/tempMax are driven by the active pond config — only apply from localStorage if no active config
     if (!getActiveThresholds()) {
       if (els.tempMin) els.tempMin.value = String(s.tempMin ?? defaults.tempMin);
@@ -139,7 +132,6 @@ export function init() {
     }
     if (els.tempOpt) els.tempOpt.value = String(s.tempOpt ?? defaults.tempOpt);
     if (els.tempSens) els.tempSens.value = String(s.tempSens ?? defaults.tempSens);
-    if (els.tempMonitor) els.tempMonitor.checked = s.tempMonitor ?? true;
 
     // Theme controls were removed from the Configuration UI.
   }
@@ -207,7 +199,7 @@ export function init() {
 
   // Auto-save on changes when enabled
   const watch = [
-    els.autoAdjust, els.tempMin, els.tempMax, els.tempOpt, els.tempSens, els.tempMonitor,
+    els.tempMin, els.tempMax, els.tempOpt, els.tempSens,
     els.thPhMin, els.thPhMax, els.thDoMin, els.thTurbMax,
   ].filter(Boolean);
 

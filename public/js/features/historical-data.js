@@ -532,10 +532,16 @@ export function init() {
     const noDataEl  = document.getElementById('hist-no-data');
     const chartWrap = document.getElementById('hist-chart-wrap');
 
-    // No persisted history yet — fall back to live spkData buffer (same as dashboard)
+    // Check if we're viewing a past period (not current)
+    const isCurrentPeriod = (activeRange === 'week' && weekOffset === 0) ||
+                            (activeRange === 'month' && monthOffset === 0) ||
+                            (activeRange === '24h');
+
+    // No persisted history yet — fall back to live spkData buffer ONLY for current periods
     if (!readings.length) {
       const len = (spkData.ph || []).length;
-      if (!len) {
+      // Only use live data if viewing current period AND live data exists
+      if (!len || !isCurrentPeriod) {
         if (noDataEl)  noDataEl.style.display  = 'flex';
         if (chartWrap) chartWrap.style.display = 'none';
         updateHistoricalChart(histChart, [], { ph: [], do: [], turb: [], temp: [] }, activeMetric);

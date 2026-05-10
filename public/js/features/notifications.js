@@ -16,6 +16,9 @@ import {
   fbAddDoc,
   fbServerTimestamp,
   fbGetIdToken,
+  fbQuery,
+  fbWhere,
+  fbGetDocs,
 } from '../firebase-client.js';
 import { getConfig } from '../config.js';
 import { getActiveThresholds } from '../pond-config.js';
@@ -32,7 +35,7 @@ const SENSOR_UNITS  = { ph: '',   do: ' mg/L',         turb: ' NTU',      temp: 
 
 // ─── Module State ─────────────────────────────────────────────────────────────
 
-const _cooldownMap = new Map();   // `${channel}:${pondId}:${sensorKey}` → last-sent ms
+const _cooldownMap = new Map();   // `${channel}:${uid}:${pondId}:${sensorKey}` → last-sent ms
 
 let _currentUser        = null;
 let _emailjsPublicKey   = '';
@@ -133,55 +136,81 @@ export async function savePrefs(uid, prefs) {
 // ─── Exported: handleAlert ────────────────────────────────────────────────────
 
 /**
- * Orchestrates: auth check → resolved check → prefs check → cooldown check
- * → sendEmail → writeLog → toast on failure.
+ * Orchestrates: query all active users → resolved check → prefs check → cooldown check
+ * → sendEmail/SMS → writeLog → toast on failure.
  * If offline, enqueues for retry.
+ * 
+ * FIXED: Now sends notifications to ALL active users, not just the logged-in user.
  */
 export async function handleAlert(alert) {
-  // 1. Auth guard
-  if (!_currentUser?.uid) return;
-  const uid = _currentUser.uid;
-
-  // 2. Skip resolved alerts
+  // 1. Skip resolved alerts
   if (alert?.resolved) return;
 
-  // 3. Load prefs
-  let prefs;
+  // 2. Query all active users from Firestore
+  let activeUsers = [];
   try {
-    prefs = await loadPrefs(uid);
-  } catch {
+    const usersRef = fbCollection(fbFirestore(), 'users');
+    const q = fbQuery(usersRef, fbWhere('status', '==', 'active'));
+    const snapshot = await fbGetDocs(q);
+    activeUsers = snapshot.docs.map(doc => ({ uid: doc.id, ...doc.data() }));
+  } catch (err) {
+    console.error('[NotificationService] Failed to query active users:', err);
     return;
   }
 
-  const pondId    = alert.pond || 'default';
+  if (activeUsers.length === 0) return;
+
+  // 3. Extract alert context
+  const pondId = alert.pond || 'default';
   const sensorKey = alert.key;
 
-  const channels = [];
-  if (prefs?.email?.enabled) channels.push('email');
-  if (prefs?.sms?.enabled) channels.push('sms');
-  if (!channels.length) return;
+  // 4. Process each active user
+  for (const user of activeUsers) {
+    try {
+      // 4a. Load user preferences
+      let prefs;
+      try {
+        prefs = await loadPrefs(user.uid);
+      } catch {
+        continue; // Skip this user if prefs can't be loaded
+      }
 
-  // 5. Offline — enqueue and bail
-  if (!navigator.onLine) {
-    enqueueRetry(uid, alert, channels);
-    return;
-  }
+      // 4b. Determine enabled channels
+      const channels = [];
+      if (prefs?.email?.enabled) channels.push('email');
+      if (prefs?.sms?.enabled) channels.push('sms');
+      if (channels.length === 0) continue;
 
-  // 6. Dispatch enabled channels
-  for (const channel of channels) {
-    if (isCooledDown(channel, pondId, sensorKey)) continue;
-    markSent(channel, pondId, sensorKey);
+      // 4c. Check if offline — enqueue and skip
+      if (!navigator.onLine) {
+        enqueueRetry(user.uid, alert, channels);
+        continue;
+      }
 
-    const result = channel === 'email'
-      ? await sendEmail(prefs, alert)
-      : await sendSms(uid, alert);
+      // 4d. Dispatch each enabled channel
+      for (const channel of channels) {
+        // Check cooldown per user
+        if (isCooledDown(channel, user.uid, pondId, sensorKey)) continue;
+        markSent(channel, user.uid, pondId, sensorKey);
 
-    const status      = result.success ? 'sent' : 'failed';
-    const errorDetail = result.success ? null : (result.error?.message || String(result.error) || 'Unknown error');
-    await writeLog(uid, channel, alert, status, errorDetail);
+        // Send notification
+        const result = channel === 'email'
+          ? await sendEmail(prefs, alert)
+          : await sendSms(user.uid, alert);
 
-    if (!result.success) {
-      showToast(`${channel.toUpperCase()} notification failed: ${errorDetail}`, 'error');
+        // Log result
+        const status = result.success ? 'sent' : 'failed';
+        const errorDetail = result.success ? null : (result.error?.message || String(result.error) || 'Unknown error');
+        await writeLog(user.uid, channel, alert, status, errorDetail);
+
+        // Show toast on failure (only for logged-in user to avoid spam)
+        if (!result.success && user.uid === _currentUser?.uid) {
+          showToast(`${channel.toUpperCase()} notification failed: ${errorDetail}`, 'error');
+        }
+      }
+    } catch (error) {
+      console.error(`[NotificationService] Failed to process notifications for user ${user.uid}:`, error);
+      // Continue processing other users
     }
   }
 }
@@ -267,16 +296,17 @@ function initPrefsUI(user) {
 /**
  * Returns true if the pond/sensor combo is WITHIN the 15-min cooldown window
  * (i.e. a notification was recently sent — do NOT send again yet).
+ * Updated to track cooldown per user.
  */
-function isCooledDown(channel, pondId, sensorKey) {
-  const key  = `${channel}:${pondId}:${sensorKey}`;
+function isCooledDown(channel, uid, pondId, sensorKey) {
+  const key  = `${channel}:${uid}:${pondId}:${sensorKey}`;
   const last = _cooldownMap.get(key);
   if (last == null) return false;
   return (Date.now() - last) < COOLDOWN_MS;
 }
 
-function markSent(channel, pondId, sensorKey) {
-  _cooldownMap.set(`${channel}:${pondId}:${sensorKey}`, Date.now());
+function markSent(channel, uid, pondId, sensorKey) {
+  _cooldownMap.set(`${channel}:${uid}:${pondId}:${sensorKey}`, Date.now());
 }
 
 // ─── Internal: sendEmail ─────────────────────────────────────────────────────
@@ -479,8 +509,8 @@ async function flushRetryQueue() {
 
         const pondId = item.alert?.pond || 'default';
         const sensorKey = item.alert?.key;
-        if (sensorKey && isCooledDown(channel, pondId, sensorKey)) continue;
-        if (sensorKey) markSent(channel, pondId, sensorKey);
+        if (sensorKey && isCooledDown(channel, item.uid, pondId, sensorKey)) continue;
+        if (sensorKey) markSent(channel, item.uid, pondId, sensorKey);
 
         const result = channel === 'email'
           ? await sendEmail(prefs, item.alert)

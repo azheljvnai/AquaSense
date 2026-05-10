@@ -21,11 +21,11 @@ export const SPECIES_PRESETS = {
       ph:   { optimalMin: 6.5,  optimalMax: 8.5,
               acceptable1Min: null, acceptable1Max: 6.49, acceptable2Min: 8.51, acceptable2Max: null,
               stress1Min: null,     stress1Max: null,     stress2Min: null,     stress2Max: null },
-      temp: { optimalMin: 20,   optimalMax: 30,
-              acceptable1Min: null, acceptable1Max: 19.99, acceptable2Min: 30.01, acceptable2Max: null,
-              stress1Min: null,     stress1Max: null,      stress2Min: null,      stress2Max: null },
+      temp: { optimalMin: 24,   optimalMax: 30,
+              acceptable1Min: 20, acceptable1Max: 23.99, acceptable2Min: 30.01, acceptable2Max: 33,
+              stress1Min: null,     stress1Max: 19.99,      stress2Min: 33.01,      stress2Max: null },
       do:   { optimalMin: 5,    acceptableMin: null, stressMin: null },
-      turb: { optimalMax: 40,   acceptableMax: 90,  stressMax: 100, warnMax: null },
+      turb: { optimalMax: 40,   acceptableMax: 80,  stressMax: null, warnMax: null },
     },
   },
   tilapia: {
@@ -137,7 +137,7 @@ export function getBadgeForSpecies(key, val) {
   if (key === 'turb') {
     const tb = t.turb;
     if (val <= tb.optimalMax)    return { c: 'ok',     l: 'Normal' };
-    if (val <= tb.acceptableMax) return { c: 'warn',   l: 'Warning' };
+    if (tb.acceptableMax && val <= tb.acceptableMax) return { c: 'warn',   l: 'Warning' };
     return                              { c: 'danger', l: 'Critical' };
   }
 
@@ -151,6 +151,13 @@ export function getBadgeForSpecies(key, val) {
   if (key === 'temp') {
     const tb = t.temp;
     if (val >= tb.optimalMin && val <= tb.optimalMax) return { c: 'ok', l: 'Normal' };
+    // Check warning ranges (acceptable1 and acceptable2)
+    if (tb.acceptable1Min !== null && tb.acceptable1Max !== null && val >= tb.acceptable1Min && val <= tb.acceptable1Max) {
+      return { c: 'warn', l: 'Warning' };
+    }
+    if (tb.acceptable2Min !== null && tb.acceptable2Max !== null && val >= tb.acceptable2Min && val <= tb.acceptable2Max) {
+      return { c: 'warn', l: 'Warning' };
+    }
     return { c: 'danger', l: 'Critical' };
   }
 
