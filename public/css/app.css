@@ -616,6 +616,10 @@ dialog::backdrop { background: rgba(0,0,0,0.45); backdrop-filter: blur(4px); }
 .hist-page-btn.active { background: var(--blue); color: white; border-color: var(--blue); }
 .hist-page-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
+/* Navigator controls */
+.hist-navigator { display: flex; align-items: center; gap: 12px; }
+.hist-period-label { font-size: 0.875rem; font-weight: 600; color: var(--text); min-width: 200px; text-align: center; }
+
 /* ── 13. Feeding page ───────────────────────────────────────────────────── */
 .feed-metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 24px; }
 .feed-schedule-list { list-style: none; }

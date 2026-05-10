@@ -322,6 +322,30 @@
               <button type="button" class="hist-metric-btn" data-metric="temp">Temp</button>
             </div>
           </div>
+          <!-- Week Navigator (visible when range === 'week') -->
+          <div id="hist-week-nav" class="hist-navigator" style="display:none">
+            <button type="button" id="hist-week-prev" class="btn btn-outline btn-sm" aria-label="Previous week">
+              <svg class="icon icon-14"><use href="#icon-chevron-left"/></svg>
+              Previous
+            </button>
+            <span id="hist-week-label" class="hist-period-label" role="status">Mon 05 May – Sun 11 May 2025</span>
+            <button type="button" id="hist-week-next" class="btn btn-outline btn-sm" aria-label="Next week">
+              Next
+              <svg class="icon icon-14"><use href="#icon-chevron-right"/></svg>
+            </button>
+          </div>
+          <!-- Month Navigator (visible when range === 'month') -->
+          <div id="hist-month-nav" class="hist-navigator" style="display:none">
+            <button type="button" id="hist-month-prev" class="btn btn-outline btn-sm" aria-label="Previous month">
+              <svg class="icon icon-14"><use href="#icon-chevron-left"/></svg>
+              Previous
+            </button>
+            <span id="hist-month-label" class="hist-period-label" role="status">May 2025</span>
+            <button type="button" id="hist-month-next" class="btn btn-outline btn-sm" aria-label="Next month">
+              Next
+              <svg class="icon icon-14"><use href="#icon-chevron-right"/></svg>
+            </button>
+          </div>
           <div class="hist-actions">
             <select id="hist-range">
               <option value="24h" selected>Last 24 Hours</option>

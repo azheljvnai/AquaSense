@@ -1,6 +1,13 @@
 /**
  * Feeding_Module — live Firebase RTDB-driven feeding management.
- * Replaces all static content in #page-feeding with real data.
+ *
+ * Firebase RTDB paths (matching ESP32 firmware):
+ *   /devices/{id}/feeding/manualFeed          boolean — set true to trigger feed
+ *   /devices/{id}/feeding/schedules/times/0   "HH:MM" — schedule slot 0
+ *   /devices/{id}/feeding/schedules/times/1   "HH:MM" — schedule slot 1
+ *   ...
+ *   /devices/{id}/feedLog/{timestamp-key}/reason     string
+ *   /devices/{id}/feedLog/{timestamp-key}/timestamp  string "YYYY-MM-DD HH:MM:SS"
  */
 import { initFeedingChart } from '../charts.js';
 import {
@@ -15,11 +22,11 @@ import { getActivePond } from '../pond-context.js';
 // ── Module-level state ────────────────────────────────────────────────────────
 let _deviceId          = null;   // active device ID
 let _listeners         = [];     // RTDB unsubscribe functions
-let _schedules         = [];     // [{ key, time, days }] sorted by time
+let _schedules         = [];     // [{ index, time }] sorted by time
 let _logEntries        = [];     // [{ ts, type }] sorted descending, max 20
 let _feedChart         = null;   // Chart.js instance
 let _manualFeedTimeout = null;   // 10-second timeout handle
-let _editingKey        = null;   // schedule key being edited (null = new)
+let _editingIndex      = null;   // schedule index being edited (null = new)
 let _dispensing        = false;  // true while waiting for ESP32 to reset manualFeed
 
 // ── Public API ────────────────────────────────────────────────────────────────
@@ -35,14 +42,9 @@ export function init() {
 
   // Wire schedule form buttons
   document.getElementById('feed-add-schedule-btn')?.addEventListener('click', () => {
-    _editingKey = null;
+    _editingIndex = null;
     const input = document.getElementById('feed-schedule-input');
     if (input) input.value = '';
-    // Reset all day checkboxes to checked (default: every day)
-    for (let i = 0; i <= 6; i++) {
-      const checkbox = document.getElementById(`feed-day-${i}`);
-      if (checkbox) checkbox.checked = true;
-    }
     _showScheduleError('');
     document.getElementById('feed-schedule-form').style.display = '';
   });
@@ -94,23 +96,31 @@ export function init() {
 function _subscribe(deviceId) {
   const db = fbDatabase();
 
-  // 1. Schedules listener — whole feeding node
-  const feedingRef = fbRef(db, `/devices/${deviceId}/feeding`);
-  const unsubFeeding = fbOnValue(feedingRef, (snap) => {
+  // 1. Schedules listener — /feeding/schedules/times
+  const timesRef = fbRef(db, `/devices/${deviceId}/feeding/schedules/times`);
+  const unsubSchedules = fbOnValue(timesRef, (snap) => {
     _schedules = _parseSchedules(snap);
     _renderScheduleList();
     _updateMetricCards();
   }, (err) => console.error('[feeding] schedules listener error', err));
-  _listeners.push(unsubFeeding);
+  _listeners.push(unsubSchedules);
 
-  // 2. Log listener
-  const logRef = fbRef(db, `/devices/${deviceId}/feeding/log`);
+  // 2. Feed log listener — /feedLog (firmware writes here; app also writes here)
+  const logRef = fbRef(db, `/devices/${deviceId}/feedLog`);
   const unsubLog = fbOnValue(logRef, (snap) => {
     const entries = [];
     snap.forEach((child) => {
       const val = child.val();
-      if (val && typeof val.ts === 'number') {
-        entries.push({ ts: val.ts, type: val.type || 'Auto' });
+      if (!val) return;
+      // Firmware writes: { reason: "MANUAL"|"SCHED N", timestamp: "YYYY-MM-DD HH:MM:SS" }
+      // App writes:      { reason: "Manual"|"Scheduled", timestamp: "YYYY-MM-DD HH:MM:SS" }
+      if (typeof val.timestamp === 'string') {
+        const ts = _parseTimestamp(val.timestamp);
+        if (ts) {
+          const rawReason = (val.reason || '').toUpperCase();
+          const type = rawReason.startsWith('MANUAL') || rawReason === 'MANUAL' ? 'Manual' : 'Scheduled';
+          entries.push({ ts, type });
+        }
       }
     });
     entries.sort((a, b) => b.ts - a.ts);
@@ -118,7 +128,7 @@ function _subscribe(deviceId) {
     _renderFeedLog();
     _updateMetricCards();
     _updateWeeklyChart();
-  }, (err) => console.error('[feeding] log listener error', err));
+  }, (err) => console.error('[feeding] feedLog listener error', err));
   _listeners.push(unsubLog);
 
   // 3. manualFeed listener
@@ -157,36 +167,39 @@ function _teardown() {
 
 // ── Schedule helpers ──────────────────────────────────────────────────────────
 
+/**
+ * Parse the /feeding/schedules/times snapshot.
+ * Firebase stores numeric-keyed children as an array-like object:
+ *   { "0": "07:00", "1": "12:00", "2": "18:00" }
+ * Returns [{ index: 0, time: "07:00" }, ...]
+ */
 function _parseSchedules(snapshot) {
   const result = [];
   snapshot.forEach((child) => {
-    if (/^schedule\d+$/.test(child.key)) {
-      const val = child.val();
-      // Backward compatibility: handle both string (legacy) and object format
-      if (typeof val === 'string' && /^\d{2}:\d{2}$/.test(val)) {
-        // Legacy format: treat as every day
-        result.push({ key: child.key, time: val, days: [0, 1, 2, 3, 4, 5, 6] });
-      } else if (val && typeof val === 'object' && typeof val.time === 'string' && /^\d{2}:\d{2}$/.test(val.time)) {
-        // New format: { time, days }
-        const days = Array.isArray(val.days) ? val.days : [0, 1, 2, 3, 4, 5, 6];
-        result.push({ key: child.key, time: val.time, days });
-      }
+    const index = parseInt(child.key, 10);
+    const val   = child.val();
+    if (!isNaN(index) && typeof val === 'string' && /^\d{2}:\d{2}$/.test(val)) {
+      result.push({ index, time: val });
     }
   });
   result.sort((a, b) => a.time.localeCompare(b.time));
   return result;
 }
 
-export function _scheduleStatus(timeStr, days) {
+/**
+ * Parse "YYYY-MM-DD HH:MM:SS" timestamp string → Unix ms.
+ * Returns null if unparseable.
+ */
+function _parseTimestamp(str) {
+  // "2025-05-10 14:30:00" → replace space with T for ISO parsing
+  const iso = str.replace(' ', 'T');
+  const ms  = Date.parse(iso);
+  return isNaN(ms) ? null : ms;
+}
+
+export function _scheduleStatus(timeStr) {
   const [h, m] = timeStr.split(':').map(Number);
-  const now = new Date();
-  const todayDay = now.getDay(); // 0 = Sunday, 6 = Saturday
-  
-  // Check if schedule applies to today
-  if (!days || !days.includes(todayDay)) {
-    return 'not-today';
-  }
-  
+  const now     = new Date();
   const schedMs = new Date(now.getFullYear(), now.getMonth(), now.getDate(), h, m).getTime();
   const diffMin = (schedMs - now.getTime()) / 60000;
   if (diffMin < 0)   return 'completed';
@@ -197,15 +210,8 @@ export function _scheduleStatus(timeStr, days) {
 function _fmt12h(timeStr) {
   const [h, m] = timeStr.split(':').map(Number);
   const ampm = h >= 12 ? 'PM' : 'AM';
-  const h12 = h % 12 || 12;
+  const h12  = h % 12 || 12;
   return `${String(h12).padStart(2, '0')}:${String(m).padStart(2, '0')} ${ampm}`;
-}
-
-function _fmtDays(days) {
-  if (!days || days.length === 0) return 'Never';
-  if (days.length === 7) return 'Every day';
-  const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-  return days.map(d => dayNames[d]).join(', ');
 }
 
 function _renderScheduleList() {
@@ -223,26 +229,23 @@ function _renderScheduleList() {
     return;
   }
 
-  ul.innerHTML = _schedules.map(({ key, time, days }) => {
-    const status = _scheduleStatus(time, days);
+  ul.innerHTML = _schedules.map(({ index, time }) => {
+    const status = _scheduleStatus(time);
     const iconClass = status === 'completed' ? 'sched-icon--done'
       : status === 'upcoming' ? 'sched-icon--upcoming'
-      : status === 'not-today' ? 'sched-icon--inactive'
       : 'sched-icon--scheduled';
     const iconSvg = status === 'completed'
       ? '<svg class="icon icon-16"><use href="#icon-check"/></svg>'
       : '<svg class="icon icon-16"><use href="#icon-clock"/></svg>';
     const statusLabel = status === 'completed' ? '<span class="status-done">completed</span>'
       : status === 'upcoming' ? '<span class="status-pending">upcoming</span>'
-      : status === 'not-today' ? '<span class="status-inactive">not today</span>'
       : '<span class="status-pending">scheduled</span>';
-    const daysLabel = `<span class="sched-days">${_fmtDays(days)}</span>`;
     const actions = perms.canEditSchedules
       ? `<span class="actions">
-           <button class="um-btn-icon" data-action="edit" data-key="${key}" title="Edit">
+           <button class="um-btn-icon" data-action="edit" data-index="${index}" title="Edit">
              <svg class="icon icon-14"><use href="#icon-edit"/></svg>
            </button>
-           <button class="um-btn-icon danger" data-action="delete" data-key="${key}" title="Delete">
+           <button class="um-btn-icon danger" data-action="delete" data-index="${index}" title="Delete">
              <svg class="icon icon-14"><use href="#icon-trash"/></svg>
            </button>
          </span>`
@@ -254,7 +257,7 @@ function _renderScheduleList() {
           <span class="time">${_fmt12h(time)}</span>
           ${statusLabel}
         </div>
-        ${daysLabel}
+        <span class="sched-days">Every day</span>
       </div>
       ${actions}
     </li>`;
@@ -264,28 +267,19 @@ function _renderScheduleList() {
   ul.querySelectorAll('[data-action]').forEach((btn) => {
     btn.addEventListener('click', () => {
       const action = btn.dataset.action;
-      const key = btn.dataset.key;
-      if (action === 'edit') _startEditSchedule(key);
-      if (action === 'delete') _deleteSchedule(key);
+      const index  = parseInt(btn.dataset.index, 10);
+      if (action === 'edit')   _startEditSchedule(index);
+      if (action === 'delete') _deleteSchedule(index);
     });
   });
 }
 
-function _startEditSchedule(key) {
-  const sched = _schedules.find((s) => s.key === key);
+function _startEditSchedule(index) {
+  const sched = _schedules.find((s) => s.index === index);
   if (!sched) return;
-  _editingKey = key;
+  _editingIndex = index;
   const input = document.getElementById('feed-schedule-input');
   if (input) input.value = sched.time;
-  
-  // Set day checkboxes
-  for (let i = 0; i <= 6; i++) {
-    const checkbox = document.getElementById(`feed-day-${i}`);
-    if (checkbox) {
-      checkbox.checked = sched.days && sched.days.includes(i);
-    }
-  }
-  
   _showScheduleError('');
   document.getElementById('feed-schedule-form').style.display = '';
 }
@@ -296,41 +290,32 @@ async function _saveSchedule() {
     console.warn('Permission denied: canEditSchedules required');
     return;
   }
-  const input = document.getElementById('feed-schedule-input');
+  const input   = document.getElementById('feed-schedule-input');
   const timeVal = input ? input.value.trim() : '';
   if (!/^\d{2}:\d{2}$/.test(timeVal)) {
     _showScheduleError('Please enter a valid time (HH:MM).');
     return;
   }
-  
-  // Collect selected days
-  const days = [];
-  for (let i = 0; i <= 6; i++) {
-    const checkbox = document.getElementById(`feed-day-${i}`);
-    if (checkbox && checkbox.checked) {
-      days.push(i);
-    }
-  }
-  
-  if (days.length === 0) {
-    _showScheduleError('Please select at least one day.');
-    return;
-  }
-  
+
   const db = fbDatabase();
-  const key = _editingKey || _nextScheduleKey(_schedules.map((s) => s.key));
+
+  // Determine the index slot to write to
+  const index = _editingIndex !== null
+    ? _editingIndex
+    : _nextScheduleIndex(_schedules.map((s) => s.index));
+
   try {
-    // Write as object: { time, days }
-    await fbSet(fbRef(db, `/devices/${_deviceId}/feeding/${key}`), { time: timeVal, days });
+    // Write the time string to /feeding/schedules/times/<index>
+    await fbSet(fbRef(db, `/devices/${_deviceId}/feeding/schedules/times/${index}`), timeVal);
     document.getElementById('feed-schedule-form').style.display = 'none';
-    _editingKey = null;
+    _editingIndex = null;
     _showScheduleError('');
   } catch (err) {
     _showScheduleError('Save failed: ' + (err?.message || String(err)));
   }
 }
 
-async function _deleteSchedule(key) {
+async function _deleteSchedule(index) {
   const perms = window._rbacPerms || { canEditSchedules: false };
   if (!perms.canEditSchedules) {
     console.warn('Permission denied: canEditSchedules required');
@@ -338,19 +323,24 @@ async function _deleteSchedule(key) {
   }
   try {
     const db = fbDatabase();
-    // Use set(null) to remove — equivalent to remove()
-    await fbSet(fbRef(db, `/devices/${_deviceId}/feeding/${key}`), null);
+    // Remove the slot by setting null, then compact remaining slots
+    const remaining = _schedules
+      .filter((s) => s.index !== index)
+      .sort((a, b) => a.time.localeCompare(b.time));
+
+    // Rebuild the times object from scratch so indices stay contiguous
+    const newTimes = {};
+    remaining.forEach((s, i) => { newTimes[i] = s.time; });
+
+    await fbSet(fbRef(db, `/devices/${_deviceId}/feeding/schedules/times`), remaining.length ? newTimes : null);
   } catch (err) {
     console.error('[feeding] delete schedule error', err);
   }
 }
 
-export function _nextScheduleKey(existingKeys) {
-  const nums = existingKeys
-    .map((k) => parseInt(k.replace('schedule', ''), 10))
-    .filter((n) => !isNaN(n));
-  const max = nums.length ? Math.max(...nums) : 0;
-  return `schedule${max + 1}`;
+export function _nextScheduleIndex(existingIndices) {
+  if (existingIndices.length === 0) return 0;
+  return Math.max(...existingIndices) + 1;
 }
 
 function _showScheduleError(msg) {
@@ -379,12 +369,11 @@ function _renderFeedLog() {
   }
 
   container.innerHTML = _logEntries.map(({ ts, type }) => {
-    const rawType = type || 'Auto';
-    const typeClass = rawType.toLowerCase() === 'manual' ? 'feed-log-type--manual'
-      : rawType.toLowerCase() === 'auto' ? 'feed-log-type--auto'
+    const typeClass = type === 'Manual' ? 'feed-log-type--manual'
+      : type === 'Scheduled' ? 'feed-log-type--auto'
       : 'feed-log-type--unknown';
     return `<div class="feed-log-row">
-      <span class="feed-log-type ${typeClass}">${rawType}</span>
+      <span class="feed-log-type ${typeClass}">${type}</span>
       <span class="feed-log-time">${_fmtTimestamp(ts)}</span>
     </div>`;
   }).join('');
@@ -394,57 +383,30 @@ function _renderFeedLog() {
 
 export function _nextScheduleTime(schedules) {
   const now = new Date();
-  const todayDay = now.getDay();
-  
-  // Helper to get ms for a specific day and time
-  const getMs = (dayOffset, h, m) => {
-    const d = new Date(now);
-    d.setDate(d.getDate() + dayOffset);
-    d.setHours(h, m, 0, 0);
-    return d.getTime();
-  };
-  
-  const candidates = [];
-  
-  schedules.forEach((s) => {
+  const candidates = schedules.map((s) => {
     const [h, m] = s.time.split(':').map(Number);
-    const days = s.days || [0, 1, 2, 3, 4, 5, 6];
-    
-    // Check each day in the schedule
-    days.forEach((day) => {
-      // Calculate how many days ahead this day is
-      let daysAhead = day - todayDay;
-      if (daysAhead < 0) daysAhead += 7; // Next week
-      
-      const ms = getMs(daysAhead, h, m);
-      
-      // Only include if it's in the future
-      if (ms > now.getTime()) {
-        candidates.push(ms);
-      }
-    });
+    const ms = new Date(now.getFullYear(), now.getMonth(), now.getDate(), h, m).getTime();
+    // If already passed today, wrap to tomorrow
+    return ms > now.getTime() ? ms : ms + 86400000;
   });
-  
   if (candidates.length === 0) return null;
-  
-  // Return the earliest future occurrence
   return Math.min(...candidates);
 }
 
 function _fmtCountdown(ms) {
-  const now = Date.now();
+  const now     = Date.now();
   const diffMin = Math.round((ms - now) / 60000);
-  const h = Math.floor(diffMin / 60);
-  const m = diffMin % 60;
+  const h       = Math.floor(diffMin / 60);
+  const m       = diffMin % 60;
   const timeLabel = _fmt12h(new Date(ms).toTimeString().slice(0, 5));
   if (h === 0) return `in ${m}m (${timeLabel})`;
   return `in ${h}h ${m}m (${timeLabel})`;
 }
 
 export function _feedsTodayCount(logEntries) {
-  const now = new Date();
+  const now        = new Date();
   const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-  const endOfDay = startOfDay + 86400000;
+  const endOfDay   = startOfDay + 86400000;
   return logEntries.filter((e) => e.ts >= startOfDay && e.ts < endOfDay).length;
 }
 
@@ -484,32 +446,32 @@ function _updateMetricCards() {
 async function _updateWeeklyChart() {
   if (!_feedChart || !_deviceId) return;
 
-  // Build 7-day window (rolling, ending today)
   const DAY_MS = 86400000;
-  const now = new Date();
-  const days = [];
+  const now    = new Date();
+  const days   = [];
   for (let i = 6; i >= 0; i--) {
     const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i);
     days.push({
       label: d.toLocaleDateString(undefined, { weekday: 'short' }),
       start: d.getTime(),
-      end: d.getTime() + DAY_MS,
+      end:   d.getTime() + DAY_MS,
     });
   }
 
-  // Fetch all log entries for the 7-day window via a one-time get()
   let allEntries = [];
   try {
-    const db = fbDatabase();
-    const logRef = fbRef(db, `/devices/${_deviceId}/feeding/log`);
-    const snap = await fbGet(logRef);
+    const db     = fbDatabase();
+    const logRef = fbRef(db, `/devices/${_deviceId}/feedLog`);
+    const snap   = await fbGet(logRef);
     snap.forEach((child) => {
       const val = child.val();
-      if (val && typeof val.ts === 'number') allEntries.push(val.ts);
+      if (val && typeof val.timestamp === 'string') {
+        const ts = _parseTimestamp(val.timestamp);
+        if (ts) allEntries.push(ts);
+      }
     });
   } catch (err) {
     console.error('[feeding] weekly chart fetch error', err);
-    // Fall back to in-memory entries
     allEntries = _logEntries.map((e) => e.ts);
   }
 
@@ -517,17 +479,33 @@ async function _updateWeeklyChart() {
     allEntries.filter((ts) => ts >= start && ts < end).length
   );
 
-  _feedChart.data.labels = days.map((d) => d.label);
+  _feedChart.data.labels          = days.map((d) => d.label);
   _feedChart.data.datasets[0].data = counts;
   _feedChart.update('active');
 }
 
 // ── Manual Feed ───────────────────────────────────────────────────────────────
 
-async function _writeFeedLog(deviceId, type) {
-  const ts = Date.now();
-  const db = fbDatabase();
-  await fbSet(fbRef(db, `/devices/${deviceId}/feeding/log/${ts}`), { ts, type });
+/**
+ * Write a feed log entry to /feedLog/<timestamp-key> matching the firmware format:
+ *   { reason: "Manual", timestamp: "YYYY-MM-DD HH:MM:SS" }
+ */
+function _fmtRTDBTimestamp(date) {
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ` +
+         `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+}
+
+function _timestampToKey(ts) {
+  // "2025-05-10 14:30:00" → "2025-05-10_14-30-00"
+  return ts.replace(' ', '_').replace(/:/g, '-');
+}
+
+async function _writeFeedLog(deviceId, reason) {
+  const db  = fbDatabase();
+  const ts  = _fmtRTDBTimestamp(new Date());
+  const key = _timestampToKey(ts);
+  await fbSet(fbRef(db, `/devices/${deviceId}/feedLog/${key}`), { reason, timestamp: ts });
 }
 
 async function _triggerManualFeed() {
@@ -538,33 +516,34 @@ async function _triggerManualFeed() {
   }
   if (!_deviceId) return;
 
-  const btn = document.getElementById('feed-manual-btn');
+  const btn      = document.getElementById('feed-manual-btn');
   const statusEl = document.getElementById('feed-manual-status');
 
   try {
+    // Log first, then set the flag so the ESP32 picks it up
     await _writeFeedLog(_deviceId, 'Manual');
     const db = fbDatabase();
     await fbSet(fbRef(db, `/devices/${_deviceId}/feeding/manualFeed`), true);
 
-    if (btn) { btn.disabled = true; btn.textContent = '⟳ Dispensing…'; }
+    if (btn)      { btn.disabled = true; btn.textContent = '⟳ Dispensing…'; }
     if (statusEl) statusEl.textContent = '';
     _dispensing = true;
 
-    // 10-second timeout guard
+    // 10-second timeout guard in case ESP32 is offline
     _manualFeedTimeout = setTimeout(() => {
       _manualFeedTimeout = null;
-      _dispensing = false;
-      if (btn) { btn.disabled = false; btn.textContent = '▶ Manual Feed'; }
+      _dispensing        = false;
+      if (btn)      { btn.disabled = false; btn.textContent = '▶ Manual Feed'; }
       if (statusEl) statusEl.textContent = 'Timeout — ESP32 may be offline';
     }, 10000);
   } catch (err) {
-    if (btn) { btn.disabled = false; btn.textContent = '▶ Manual Feed'; }
+    if (btn)      { btn.disabled = false; btn.textContent = '▶ Manual Feed'; }
     if (statusEl) statusEl.textContent = 'Error: ' + (err?.message || String(err));
   }
 }
 
 function _syncFeedButton(manualFeedVal) {
-  const btn = document.getElementById('feed-manual-btn');
+  const btn      = document.getElementById('feed-manual-btn');
   const statusEl = document.getElementById('feed-manual-status');
 
   if (!manualFeedVal) {
@@ -573,7 +552,7 @@ function _syncFeedButton(manualFeedVal) {
       clearTimeout(_manualFeedTimeout);
       _manualFeedTimeout = null;
     }
-    if (btn) { btn.disabled = false; btn.textContent = '▶ Manual Feed'; }
+    if (btn)                    { btn.disabled = false; btn.textContent = '▶ Manual Feed'; }
     if (statusEl && _dispensing) statusEl.textContent = 'Feed complete ✓';
     _dispensing = false;
   }

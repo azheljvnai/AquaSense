@@ -15,6 +15,11 @@
 import { initHistoricalChart, updateHistoricalChart } from '../charts.js';
 import { getHistoryRange, spkData, mergeRtdbEntries, getBadge } from '../utils.js';
 
+// ─── state ──────────────────────────────────────────────────────────────────
+
+let weekOffset = 0;
+let monthOffset = 0;
+
 // ─── helpers ────────────────────────────────────────────────────────────────
 
 function pad(n) { return String(n).padStart(2, '0'); }
@@ -24,34 +29,151 @@ function fmtDateTime(d) { return `${fmtDate(d)} ${fmtTime(d)}`; }
 
 const DAY_NAMES = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 
-function getRange(rangeVal, customFrom, customTo) {
+/**
+ * Format a 24-hour chart label with cross-day date disambiguation.
+ * 
+ * @param {Date} bucketEndDate - The end timestamp of the bucket
+ * @param {number} bucketMs - The bucket size in milliseconds
+ * @param {Date} windowStartDate - The start timestamp of the 24-hour window
+ * @returns {string} Formatted label (e.g., "14:30" or "7 May 14:30")
+ */
+function format24hLabel(bucketEndDate, bucketMs, windowStartDate) {
+  const startDay = windowStartDate.getDate();
+  const endDay = bucketEndDate.getDate();
+  const isCrossDay = startDay !== endDay;
+
+  if (!isCrossDay) {
+    // Same-day window: time only
+    const opts = bucketMs >= 60 * 60 * 1000
+      ? { hour: 'numeric' }
+      : { hour: 'numeric', minute: '2-digit' };
+    return bucketEndDate.toLocaleTimeString([], opts);
+  }
+
+  // Cross-day window: include date for labels on the later day
+  const bucketDay = bucketEndDate.getDate();
+  if (bucketDay === startDay) {
+    // Earlier day: time only
+    const opts = bucketMs >= 60 * 60 * 1000
+      ? { hour: 'numeric' }
+      : { hour: 'numeric', minute: '2-digit' };
+    return bucketEndDate.toLocaleTimeString([], opts);
+  } else {
+    // Later day: "DD MMM HH:MM"
+    const day = bucketEndDate.getDate();
+    const month = bucketEndDate.toLocaleString('default', { month: 'short' });
+    const time = bucketEndDate.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    return `${day} ${month} ${time}`;
+  }
+}
+
+function getNavigatedRange(rangeVal, weekOffset, monthOffset, customFrom, customTo) {
+  // Validate offsets: reset invalid values (NaN, Infinity) to 0
+  const validWeekOffset = Number.isFinite(weekOffset) ? weekOffset : 0;
+  const validMonthOffset = Number.isFinite(monthOffset) ? monthOffset : 0;
+
   const now = new Date();
+
   if (rangeVal === '24h') {
+    // 24-hour range is always relative to "now" (no offset)
     return { from: new Date(now - 24*60*60*1000), to: now };
   }
+
   if (rangeVal === 'week') {
+    // Compute the Monday of the current week
     const day = now.getDay();
-    const mon = new Date(now);
-    mon.setDate(now.getDate() + (day === 0 ? -6 : 1 - day));
-    mon.setHours(0, 0, 0, 0);
-    const sun = new Date(mon);
-    sun.setDate(mon.getDate() + 6);
-    sun.setHours(23, 59, 59, 999);
-    return { from: mon, to: sun };
+    const currentMonday = new Date(now);
+    currentMonday.setDate(now.getDate() + (day === 0 ? -6 : 1 - day));
+    currentMonday.setHours(0, 0, 0, 0);
+
+    // Apply offset (each offset unit = 7 days)
+    const targetMonday = new Date(currentMonday);
+    targetMonday.setDate(currentMonday.getDate() + validWeekOffset * 7);
+
+    // Compute Sunday of the target week
+    const targetSunday = new Date(targetMonday);
+    targetSunday.setDate(targetMonday.getDate() + 6);
+    targetSunday.setHours(23, 59, 59, 999);
+
+    return { from: targetMonday, to: targetSunday };
   }
+
   if (rangeVal === 'month') {
-    return {
-      from: new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0),
-      to:   new Date(now.getFullYear(), now.getMonth()+1, 0, 23, 59, 59, 999),
-    };
+    // Compute the first day of the target month
+    const targetMonth = new Date(now.getFullYear(), now.getMonth() + validMonthOffset, 1, 0, 0, 0, 0);
+
+    // Compute the last day of the target month
+    const targetMonthEnd = new Date(targetMonth.getFullYear(), targetMonth.getMonth() + 1, 0, 23, 59, 59, 999);
+
+    return { from: targetMonth, to: targetMonthEnd };
   }
+
   if (rangeVal === 'custom' && customFrom && customTo) {
     return {
       from: new Date(customFrom + 'T00:00:00'),
       to:   new Date(customTo   + 'T23:59:59'),
     };
   }
+
+  // Fallback to 24h
   return { from: new Date(now - 24*60*60*1000), to: now };
+}
+
+function getRange(rangeVal, customFrom, customTo) {
+  // Legacy wrapper for backward compatibility
+  return getNavigatedRange(rangeVal, 0, 0, customFrom, customTo);
+}
+
+function updateNavigatorUI(rangeVal, weekOffset, monthOffset) {
+  const weekNav = document.getElementById('hist-week-nav');
+  const monthNav = document.getElementById('hist-month-nav');
+  const weekPrevBtn = document.getElementById('hist-week-prev');
+  const weekNextBtn = document.getElementById('hist-week-next');
+  const monthPrevBtn = document.getElementById('hist-month-prev');
+  const monthNextBtn = document.getElementById('hist-month-next');
+  const weekLabel = document.getElementById('hist-week-label');
+  const monthLabel = document.getElementById('hist-month-label');
+
+  // Hide all navigators by default
+  if (weekNav) weekNav.style.display = 'none';
+  if (monthNav) monthNav.style.display = 'none';
+
+  if (rangeVal === 'week') {
+    // Show week navigator
+    if (weekNav) weekNav.style.display = 'flex';
+
+    // Update label
+    const { from, to } = getNavigatedRange('week', weekOffset, 0, '', '');
+    const monDay = from.getDate();
+    const monMonth = from.toLocaleString('default', { month: 'short' });
+    const sunDay = to.getDate();
+    const sunMonth = to.toLocaleString('default', { month: 'short' });
+    const year = to.getFullYear();
+    if (weekLabel) {
+      weekLabel.textContent = `Mon ${monDay} ${monMonth} – Sun ${sunDay} ${sunMonth} ${year}`;
+    }
+
+    // Enable/disable buttons
+    if (weekPrevBtn) weekPrevBtn.disabled = false; // Always enabled
+    if (weekNextBtn) weekNextBtn.disabled = (weekOffset >= 0); // Disable if at current week or future
+  }
+
+  if (rangeVal === 'month') {
+    // Show month navigator
+    if (monthNav) monthNav.style.display = 'flex';
+
+    // Update label
+    const { from } = getNavigatedRange('month', 0, monthOffset, '', '');
+    const monthName = from.toLocaleString('default', { month: 'long' });
+    const year = from.getFullYear();
+    if (monthLabel) {
+      monthLabel.textContent = `${monthName} ${year}`;
+    }
+
+    // Enable/disable buttons
+    if (monthPrevBtn) monthPrevBtn.disabled = false; // Always enabled
+    if (monthNextBtn) monthNextBtn.disabled = (monthOffset >= 0); // Disable if at current month or future
+  }
 }
 
 function statsOf(readings, key) {
@@ -94,8 +216,31 @@ export function init() {
   if (rangeEl) rangeEl.value = '24h';
 
   rangeEl?.addEventListener('change', () => {
+    const previousRange = activeRange;
     activeRange = rangeEl.value;
+    
+    // Reset offsets when changing away from week or month
+    // Preserve offsets when switching between week and month
+    if (previousRange === 'week' && activeRange !== 'week' && activeRange !== 'month') {
+      weekOffset = 0;
+    }
+    if (previousRange === 'month' && activeRange !== 'month' && activeRange !== 'week') {
+      monthOffset = 0;
+    }
+    // Reset week offset when switching to week from non-month range
+    if (activeRange === 'week' && previousRange !== 'month') {
+      weekOffset = 0;
+    }
+    // Reset month offset when switching to month from non-week range
+    if (activeRange === 'month' && previousRange !== 'week') {
+      monthOffset = 0;
+    }
+    
     if (customRangeEl) customRangeEl.style.display = activeRange === 'custom' ? 'flex' : 'none';
+    
+    // Update navigator UI after range change
+    updateNavigatorUI(activeRange, weekOffset, monthOffset);
+    
     if (activeRange !== 'custom') refresh();
   });
 
@@ -104,6 +249,27 @@ export function init() {
     customTo   = document.getElementById('hist-to')?.value   || '';
     if (!customFrom || !customTo) { alert('Select both From and To dates.'); return; }
     if (new Date(customFrom) > new Date(customTo)) { alert('From must be before To.'); return; }
+    refresh();
+  });
+
+  // ── navigation buttons ────────────────────────────────────────────────────
+  document.getElementById('hist-week-prev')?.addEventListener('click', () => {
+    weekOffset--;
+    refresh();
+  });
+
+  document.getElementById('hist-week-next')?.addEventListener('click', () => {
+    weekOffset++;
+    refresh();
+  });
+
+  document.getElementById('hist-month-prev')?.addEventListener('click', () => {
+    monthOffset--;
+    refresh();
+  });
+
+  document.getElementById('hist-month-next')?.addEventListener('click', () => {
+    monthOffset++;
     refresh();
   });
 
@@ -275,12 +441,10 @@ export function init() {
         }
       }
 
+      const windowStartDate = new Date(fromMs);
       const labels = buckets.map((_, i) => {
-        const bucketEnd = new Date(fromMs + (i + 1) * bucketMs);
-        const opts = bucketMs >= 60 * 60 * 1000
-          ? { hour: 'numeric' }
-          : { hour: 'numeric', minute: '2-digit' };
-        return bucketEnd.toLocaleTimeString([], opts);
+        const bucketEndDate = new Date(fromMs + (i + 1) * bucketMs);
+        return format24hLabel(bucketEndDate, bucketMs, windowStartDate);
       });
 
       last24hBucketCount = bucketCount;
@@ -362,7 +526,7 @@ export function init() {
   function loadChart() {
     if (!histChart) return;
 
-    const { from, to } = getRange(activeRange, customFrom, customTo);
+    const { from, to } = getNavigatedRange(activeRange, weekOffset, monthOffset, customFrom, customTo);
     const readings = getHistoryRange(from.getTime(), to.getTime());
 
     const noDataEl  = document.getElementById('hist-no-data');
@@ -406,7 +570,7 @@ export function init() {
   // ── stat cards ────────────────────────────────────────────────────────────
 
   function updateStatCards() {
-    const { from, to } = getRange(activeRange, customFrom, customTo);
+    const { from, to } = getNavigatedRange(activeRange, weekOffset, monthOffset, customFrom, customTo);
     const readings = getHistoryRange(from.getTime(), to.getTime());
 
     for (const k of ['ph', 'do', 'turb', 'temp']) {
@@ -433,13 +597,17 @@ export function init() {
     // Fetch from RTDB first to get data recorded while browser was closed
     if (typeof window.fetchHistoryFromRTDB === 'function') {
       try {
-        const { from, to } = getRange(activeRange, customFrom, customTo);
+        const { from, to } = getNavigatedRange(activeRange, weekOffset, monthOffset, customFrom, customTo);
         const rtdbEntries = await window.fetchHistoryFromRTDB(from.getTime(), to.getTime());
         if (rtdbEntries.length) mergeRtdbEntries(rtdbEntries);
       } catch {
         // RTDB unavailable — fall back to local cache silently
       }
     }
+    
+    // Update navigator UI after data fetch completes
+    updateNavigatorUI(activeRange, weekOffset, monthOffset);
+    
     loadChart();
     updateStatCards();
   }
@@ -505,7 +673,17 @@ export function init() {
 
     if (!histChart) return;
 
-    const { from, to } = getRange(activeRange, customFrom, customTo);
+    // Only append live data if viewing the current period
+    const isCurrentPeriod = (activeRange === 'week' && weekOffset === 0) ||
+                            (activeRange === 'month' && monthOffset === 0) ||
+                            (activeRange === '24h');
+
+    if (!isCurrentPeriod) {
+      // Viewing a past period — do not append live data
+      return;
+    }
+
+    const { from, to } = getNavigatedRange(activeRange, weekOffset, monthOffset, customFrom, customTo);
     const now = Date.now();
 
     // Only update if the current time is within the selected range
