@@ -216,42 +216,52 @@ export async function loadActiveConfiguration() {
   // Try to restore from localStorage first
   const storedConfigId = localStorage.getItem('activeConfigId');
   
-  // Fetch all configurations
-  const configs = await getConfigurations();
-  
-  // Find active configuration from server
-  const serverActive = configs.find(c => c.isActive) || null;
-  
-  // If stored config exists and matches server, use it
-  if (storedConfigId && serverActive && serverActive.id === storedConfigId) {
-    _activeConfigId = serverActive.id;
-    applyConfig(serverActive);
-    return serverActive;
-  }
-  
-  // If server has active config, use it and update localStorage
-  if (serverActive) {
-    _activeConfigId = serverActive.id;
-    applyConfig(serverActive);
-    localStorage.setItem('activeConfigId', serverActive.id);
-    return serverActive;
-  }
-  
-  // If stored config exists but server doesn't have it active, check if it still exists
-  if (storedConfigId) {
-    const storedConfig = configs.find(c => c.id === storedConfigId);
-    if (!storedConfig) {
-      // Configuration was deleted, clear localStorage
-      localStorage.removeItem('activeConfigId');
+  try {
+    // Fetch all configurations (requires authentication)
+    const configs = await getConfigurations();
+    
+    // Find active configuration from server
+    const serverActive = configs.find(c => c.isActive) || null;
+    
+    // If stored config exists and matches server, use it
+    if (storedConfigId && serverActive && serverActive.id === storedConfigId) {
+      _activeConfigId = serverActive.id;
+      applyConfig(serverActive);
+      return serverActive;
     }
+    
+    // If server has active config, use it and update localStorage
+    if (serverActive) {
+      _activeConfigId = serverActive.id;
+      applyConfig(serverActive);
+      localStorage.setItem('activeConfigId', serverActive.id);
+      return serverActive;
+    }
+    
+    // If stored config exists but server doesn't have it active, check if it still exists
+    if (storedConfigId) {
+      const storedConfig = configs.find(c => c.id === storedConfigId);
+      if (!storedConfig) {
+        // Configuration was deleted, clear localStorage
+        localStorage.removeItem('activeConfigId');
+      }
+    }
+    
+    // No active configuration
+    _activeConfigId   = null;
+    _activeSpecies    = null;
+    _activeThresholds = null;
+    _notify();
+    return null;
+  } catch (e) {
+    // If not authenticated yet, silently fail and wait for auth
+    if (e.message === 'No authenticated user.') {
+      // Will be loaded after authentication via loadConfigurationsAfterAuth
+      return null;
+    }
+    // Re-throw other errors
+    throw e;
   }
-  
-  // No active configuration
-  _activeConfigId   = null;
-  _activeSpecies    = null;
-  _activeThresholds = null;
-  _notify();
-  return null;
 }
 
 // ─── Species Preset Management ────────────────────────────────────────────────

@@ -824,18 +824,32 @@ app.get('/api/configurations', verifyToken, async (req, res) => {
 
 /** POST /api/configurations — create a new configuration. Requires admin or owner. */
 app.post('/api/configurations', verifyToken, requireRole('admin', 'owner'), async (req, res) => {
-  const { name, species, thresholds, isPreset } = req.body || {};
+  const { id, name, species, thresholds, isPreset } = req.body || {};
   if (!species) return res.status(400).json({ error: 'species is required.' });
   try {
-    const ref = await admin.firestore().collection('configurations').add({
+    const fs = admin.firestore();
+    const configData = {
       name: name || species,
       species,
       thresholds: thresholds || {},
       isPreset: isPreset || false,
       isActive: false,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
-    });
-    return res.status(201).json({ id: ref.id });
+    };
+    
+    // If an ID is provided (for presets), use it; otherwise generate a new one
+    if (id) {
+      // Check if document already exists
+      const docSnap = await fs.collection('configurations').doc(id).get();
+      if (docSnap.exists) {
+        return res.status(409).json({ error: 'Configuration with this ID already exists.' });
+      }
+      await fs.collection('configurations').doc(id).set(configData);
+      return res.status(201).json({ id });
+    } else {
+      const ref = await fs.collection('configurations').add(configData);
+      return res.status(201).json({ id: ref.id });
+    }
   } catch (e) {
     return res.status(400).json({ error: e.message });
   }

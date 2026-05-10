@@ -124,8 +124,9 @@ export async function init() {
   // Expose loader — called by app.js after auth confirms
   window._pondMgmtOnUser = async () => {
     try { 
-      await seedSpeciesPresets(); 
-      await updateSpeciesPresets(); // Force update existing presets
+      // Presets are seeded by the backend on startup, no need to seed from client
+      // await seedSpeciesPresets(); 
+      // await updateSpeciesPresets(); // Force update existing presets
     } catch { /* offline */ }
     await refreshPonds();
   };
@@ -134,7 +135,7 @@ export async function init() {
 // ─── Pond Selector ────────────────────────────────────────────────────────────
 
 async function refreshPonds() {
-  try { _ponds = await getPonds(); } catch { _ponds = []; }
+  try { _ponds = await getConfigurations(); } catch { _ponds = []; }
 
   const sel = document.getElementById('pond-selector');
   if (!sel) return;

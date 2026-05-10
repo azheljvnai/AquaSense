@@ -80,38 +80,39 @@ export function renderRecentAlerts() {
 }
 
 // ─── Active Configuration Display ─────────────────────────────────────────────
+// Removed - configuration badge no longer displayed on dashboard
 
-function renderConfigurationBadge() {
-  const badgeEl = document.getElementById('dash-config-badge');
-  const notConfiguredEl = document.getElementById('dash-not-configured');
-  
-  if (!badgeEl || !notConfiguredEl) return;
-  
-  const configId = getActiveConfigId();
-  const species = getActiveSpecies();
-  
-  if (configId && species) {
-    // Show configuration badge
-    badgeEl.style.display = 'flex';
-    notConfiguredEl.style.display = 'none';
-    
-    const speciesNames = {
-      crayfish: 'Crayfish',
-      tilapia: 'Tilapia',
-      catfish: 'Catfish',
-      shrimp: 'Shrimp',
-    };
-    
-    badgeEl.innerHTML = `
-      <span class="config-label">Active Configuration:</span>
-      <span class="species-badge species-${species}">${speciesNames[species] || species}</span>
-    `;
-  } else {
-    // Show "Not Configured" notice
-    badgeEl.style.display = 'none';
-    notConfiguredEl.style.display = 'flex';
-  }
-}
+// function renderConfigurationBadge() {
+//   const badgeEl = document.getElementById('dash-config-badge');
+//   const notConfiguredEl = document.getElementById('dash-not-configured');
+//   
+//   if (!badgeEl || !notConfiguredEl) return;
+//   
+//   const configId = getActiveConfigId();
+//   const species = getActiveSpecies();
+//   
+//   if (configId && species) {
+//     // Show configuration badge
+//     badgeEl.style.display = 'flex';
+//     notConfiguredEl.style.display = 'none';
+//     
+//     const speciesNames = {
+//       crayfish: 'Crayfish',
+//       tilapia: 'Tilapia',
+//       catfish: 'Catfish',
+//       shrimp: 'Shrimp',
+//     };
+//     
+//     badgeEl.innerHTML = `
+//       <span class="config-label">Active Configuration:</span>
+//       <span class="species-badge species-${species}">${speciesNames[species] || species}</span>
+//     `;
+//   } else {
+//     // Show "Not Configured" notice
+//     badgeEl.style.display = 'none';
+//     notConfiguredEl.style.display = 'flex';
+//   }
+// }
 
 function navigateToConfiguration() {
   const configLink = document.querySelector('[data-page="configuration"]');
@@ -125,18 +126,12 @@ export async function init() {
   // Load active configuration
   await loadActiveConfiguration();
   
-  // Render configuration badge
-  renderConfigurationBadge();
-  
   // Render recent alerts
   renderRecentAlerts();
 
   // Keep in sync whenever new alerts are generated
   window.addEventListener('alerts-updated', renderRecentAlerts);
-  
-  // Update configuration badge when configuration changes
-  window.addEventListener('config-changed', renderConfigurationBadge);
-  
+
   // Expose navigation function for "Configure Now" button
   window.navigateToConfiguration = navigateToConfiguration;
 }
