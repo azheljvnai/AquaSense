@@ -16,6 +16,7 @@ dotenvConfig({ path: path.join(__dirname, '..', '.env') });
 
 import express from 'express';
 import admin from 'firebase-admin';
+import { checkAndSeedPresets } from './scripts/seed-presets.js';
 
 // Initialise Firebase Admin SDK once
 function initAdmin() {
@@ -563,7 +564,255 @@ app.delete('/api/pond-configurations/:id', verifyToken, requireRole('admin', 'ow
   }
 });
 
-/** GET /api/configurations — list global species presets */
+// ─── Migration API ────────────────────────────────────────────────────────────
+
+/**
+ * POST /api/migrate/backup — create a backup of ponds and pond_configurations.
+ * Requires admin role. Stores backup in migrations_backup collection.
+ */
+app.post('/api/migrate/backup', verifyToken, requireRole('admin'), async (req, res) => {
+  try {
+    const fs = admin.firestore();
+    
+    // Fetch all ponds
+    const pondsSnap = await fs.collection('ponds').get();
+    const ponds = pondsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+    
+    // Fetch all pond_configurations
+    const configsSnap = await fs.collection('pond_configurations').get();
+    const pondConfigurations = configsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+    
+    // Create backup document
+    const backup = {
+      timestamp: admin.firestore.FieldValue.serverTimestamp(),
+      collections: {
+        ponds,
+        pond_configurations: pondConfigurations,
+      },
+      status: 'completed',
+      metadata: {
+        totalPonds: ponds.length,
+        totalConfigurations: pondConfigurations.length,
+        backupSize: JSON.stringify({ ponds, pond_configurations: pondConfigurations }).length,
+      },
+    };
+    
+    // Verify backup integrity
+    if (ponds.length !== pondsSnap.size || pondConfigurations.length !== configsSnap.size) {
+      return res.status(500).json({ error: 'Backup integrity verification failed.' });
+    }
+    
+    // Store backup
+    const backupRef = await fs.collection('migrations_backup').add(backup);
+    
+    console.log(`[Migration Backup] Created backup ${backupRef.id} with ${ponds.length} ponds and ${pondConfigurations.length} configurations`);
+    
+    return res.status(201).json({
+      success: true,
+      backupId: backupRef.id,
+      metadata: backup.metadata,
+    });
+  } catch (e) {
+    console.error('[POST /api/migrate/backup]', e.message);
+    return res.status(500).json({ error: e.message });
+  }
+});
+
+/**
+ * POST /api/migrate/rollback — restore ponds and pond_configurations from latest backup.
+ * Requires admin role. Deletes configurations collection and restores old collections.
+ */
+app.post('/api/migrate/rollback', verifyToken, requireRole('admin'), async (req, res) => {
+  try {
+    const fs = admin.firestore();
+    
+    // Get latest backup
+    const backupsSnap = await fs.collection('migrations_backup')
+      .orderBy('timestamp', 'desc')
+      .limit(1)
+      .get();
+    
+    if (backupsSnap.empty) {
+      return res.status(404).json({ error: 'No backup found to rollback from.' });
+    }
+    
+    const backupDoc = backupsSnap.docs[0];
+    const backup = backupDoc.data();
+    const { ponds, pond_configurations } = backup.collections;
+    
+    console.log(`[Migration Rollback] Starting rollback from backup ${backupDoc.id}`);
+    
+    // Delete configurations collection
+    const configurationsSnap = await fs.collection('configurations').get();
+    const deleteBatch = fs.batch();
+    configurationsSnap.docs.forEach(d => deleteBatch.delete(d.ref));
+    await deleteBatch.commit();
+    console.log(`[Migration Rollback] Deleted ${configurationsSnap.size} configurations`);
+    
+    // Restore ponds collection
+    const pondsBatch = fs.batch();
+    ponds.forEach(pond => {
+      const { id, ...data } = pond;
+      pondsBatch.set(fs.collection('ponds').doc(id), data);
+    });
+    await pondsBatch.commit();
+    console.log(`[Migration Rollback] Restored ${ponds.length} ponds`);
+    
+    // Restore pond_configurations collection
+    const configsBatch = fs.batch();
+    pond_configurations.forEach(config => {
+      const { id, ...data } = config;
+      configsBatch.set(fs.collection('pond_configurations').doc(id), data);
+    });
+    await configsBatch.commit();
+    console.log(`[Migration Rollback] Restored ${pond_configurations.length} pond_configurations`);
+    
+    // Verify restoration
+    const restoredPondsSnap = await fs.collection('ponds').get();
+    const restoredConfigsSnap = await fs.collection('pond_configurations').get();
+    
+    if (restoredPondsSnap.size !== ponds.length || restoredConfigsSnap.size !== pond_configurations.length) {
+      return res.status(500).json({ error: 'Rollback verification failed.' });
+    }
+    
+    // Update backup status
+    await backupDoc.ref.update({ status: 'rolled_back' });
+    
+    return res.status(200).json({
+      success: true,
+      restored: {
+        ponds: ponds.length,
+        pond_configurations: pond_configurations.length,
+      },
+    });
+  } catch (e) {
+    console.error('[POST /api/migrate/rollback]', e.message);
+    return res.status(500).json({ error: e.message });
+  }
+});
+
+/**
+ * GET /api/migrate/status — get migration backup status and list of available backups.
+ * Requires admin role.
+ */
+app.get('/api/migrate/status', verifyToken, requireRole('admin'), async (req, res) => {
+  try {
+    const fs = admin.firestore();
+    
+    // Get all backups ordered by timestamp
+    const backupsSnap = await fs.collection('migrations_backup')
+      .orderBy('timestamp', 'desc')
+      .get();
+    
+    const backups = backupsSnap.docs.map(d => ({
+      id: d.id,
+      timestamp: d.data().timestamp,
+      status: d.data().status,
+      metadata: d.data().metadata,
+    }));
+    
+    return res.status(200).json({
+      backups,
+      totalBackups: backups.length,
+      latestBackup: backups[0] || null,
+    });
+  } catch (e) {
+    console.error('[GET /api/migrate/status]', e.message);
+    return res.status(500).json({ error: e.message });
+  }
+});
+
+/**
+ * POST /api/migrate/execute — execute migration from pond_configurations to configurations.
+ * Requires admin role. Verifies backup exists before proceeding.
+ */
+app.post('/api/migrate/execute', verifyToken, requireRole('admin'), async (req, res) => {
+  try {
+    const fs = admin.firestore();
+    
+    // Verify backup exists
+    const backupsSnap = await fs.collection('migrations_backup')
+      .orderBy('timestamp', 'desc')
+      .limit(1)
+      .get();
+    
+    if (backupsSnap.empty) {
+      return res.status(400).json({ error: 'No backup found. Create a backup before executing migration.' });
+    }
+    
+    console.log('[Migration Execute] Starting migration...');
+    
+    // Fetch all pond_configurations
+    const configsSnap = await fs.collection('pond_configurations').get();
+    const pondConfigurations = configsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+    
+    // Migrate to configurations collection
+    const migrateBatch = fs.batch();
+    let activeCount = 0;
+    let firstActiveId = null;
+    
+    pondConfigurations.forEach(config => {
+      const { id, pondId, ...data } = config;
+      // Track active configurations
+      if (data.isActive) {
+        activeCount++;
+        if (!firstActiveId) firstActiveId = id;
+      }
+      migrateBatch.set(fs.collection('configurations').doc(id), {
+        ...data,
+        // Ensure only one configuration is active
+        isActive: activeCount === 0 && data.isActive ? true : (id === firstActiveId),
+        migratedFrom: 'pond_configurations',
+        migratedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+    });
+    
+    await migrateBatch.commit();
+    console.log(`[Migration Execute] Migrated ${pondConfigurations.length} configurations`);
+    
+    // Delete ponds collection
+    const pondsSnap = await fs.collection('ponds').get();
+    const deletePondsBatch = fs.batch();
+    pondsSnap.docs.forEach(d => deletePondsBatch.delete(d.ref));
+    await deletePondsBatch.commit();
+    console.log(`[Migration Execute] Deleted ${pondsSnap.size} ponds`);
+    
+    // Delete pond_configurations collection
+    const deleteConfigsBatch = fs.batch();
+    configsSnap.docs.forEach(d => deleteConfigsBatch.delete(d.ref));
+    await deleteConfigsBatch.commit();
+    console.log(`[Migration Execute] Deleted ${configsSnap.size} pond_configurations`);
+    
+    // Verify migration
+    const migratedSnap = await fs.collection('configurations').get();
+    const activeConfigs = migratedSnap.docs.filter(d => d.data().isActive);
+    
+    if (migratedSnap.size < pondConfigurations.length) {
+      return res.status(500).json({ error: 'Migration verification failed: not all configurations migrated.' });
+    }
+    
+    if (activeConfigs.length > 1) {
+      console.warn(`[Migration Execute] Warning: ${activeConfigs.length} active configurations found, expected 1`);
+    }
+    
+    return res.status(200).json({
+      success: true,
+      migrated: {
+        configurations: pondConfigurations.length,
+        pondsDeleted: pondsSnap.size,
+        pondConfigurationsDeleted: configsSnap.size,
+      },
+      activeConfigurations: activeConfigs.length,
+    });
+  } catch (e) {
+    console.error('[POST /api/migrate/execute]', e.message);
+    return res.status(500).json({ error: e.message });
+  }
+});
+
+// ─── Configuration Management API ─────────────────────────────────────────────
+
+/** GET /api/configurations — list all configurations */
 app.get('/api/configurations', verifyToken, async (req, res) => {
   try {
     const snap = await admin.firestore().collection('configurations').get();
@@ -573,25 +822,27 @@ app.get('/api/configurations', verifyToken, async (req, res) => {
   }
 });
 
-/** POST /api/configurations — seed/create a global preset. Requires admin. */
-app.post('/api/configurations', verifyToken, requireRole('admin'), async (req, res) => {
-  const { id, name, species, thresholds } = req.body || {};
+/** POST /api/configurations — create a new configuration. Requires admin or owner. */
+app.post('/api/configurations', verifyToken, requireRole('admin', 'owner'), async (req, res) => {
+  const { name, species, thresholds, isPreset } = req.body || {};
   if (!species) return res.status(400).json({ error: 'species is required.' });
   try {
-    const docId = id || species;
-    await admin.firestore().collection('configurations').doc(docId).set(
-      { name: name || species, species, thresholds: thresholds || {}, isPreset: true,
-        createdAt: admin.firestore.FieldValue.serverTimestamp() },
-      { merge: true },
-    );
-    return res.status(201).json({ id: docId });
+    const ref = await admin.firestore().collection('configurations').add({
+      name: name || species,
+      species,
+      thresholds: thresholds || {},
+      isPreset: isPreset || false,
+      isActive: false,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+    return res.status(201).json({ id: ref.id });
   } catch (e) {
     return res.status(400).json({ error: e.message });
   }
 });
 
-/** PATCH /api/configurations/:id — update a global preset. Requires admin. */
-app.patch('/api/configurations/:id', verifyToken, requireRole('admin'), async (req, res) => {
+/** PATCH /api/configurations/:id — update a configuration. Requires admin or owner. */
+app.patch('/api/configurations/:id', verifyToken, requireRole('admin', 'owner'), async (req, res) => {
   const { name, species, thresholds } = req.body || {};
   try {
     await admin.firestore().collection('configurations').doc(req.params.id).set(
@@ -600,6 +851,69 @@ app.patch('/api/configurations/:id', verifyToken, requireRole('admin'), async (r
     );
     return res.json({ success: true });
   } catch (e) {
+    return res.status(400).json({ error: e.message });
+  }
+});
+
+/** DELETE /api/configurations/:id — delete a configuration. Requires admin or owner. */
+app.delete('/api/configurations/:id', verifyToken, requireRole('admin', 'owner'), async (req, res) => {
+  try {
+    const fs = admin.firestore();
+    const configSnap = await fs.collection('configurations').doc(req.params.id).get();
+    if (!configSnap.exists) {
+      return res.status(404).json({ error: 'Configuration not found.' });
+    }
+    if (configSnap.data().isActive) {
+      return res.status(400).json({ error: 'Cannot delete active configuration. Deactivate it first.' });
+    }
+    await fs.collection('configurations').doc(req.params.id).delete();
+    return res.json({ success: true });
+  } catch (e) {
+    console.error('[DELETE /api/configurations]', e.message);
+    return res.status(400).json({ error: e.message });
+  }
+});
+
+/**
+ * POST /api/configurations/:id/activate — set configuration as active.
+ * Deactivates all other configurations. Requires admin or owner.
+ */
+app.post('/api/configurations/:id/activate', verifyToken, requireRole('admin', 'owner'), async (req, res) => {
+  try {
+    const fs = admin.firestore();
+    const cfgSnap = await fs.collection('configurations').doc(req.params.id).get();
+    if (!cfgSnap.exists) return res.status(404).json({ error: 'Configuration not found.' });
+
+    // Deactivate all configurations, then activate the target
+    const allSnap = await fs.collection('configurations').get();
+    const batch = fs.batch();
+    allSnap.docs.forEach(d => batch.update(d.ref, { isActive: d.id === req.params.id }));
+    await batch.commit();
+    
+    console.log(`[Configuration Activate] Activated configuration ${req.params.id}`);
+    return res.json({ success: true });
+  } catch (e) {
+    console.error('[POST /api/configurations/:id/activate]', e.message);
+    return res.status(400).json({ error: e.message });
+  }
+});
+
+/**
+ * POST /api/configurations/:id/deactivate — clear the active flag for this configuration.
+ * Requires admin or owner.
+ */
+app.post('/api/configurations/:id/deactivate', verifyToken, requireRole('admin', 'owner'), async (req, res) => {
+  try {
+    const fs = admin.firestore();
+    const ref = fs.collection('configurations').doc(req.params.id);
+    const snap = await ref.get();
+    if (!snap.exists) return res.status(404).json({ error: 'Configuration not found.' });
+    await ref.update({ isActive: false });
+    
+    console.log(`[Configuration Deactivate] Deactivated configuration ${req.params.id}`);
+    return res.json({ success: true });
+  } catch (e) {
+    console.error('[POST /api/configurations/:id/deactivate]', e.message);
     return res.status(400).json({ error: e.message });
   }
 });
@@ -614,10 +928,17 @@ app.get('*', (_req, res) => {
   res.sendFile(path.join(frontendPath, 'index.html'));
 });
 
-app.listen(PORT, () => {
+app.listen(PORT, async () => {
   console.log(`AquaSense backend running at http://localhost:${PORT}`);
   console.log(`Frontend served from: ${frontendPath}`);
   if (!process.env.FIREBASE_DATABASE_URL) {
     console.warn('FIREBASE_DATABASE_URL not set in .env — client will need to enter it manually.');
+  }
+  
+  // Seed species presets on startup
+  try {
+    await checkAndSeedPresets();
+  } catch (e) {
+    console.error('[Server] Failed to seed presets:', e.message);
   }
 });

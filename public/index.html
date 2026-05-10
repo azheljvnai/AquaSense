@@ -146,12 +146,6 @@
         <span class="topbar-page-title" id="topbar-page-title">Dashboard</span>
       </div>
       <div class="topbar-right">
-        <div class="topbar-pond-selector" id="topbar-pond-wrap" title="Active pond">
-          <svg class="icon icon-14 topbar-pond-icon"><use href="#icon-droplet"/></svg>
-          <select id="topbar-pond-select" class="topbar-pond-select" aria-label="Active pond">
-            <option value="">Loading ponds…</option>
-          </select>
-        </div>
         <button id="theme-toggle-btn" class="theme-toggle-btn" aria-label="Switch to dark mode" title="Toggle theme">
           <svg class="icon icon-18"><use href="#icon-moon"/></svg>
         </button>
@@ -164,6 +158,24 @@
     <section id="page-dashboard" class="page-section active">
       <div class="page-title-row">
         <h1 class="page-title">Dashboard</h1>
+        
+        <!-- Active Configuration Badge -->
+        <div class="active-config-badge" id="dash-config-badge" style="display:none">
+          <!-- Rendered by dashboard.js -->
+        </div>
+        
+        <!-- Not Configured Notice -->
+        <div id="dash-not-configured" class="not-configured-notice" style="display:none;">
+          <svg class="icon icon-20"><use href="#icon-warning"/></svg>
+          <div>
+            <div class="notice-title">Not Configured</div>
+            <div class="notice-sub">Select a configuration to start monitoring</div>
+          </div>
+          <button class="btn btn-primary btn-sm" onclick="navigateToConfiguration()">
+            Configure Now
+          </button>
+        </div>
+        
         <div class="active-pond-badge" id="dash-pond-badge" style="display:none">
           <svg class="icon icon-14"><use href="#icon-droplet"/></svg>
           <span id="dash-pond-name">—</span>
@@ -396,6 +408,9 @@
     <!-- Feeding -->
     <section id="page-feeding" class="page-section">
       <h1 class="page-title">Feeding</h1>
+      <div style="margin-bottom:16px;color:var(--text-muted);font-size:0.9rem;">
+        <span style="font-weight:500;">Configuration:</span> <span id="feed-config-name">—</span>
+      </div>
 
       <!-- No-pond placeholder -->
       <div id="feed-no-pond" style="display:none" class="empty-state">
@@ -975,8 +990,13 @@
     <section id="page-configuration" class="page-section">
       <h1 class="page-title">Configuration</h1>
 
-      <!-- Pond Selector -->
-      <div class="card cfg-topcard" id="pond-mgmt-section">
+      <!-- Configuration Management (Single-Device Architecture) -->
+      <div id="config-selector-container" class="card cfg-topcard">
+        <!-- Configuration selector will be rendered here by config-management.js -->
+      </div>
+
+      <!-- Pond Selector (Deprecated - will be removed) -->
+      <div class="card cfg-topcard" id="pond-mgmt-section" style="display:none;">
         <div class="pm-head">
           <div class="pm-head-left">
             <div class="pm-title">
@@ -1014,9 +1034,6 @@
             </div>
           </div>
           <div class="pm-status-actions">
-            <button type="button" class="btn btn-sm btn-outline" id="btn-assign-config">
-              <svg class="icon icon-14"><use href="#icon-plus"/></svg> Assign Preset
-            </button>
             <button type="button" class="btn btn-sm btn-primary" id="btn-create-custom-config">
               <svg class="icon icon-14"><use href="#icon-plus"/></svg> Create Custom Config
             </button>
@@ -1113,25 +1130,10 @@
               </div>
             </div>
 
-            <div class="cfg-form-block">
-              <div class="cfg-form-label">Temperature Alert Sensitivity</div>
-              <div class="cfg-slider">
-                <input type="range" min="0" max="100" id="cfg-temp-sens" />
-                <div class="cfg-slider-labels"><span>Low</span><span>Medium</span><span>High</span></div>
-              </div>
-            </div>
-
-
           </div>
         </div>
       </div>
 
-      <div class="cfg-actions">
-        <button type="button" class="btn btn-primary" id="cfg-save">
-          <svg class="icon icon-16" style="vertical-align:middle"><use href="#icon-settings"/></svg>
-          Save All Settings
-        </button>
-      </div>
     </section>
 
     <!-- User Management -->

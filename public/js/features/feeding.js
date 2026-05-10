@@ -17,7 +17,6 @@ import {
   fbSet,
   fbGet,
 } from '../firebase-client.js';
-import { getActivePond } from '../pond-context.js';
 
 // ── Module-level state ────────────────────────────────────────────────────────
 let _deviceId          = null;   // active device ID
@@ -54,41 +53,19 @@ export function init() {
     _showScheduleError('');
   });
 
-  // Listen for active pond changes
-  window.addEventListener('active-pond-changed', (e) => {
-    const pond = e.detail?.pond;
-    if (!pond?.id) {
-      _teardown();
-      const noPond = document.getElementById('feed-no-pond');
-      const content = document.getElementById('feed-content');
-      if (noPond) noPond.style.display = '';
-      if (content) content.style.display = 'none';
-      return;
-    }
-    const noPond = document.getElementById('feed-no-pond');
-    const content = document.getElementById('feed-content');
-    if (noPond) noPond.style.display = 'none';
-    if (content) content.style.display = '';
-    _teardown();
-    _deviceId = pond.id;
-    _subscribe(pond.id);
-  });
+  // Hide "no pond" message and show feeding content
+  const noPondEl = document.getElementById('feed-no-pond');
+  if (noPondEl) noPondEl.style.display = 'none';
+  const contentEl = document.getElementById('feed-content');
+  if (contentEl) contentEl.style.display = '';
 
-  // Bootstrap with currently active pond
-  const current = getActivePond();
-  if (current?.id) {
-    const noPond = document.getElementById('feed-no-pond');
-    const content = document.getElementById('feed-content');
-    if (noPond) noPond.style.display = 'none';
-    if (content) content.style.display = '';
-    _deviceId = current.id;
-    _subscribe(current.id);
-  } else {
-    const noPond = document.getElementById('feed-no-pond');
-    const content = document.getElementById('feed-content');
-    if (noPond) noPond.style.display = '';
-    if (content) content.style.display = 'none';
-  }
+  // Initialize with device001 directly
+  _deviceId = 'device001';
+  _subscribe('device001');
+
+  // Listen for configuration changes to display config name
+  window.addEventListener('config-changed', _updateConfigDisplay);
+  _updateConfigDisplay(); // Initial update
 }
 
 // ── Subscribe / Teardown ──────────────────────────────────────────────────────
@@ -556,4 +533,43 @@ function _syncFeedButton(manualFeedVal) {
     if (statusEl && _dispensing) statusEl.textContent = 'Feed complete ✓';
     _dispensing = false;
   }
+}
+
+// ── Configuration Display ─────────────────────────────────────────────────────
+
+function _updateConfigDisplay(event) {
+  const configNameEl = document.getElementById('feed-config-name');
+  if (!configNameEl) return;
+
+  // Get configuration info from the event detail or fetch from pond-config
+  let configName = 'Not Configured';
+  
+  if (event && event.detail) {
+    // Event fired from pond-config.js with detail: { configId, species }
+    const { configId, species } = event.detail;
+    if (configId && species) {
+      // Capitalize species name for display
+      configName = species.charAt(0).toUpperCase() + species.slice(1) + ' Configuration';
+    }
+  } else {
+    // Initial load - try to get from pond-config module
+    try {
+      // Import getActiveConfigId and getActiveSpecies if available
+      import('../pond-config.js').then(module => {
+        const configId = module.getActiveConfigId();
+        const species = module.getActiveSpecies();
+        if (configId && species) {
+          configName = species.charAt(0).toUpperCase() + species.slice(1) + ' Configuration';
+        }
+        configNameEl.textContent = configName;
+      }).catch(() => {
+        configNameEl.textContent = 'Not Configured';
+      });
+      return; // Exit early since we're handling async
+    } catch {
+      configName = 'Not Configured';
+    }
+  }
+  
+  configNameEl.textContent = configName;
 }

@@ -33,6 +33,7 @@ import { init as initAlerts } from './features/alerts.js';
 import { init as initFarmProfile } from './features/farm-profile.js';
 import { init as initReports } from './features/reports.js';
 import { init as initConfiguration } from './features/configuration.js';
+import { init as initConfigManagement, loadConfigurationsAfterAuth } from './features/config-management.js';
 import { init as initUserManagement, loadUsers, setCurrentUser } from './features/user-management.js';
 import { init as initNotifications, handleAlert } from './features/notifications.js';
 
@@ -871,23 +872,19 @@ function init() {
   setupHamburger();
   setupClock();
   setupAccountMenu();
-  setupTopbarPondSelector();
-  initDashboard();
-  initWaterQuality();
-  initHistoricalData();
-  initFeeding();
-  initAlerts();
-  initFarmProfile();
-  initReports();
-  initConfiguration();
-  initUserManagement();
-  initPondManagement();
+  // setupTopbarPondSelector(); // Removed - using single device architecture
 
   // Register species-aware badge classifier
   window._pondGetBadge = getBadgeForSpecies;
 
   // Expose pond context globally so pond-management and other modules can update it
   window._pondContext = { setPondList, setActivePond, getActivePond };
+
+  // Expose navigateTo for dashboard "Configure Now" button
+  window.navigateTo = (page) => {
+    const navLink = document.querySelector(`.sidebar-nav a[data-page="${page}"]`);
+    if (navLink) navLink.click();
+  };
 
   // pond-management loads via window._pondMgmtOnUser after auth confirms
 
@@ -910,8 +907,20 @@ function init() {
     }
   });
 
-  // Load config first so Firebase is initialized before we wire up sign-in
+  // Load config first so Firebase is initialized before we wire up sign-in and features
   loadConfigAndPrefill().then((hasUrl) => {
+    // Initialize feature modules AFTER Firebase is ready
+    initDashboard();
+    initWaterQuality();
+    initHistoricalData();
+    initFeeding();
+    initAlerts();
+    initFarmProfile();
+    initReports();
+    initConfiguration();
+    initConfigManagement();
+    initUserManagement();
+    initPondManagement();
     setStatus('OFFLINE', false);
 
     // Wire sign-in AFTER Firebase is initialized
@@ -992,6 +1001,11 @@ function init() {
       if (typeof window._pondMgmtOnUser === 'function') {
         window._pondMgmtOnUser().catch(() => {/* offline */});
       }
+
+      // Load configurations now that we have a valid auth token
+      loadConfigurationsAfterAuth().catch(err => {
+        console.error('[Config Management] Failed to load configurations after auth:', err);
+      });
 
       // Set current user context for user management and load users list
       setCurrentUser(user.uid, currentProfile?.role || 'farmer');

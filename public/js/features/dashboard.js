@@ -1,7 +1,8 @@
 /**
- * Dashboard feature: main chart + dynamic recent alerts.
+ * Dashboard feature: main chart + dynamic recent alerts + active configuration display.
  */
 import { initDashboardChart } from '../charts.js';
+import { getActiveConfigId, getActiveSpecies, loadActiveConfiguration, onConfigChange } from '../pond-config.js';
 
 const ALERT_STORAGE_KEY = 'aquasense.alerts.v1';
 const RECENT_ALERTS_LIMIT = 5;
@@ -78,12 +79,64 @@ export function renderRecentAlerts() {
     </div>`).join('');
 }
 
-export function init() {
+// ─── Active Configuration Display ─────────────────────────────────────────────
+
+function renderConfigurationBadge() {
+  const badgeEl = document.getElementById('dash-config-badge');
+  const notConfiguredEl = document.getElementById('dash-not-configured');
+  
+  if (!badgeEl || !notConfiguredEl) return;
+  
+  const configId = getActiveConfigId();
+  const species = getActiveSpecies();
+  
+  if (configId && species) {
+    // Show configuration badge
+    badgeEl.style.display = 'flex';
+    notConfiguredEl.style.display = 'none';
+    
+    const speciesNames = {
+      crayfish: 'Crayfish',
+      tilapia: 'Tilapia',
+      catfish: 'Catfish',
+      shrimp: 'Shrimp',
+    };
+    
+    badgeEl.innerHTML = `
+      <span class="config-label">Active Configuration:</span>
+      <span class="species-badge species-${species}">${speciesNames[species] || species}</span>
+    `;
+  } else {
+    // Show "Not Configured" notice
+    badgeEl.style.display = 'none';
+    notConfiguredEl.style.display = 'flex';
+  }
+}
+
+function navigateToConfiguration() {
+  const configLink = document.querySelector('[data-page="configuration"]');
+  if (configLink) configLink.click();
+}
+
+export async function init() {
   const chartEl = document.getElementById('chart');
   if (chartEl) initDashboardChart(chartEl);
 
+  // Load active configuration
+  await loadActiveConfiguration();
+  
+  // Render configuration badge
+  renderConfigurationBadge();
+  
+  // Render recent alerts
   renderRecentAlerts();
 
   // Keep in sync whenever new alerts are generated
   window.addEventListener('alerts-updated', renderRecentAlerts);
+  
+  // Update configuration badge when configuration changes
+  window.addEventListener('config-changed', renderConfigurationBadge);
+  
+  // Expose navigation function for "Configure Now" button
+  window.navigateToConfiguration = navigateToConfiguration;
 }

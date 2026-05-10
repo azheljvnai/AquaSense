@@ -1,13 +1,13 @@
 /**
- * Pond Configuration System
+ * Configuration System (Single-Device Architecture)
  * All writes go through the backend API (Admin SDK — bypasses Firestore rules).
  * Reads use the backend API too for consistency.
  *
  * Firebase Collections (managed server-side):
- *   ponds/                  — pond documents
- *   configurations/         — global species preset documents
- *   pond_configurations/    — assigned configs per pond
- *   sensor_data/            — sensor readings tagged with pond_id + config_id
+ *   configurations/         — species configurations (presets + custom)
+ *   sensor_data/            — sensor readings tagged with device_id + config_id
+ *
+ * Single Device: All sensor data is recorded under device001
  */
 import { fbGetIdToken, fbFirestore, fbAddDoc, fbCollection, fbServerTimestamp } from './firebase-client.js';
 
@@ -87,32 +87,30 @@ async function api(method, path, body) {
   return data;
 }
 
-// ─── Active Pond/Config State ─────────────────────────────────────────────────
+// ─── Active Configuration State ───────────────────────────────────────────────
 
-let _activePondId     = null;
 let _activeConfigId   = null;
 let _activeSpecies    = null;
 let _activeThresholds = null;
 
 const _listeners = new Set();
 
-export function getActivePondId()     { return _activePondId; }
 export function getActiveConfigId()   { return _activeConfigId; }
 export function getActiveSpecies()    { return _activeSpecies; }
 export function getActiveThresholds() { return _activeThresholds; }
 
-export function onPondConfigChange(fn) {
+export function onConfigChange(fn) {
   _listeners.add(fn);
   return () => _listeners.delete(fn);
 }
 
 function _notify() {
   for (const fn of _listeners) {
-    try { fn({ pondId: _activePondId, configId: _activeConfigId, species: _activeSpecies, thresholds: _activeThresholds }); }
+    try { fn({ configId: _activeConfigId, species: _activeSpecies, thresholds: _activeThresholds }); }
     catch { /* ignore */ }
   }
-  window.dispatchEvent(new CustomEvent('pond-config-changed', {
-    detail: { pondId: _activePondId, configId: _activeConfigId, species: _activeSpecies },
+  window.dispatchEvent(new CustomEvent('config-changed', {
+    detail: { configId: _activeConfigId, species: _activeSpecies },
   }));
   window.dispatchEvent(new CustomEvent('thresholds-changed'));
 }
@@ -170,35 +168,99 @@ export function getBadgeForSpecies(key, val) {
   return { c: 'ok', l: 'Normal' };
 }
 
-// ─── Ponds ────────────────────────────────────────────────────────────────────
-
-export async function getPonds() {
-  return api('GET', '/api/ponds');
-}
-
-export async function createPond(data) {
-  return api('POST', '/api/ponds', data);
-}
-
-export async function updatePond(pondId, data) {
-  return api('PATCH', `/api/ponds/${pondId}`, data);
-}
-
-export async function deletePond(pondId) {
-  return api('DELETE', `/api/ponds/${pondId}`);
-}
-
-// ─── Global Configurations ────────────────────────────────────────────────────
+// ─── Configurations ───────────────────────────────────────────────────────────
 
 export async function getConfigurations() {
   return api('GET', '/api/configurations');
 }
 
+export async function createConfiguration(data) {
+  return api('POST', '/api/configurations', data);
+}
+
+export async function updateConfiguration(configId, data) {
+  return api('PATCH', `/api/configurations/${configId}`, data);
+}
+
+export async function deleteConfiguration(configId) {
+  return api('DELETE', `/api/configurations/${configId}`);
+}
+
+// ─── Active Configuration Management ──────────────────────────────────────────
+
+export async function setActiveConfiguration(configId) {
+  await api('POST', `/api/configurations/${configId}/activate`);
+  // Load and apply the newly active config
+  const configs = await getConfigurations();
+  const active  = configs.find(c => c.id === configId);
+  if (active) {
+    _activeConfigId = configId;
+    applyConfig(active);
+    // Persist to localStorage
+    localStorage.setItem('activeConfigId', configId);
+  }
+}
+
+export async function deactivateConfiguration() {
+  if (!_activeConfigId) return;
+  await api('POST', `/api/configurations/${_activeConfigId}/deactivate`);
+  // Clear active state
+  _activeConfigId   = null;
+  _activeSpecies    = null;
+  _activeThresholds = null;
+  localStorage.removeItem('activeConfigId');
+  _notify();
+}
+
+export async function loadActiveConfiguration() {
+  // Try to restore from localStorage first
+  const storedConfigId = localStorage.getItem('activeConfigId');
+  
+  // Fetch all configurations
+  const configs = await getConfigurations();
+  
+  // Find active configuration from server
+  const serverActive = configs.find(c => c.isActive) || null;
+  
+  // If stored config exists and matches server, use it
+  if (storedConfigId && serverActive && serverActive.id === storedConfigId) {
+    _activeConfigId = serverActive.id;
+    applyConfig(serverActive);
+    return serverActive;
+  }
+  
+  // If server has active config, use it and update localStorage
+  if (serverActive) {
+    _activeConfigId = serverActive.id;
+    applyConfig(serverActive);
+    localStorage.setItem('activeConfigId', serverActive.id);
+    return serverActive;
+  }
+  
+  // If stored config exists but server doesn't have it active, check if it still exists
+  if (storedConfigId) {
+    const storedConfig = configs.find(c => c.id === storedConfigId);
+    if (!storedConfig) {
+      // Configuration was deleted, clear localStorage
+      localStorage.removeItem('activeConfigId');
+    }
+  }
+  
+  // No active configuration
+  _activeConfigId   = null;
+  _activeSpecies    = null;
+  _activeThresholds = null;
+  _notify();
+  return null;
+}
+
+// ─── Species Preset Management ────────────────────────────────────────────────
+
 export async function seedSpeciesPresets() {
   for (const [species, preset] of Object.entries(SPECIES_PRESETS)) {
     await api('POST', '/api/configurations', {
-      id: species, name: preset.name, species, thresholds: preset.thresholds,
-    }).catch(() => { 
+      id: species, name: preset.name, species, thresholds: preset.thresholds, isPreset: true,
+    }).catch(async () => { 
       // If it already exists, update it with the new thresholds
       return api('PATCH', `/api/configurations/${species}`, {
         name: preset.name, species, thresholds: preset.thresholds,
@@ -217,85 +279,143 @@ export async function updateSpeciesPresets() {
     } catch (e) {
       // If it doesn't exist, create it
       await api('POST', '/api/configurations', {
-        id: species, name: preset.name, species, thresholds: preset.thresholds,
+        id: species, name: preset.name, species, thresholds: preset.thresholds, isPreset: true,
       }).catch(() => { /* ignore creation failures */ });
     }
   }
 }
 
-// ─── Pond Configurations ──────────────────────────────────────────────────────
-
-export async function getPondConfigurations(pondId) {
-  return api('GET', `/api/pond-configurations?pondId=${encodeURIComponent(pondId)}`);
-}
-
-export async function assignConfigToPond(pondId, configData) {
-  return api('POST', '/api/pond-configurations', { pondId, ...configData });
-}
-
-export async function setActivePondConfig(pondId, pondConfigId) {
-  await api('POST', `/api/pond-configurations/${pondConfigId}/activate`);
-  // Load and apply the newly active config
-  const configs = await getPondConfigurations(pondId);
-  const active  = configs.find(c => c.id === pondConfigId);
-  if (active) {
-    _activePondId   = pondId;
-    _activeConfigId = pondConfigId;
-    applyConfig(active);
-  }
-}
-
-export async function updatePondConfiguration(pondConfigId, data) {
-  return api('PATCH', `/api/pond-configurations/${pondConfigId}`, data);
-}
-
-export async function deletePondConfiguration(pondConfigId) {
-  return api('DELETE', `/api/pond-configurations/${pondConfigId}`);
-}
-
-export async function deactivatePondConfig(pondId, pondConfigId) {
-  await api('POST', `/api/pond-configurations/${pondConfigId}/deactivate`);
-  // Clear active state
-  _activeConfigId   = null;
-  _activeSpecies    = null;
-  _activeThresholds = null;
-  _notify();
-}
-
-export async function loadActivePondConfig(pondId) {
-  _activePondId = pondId;
-  const configs = await getPondConfigurations(pondId);
-  const active  = configs.find(c => c.isActive) || null;
-  if (active) {
-    _activeConfigId = active.id;
-    applyConfig(active);
-  } else {
-    _activeConfigId   = null;
-    _activeSpecies    = null;
-    _activeThresholds = null;
-    _notify();
-  }
-  return active;
-}
-
-// ─── Sensor Data ──────────────────────────────────────────────────────────────
+// ─── Sensor Data (Single Device: device001) ───────────────────────────────────
 
 /**
- * Record a sensor reading tagged with the active pond and configuration.
+ * Record a sensor reading tagged with device001 and the active configuration.
  * Writes directly to Firestore sensor_data — requires rules to allow authenticated writes,
  * OR falls back silently if rules block it (local history in utils.js is always recorded).
  */
-export async function recordPondSensorReading(ph, doVal, turb, temp) {
-  if (!_activePondId) return;
+export async function recordSensorReading(ph, doVal, turb, temp) {
   try {
     await fbAddDoc(fbCollection(fbFirestore(), 'sensor_data'), {
-      pond_id:          _activePondId,
+      device_id:        'device001',
       configuration_id: _activeConfigId || null,
-      species:          _activeSpecies,
+      species:          _activeSpecies || null,
       timestamp:        fbServerTimestamp(),
       values:           { ph, do: doVal, turb, temp },
     });
   } catch {
     // Non-critical — local history still recorded via utils.js
   }
+}
+
+// ─── Legacy Compatibility (Deprecated) ────────────────────────────────────────
+
+/**
+ * @deprecated Use getConfigurations() instead
+ */
+export async function getPonds() {
+  console.warn('getPonds() is deprecated. Use getConfigurations() instead.');
+  return [];
+}
+
+/**
+ * @deprecated Pond management has been removed
+ */
+export async function createPond(data) {
+  console.warn('createPond() is deprecated. Pond management has been removed.');
+  throw new Error('Pond management has been removed. Use configuration management instead.');
+}
+
+/**
+ * @deprecated Pond management has been removed
+ */
+export async function updatePond(pondId, data) {
+  console.warn('updatePond() is deprecated. Pond management has been removed.');
+  throw new Error('Pond management has been removed. Use configuration management instead.');
+}
+
+/**
+ * @deprecated Pond management has been removed
+ */
+export async function deletePond(pondId) {
+  console.warn('deletePond() is deprecated. Pond management has been removed.');
+  throw new Error('Pond management has been removed. Use configuration management instead.');
+}
+
+/**
+ * @deprecated Use getConfigurations() instead
+ */
+export async function getPondConfigurations(pondId) {
+  console.warn('getPondConfigurations() is deprecated. Use getConfigurations() instead.');
+  return getConfigurations();
+}
+
+/**
+ * @deprecated Use createConfiguration() instead
+ */
+export async function assignConfigToPond(pondId, configData) {
+  console.warn('assignConfigToPond() is deprecated. Use createConfiguration() instead.');
+  return createConfiguration(configData);
+}
+
+/**
+ * @deprecated Use setActiveConfiguration() instead
+ */
+export async function setActivePondConfig(pondId, pondConfigId) {
+  console.warn('setActivePondConfig() is deprecated. Use setActiveConfiguration() instead.');
+  return setActiveConfiguration(pondConfigId);
+}
+
+/**
+ * @deprecated Use updateConfiguration() instead
+ */
+export async function updatePondConfiguration(pondConfigId, data) {
+  console.warn('updatePondConfiguration() is deprecated. Use updateConfiguration() instead.');
+  return updateConfiguration(pondConfigId, data);
+}
+
+/**
+ * @deprecated Use deleteConfiguration() instead
+ */
+export async function deletePondConfiguration(pondConfigId) {
+  console.warn('deletePondConfiguration() is deprecated. Use deleteConfiguration() instead.');
+  return deleteConfiguration(pondConfigId);
+}
+
+/**
+ * @deprecated Use deactivateConfiguration() instead
+ */
+export async function deactivatePondConfig(pondId, pondConfigId) {
+  console.warn('deactivatePondConfig() is deprecated. Use deactivateConfiguration() instead.');
+  return deactivateConfiguration();
+}
+
+/**
+ * @deprecated Use loadActiveConfiguration() instead
+ */
+export async function loadActivePondConfig(pondId) {
+  console.warn('loadActivePondConfig() is deprecated. Use loadActiveConfiguration() instead.');
+  return loadActiveConfiguration();
+}
+
+/**
+ * @deprecated Use recordSensorReading() instead
+ */
+export async function recordPondSensorReading(ph, doVal, turb, temp) {
+  console.warn('recordPondSensorReading() is deprecated. Use recordSensorReading() instead.');
+  return recordSensorReading(ph, doVal, turb, temp);
+}
+
+/**
+ * @deprecated Use getActiveConfigId() instead
+ */
+export function getActivePondId() {
+  console.warn('getActivePondId() is deprecated. Use getActiveConfigId() instead.');
+  return null;
+}
+
+/**
+ * @deprecated Use onConfigChange() instead
+ */
+export function onPondConfigChange(fn) {
+  console.warn('onPondConfigChange() is deprecated. Use onConfigChange() instead.');
+  return onConfigChange(fn);
 }

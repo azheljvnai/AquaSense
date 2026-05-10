@@ -41,8 +41,6 @@ export function init() {
     tempSens: document.getElementById('cfg-temp-sens'),
   };
 
-  if (!els.save) return;
-
   const KEY = 'aquasense.settings.v1';
   const defaults = {
     tempMin: 20,
@@ -189,13 +187,15 @@ export function init() {
   });
 
   // Save button
-  els.save.addEventListener('click', () => {
-    if (!canEditConfig()) {
-      alert('Access denied: Owner or Admin required to save configuration.');
-      return;
-    }
-    save();
-  });
+  if (els.save) {
+    els.save.addEventListener('click', () => {
+      if (!canEditConfig()) {
+        alert('Access denied: Owner or Admin required to save configuration.');
+        return;
+      }
+      save();
+    });
+  }
 
   // Auto-save on changes when enabled
   const watch = [
