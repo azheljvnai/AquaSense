@@ -68,7 +68,7 @@ export function renderRecentAlerts() {
     .slice(0, RECENT_ALERTS_LIMIT);
 
   if (!alerts.length) {
-    container.innerHTML = `<div class="alert-item neutral" style="color:var(--text-muted);">No active alerts — all parameters within optimal range.</div>`;
+    container.innerHTML = '<div class="alert-item neutral muted">No active alerts — all parameters within optimal range.</div>';
     return;
   }
 

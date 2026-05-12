@@ -3,197 +3,240 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Configuration Debug</title>
+  <title>Configuration Debug — CrayFarm</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/app.css">
   <style>
-    body {
-      font-family: system-ui, -apple-system, sans-serif;
-      max-width: 800px;
-      margin: 40px auto;
-      padding: 20px;
-      background: #f5f5f5;
+    .debug-page {
+      min-height: 100dvh;
+      background: var(--bg);
+      padding: var(--space-5) var(--space-4) var(--space-6);
     }
-    .section {
-      background: white;
-      padding: 20px;
-      margin-bottom: 20px;
-      border-radius: 8px;
-      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    .debug-wrap {
+      max-width: 840px;
+      margin: 0 auto;
     }
-    h1 { margin-top: 0; }
-    h2 { color: #333; border-bottom: 2px solid #eee; padding-bottom: 8px; }
-    pre {
-      background: #f8f8f8;
-      padding: 12px;
-      border-radius: 4px;
+    .debug-lead {
+      font-size: var(--text-sm);
+      color: var(--text-muted);
+      margin-bottom: var(--space-5);
+      line-height: var(--lh-sm);
+    }
+    .debug-section h2 {
+      font-size: var(--text-md);
+      font-weight: 700;
+      color: var(--text);
+      margin: 0 0 var(--space-3);
+      padding-bottom: var(--space-2);
+      border-bottom: 1px solid var(--border);
+    }
+    .debug-pre {
+      margin-top: var(--space-3);
+      padding: var(--space-3);
+      background: var(--surface-0);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      font-size: var(--text-xs);
+      line-height: 1.45;
       overflow-x: auto;
+      max-height: 320px;
+      overflow-y: auto;
     }
-    .status { padding: 8px 12px; border-radius: 4px; margin: 8px 0; }
-    .status.success { background: #d4edda; color: #155724; }
-    .status.error { background: #f8d7da; color: #721c24; }
-    .status.info { background: #d1ecf1; color: #0c5460; }
-    button {
-      background: #007bff;
-      color: white;
-      border: none;
-      padding: 10px 20px;
-      border-radius: 4px;
-      cursor: pointer;
-      margin-right: 8px;
+    .debug-status {
+      padding: var(--space-2) var(--space-3);
+      border-radius: var(--radius-sm);
+      margin: var(--space-2) 0;
+      font-size: var(--text-sm);
+      font-weight: 500;
+      border: 1px solid var(--border);
     }
-    button:hover { background: #0056b3; }
+    .debug-status.success {
+      background: var(--green-light);
+      color: var(--green-dark);
+      border-color: rgba(34, 197, 94, 0.25);
+    }
+    .debug-status.error {
+      background: var(--red-light);
+      color: var(--red-dark);
+      border-color: rgba(239, 68, 68, 0.25);
+    }
+    .debug-status.info {
+      background: var(--blue-light);
+      color: var(--blue-dark);
+      border-color: rgba(59, 130, 246, 0.2);
+    }
+    .debug-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--space-2);
+      margin-top: var(--space-3);
+    }
   </style>
 </head>
-<body>
-  <h1>Configuration Management Debug</h1>
-  
-  <div class="section">
-    <h2>1. Backend Connection</h2>
-    <div id="backend-status">Testing...</div>
-    <button onclick="testBackend()">Retry Backend Test</button>
-  </div>
-  
-  <div class="section">
-    <h2>2. Firebase Authentication</h2>
-    <div id="auth-status">Checking...</div>
-  </div>
-  
-  <div class="section">
-    <h2>3. Configurations API</h2>
-    <div id="config-status">Testing...</div>
-    <button onclick="testConfigurations()">Retry Config Test</button>
-    <pre id="config-data"></pre>
-  </div>
-  
-  <div class="section">
-    <h2>4. Species Presets</h2>
-    <div id="preset-status">Checking...</div>
-    <pre id="preset-data"></pre>
-  </div>
-  
-  <div class="section">
-    <h2>5. User Permissions</h2>
-    <div id="perms-status">Checking...</div>
-    <pre id="perms-data"></pre>
+<body class="debug-page">
+  <div class="debug-wrap">
+    <h1 class="page-title" style="margin-bottom: var(--space-2);">Configuration Management Debug</h1>
+    <p class="debug-lead">Internal checks for backend connectivity, Firebase auth, and configuration APIs. Uses the same design tokens as the main app.</p>
+
+    <div class="card debug-section" style="margin-bottom: var(--space-4);">
+      <h2>1. Backend Connection</h2>
+      <div id="backend-status" class="debug-status info">Testing…</div>
+      <div class="debug-actions">
+        <button type="button" class="btn btn-primary" onclick="testBackend()">Retry Backend Test</button>
+      </div>
+    </div>
+
+    <div class="card debug-section" style="margin-bottom: var(--space-4);">
+      <h2>2. Firebase Authentication</h2>
+      <div id="auth-status" class="debug-status info">Checking…</div>
+    </div>
+
+    <div class="card debug-section" style="margin-bottom: var(--space-4);">
+      <h2>3. Configurations API</h2>
+      <div id="config-status" class="debug-status info">Testing…</div>
+      <div class="debug-actions">
+        <button type="button" class="btn btn-outline" onclick="testConfigurations()">Retry Config Test</button>
+      </div>
+      <pre id="config-data" class="debug-pre" hidden></pre>
+    </div>
+
+    <div class="card debug-section" style="margin-bottom: var(--space-4);">
+      <h2>4. Species Presets</h2>
+      <div id="preset-status" class="debug-status info">Checking…</div>
+      <pre id="preset-data" class="debug-pre" hidden></pre>
+    </div>
+
+    <div class="card debug-section">
+      <h2>5. User Permissions</h2>
+      <div id="perms-status" class="debug-status info">Checking…</div>
+      <pre id="perms-data" class="debug-pre" hidden></pre>
+    </div>
   </div>
 
   <script type="module">
     import { initFirebase, fbOnAuthStateChanged, fbGetIdToken } from './js/firebase-client.js';
     import { getConfig } from './js/config.js';
-    
+
     let currentUser = null;
-    
+
     function setStatus(id, message, type = 'info') {
       const el = document.getElementById(id);
-      el.className = `status ${type}`;
-      el.innerHTML = message;
+      el.className = `debug-status ${type}`;
+      el.textContent = message;
     }
-    
+
+    function showPre(id, text) {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.textContent = text;
+      el.hidden = !text;
+    }
+
     async function testBackend() {
       try {
         const response = await fetch('/api/health');
         if (response.ok) {
-          setStatus('backend-status', '✓ Backend is running', 'success');
+          setStatus('backend-status', 'Backend is running', 'success');
         } else {
-          setStatus('backend-status', `✗ Backend returned ${response.status}`, 'error');
+          setStatus('backend-status', `Backend returned ${response.status}`, 'error');
         }
       } catch (e) {
-        setStatus('backend-status', `✗ Backend connection failed: ${e.message}`, 'error');
+        setStatus('backend-status', `Backend connection failed: ${e.message}`, 'error');
       }
     }
-    
+
     async function testConfigurations() {
       if (!currentUser) {
-        setStatus('config-status', '✗ Not authenticated', 'error');
+        setStatus('config-status', 'Not authenticated', 'error');
         return;
       }
-      
+
       try {
         const token = await fbGetIdToken();
         const response = await fetch('/api/configurations', {
-          headers: { 'Authorization': `Bearer ${token}` }
+          headers: { Authorization: `Bearer ${token}` },
         });
-        
+
         if (response.ok) {
           const data = await response.json();
-          setStatus('config-status', `✓ Found ${data.length} configurations`, 'success');
-          document.getElementById('config-data').textContent = JSON.stringify(data, null, 2);
-          
-          // Check for presets
-          const presets = data.filter(c => c.isPreset);
+          setStatus('config-status', `Found ${data.length} configurations`, 'success');
+          showPre('config-data', JSON.stringify(data, null, 2));
+
+          const presets = data.filter((c) => c.isPreset);
           if (presets.length > 0) {
-            setStatus('preset-status', `✓ Found ${presets.length} species presets`, 'success');
-            document.getElementById('preset-data').textContent = JSON.stringify(presets, null, 2);
+            setStatus('preset-status', `Found ${presets.length} species presets`, 'success');
+            showPre('preset-data', JSON.stringify(presets, null, 2));
           } else {
-            setStatus('preset-status', '✗ No species presets found. Backend may not have seeded them.', 'error');
+            setStatus('preset-status', 'No species presets found. Backend may not have seeded them.', 'error');
+            showPre('preset-data', '');
           }
         } else {
           const error = await response.text();
-          setStatus('config-status', `✗ API returned ${response.status}: ${error}`, 'error');
+          setStatus('config-status', `API returned ${response.status}: ${error}`, 'error');
+          showPre('config-data', '');
         }
       } catch (e) {
-        setStatus('config-status', `✗ Failed to fetch configurations: ${e.message}`, 'error');
+        setStatus('config-status', `Failed to fetch configurations: ${e.message}`, 'error');
+        showPre('config-data', '');
       }
     }
-    
+
     window.testBackend = testBackend;
     window.testConfigurations = testConfigurations;
-    
-    // Initialize
+
     async function init() {
-      // Test backend
       await testBackend();
-      
-      // Load config and initialize Firebase
+
       const config = await getConfig();
       if (config.firebase) {
         initFirebase(config.firebase);
-        
+
         fbOnAuthStateChanged(async (user) => {
           currentUser = user;
           if (user) {
-            setStatus('auth-status', `✓ Authenticated as ${user.email}`, 'success');
-            
-            // Test configurations
+            setStatus('auth-status', `Authenticated as ${user.email}`, 'success');
+
             await testConfigurations();
-            
-            // Check permissions
+
             try {
               const token = await fbGetIdToken();
               const response = await fetch('/api/users/me', {
-                headers: { 'Authorization': `Bearer ${token}` }
+                headers: { Authorization: `Bearer ${token}` },
               });
-              
+
               if (response.ok) {
                 const userData = await response.json();
                 const role = userData.role || 'farmer';
-                setStatus('perms-status', `✓ Role: ${role}`, 'success');
-                
                 const perms = {
-                  role: role,
+                  role,
                   canEditConfig: role === 'admin' || role === 'owner',
                   canManageUsers: role === 'admin' || role === 'owner',
                 };
-                document.getElementById('perms-data').textContent = JSON.stringify(perms, null, 2);
-                
+                showPre('perms-data', JSON.stringify(perms, null, 2));
+
                 if (!perms.canEditConfig) {
-                  setStatus('perms-status', 
-                    `⚠ Role "${role}" cannot create configurations. Only admin/owner can create configurations.`, 
-                    'error'
+                  setStatus(
+                    'perms-status',
+                    `Role "${role}" cannot create configurations. Only admin or owner can create configurations.`,
+                    'error',
                   );
+                } else {
+                  setStatus('perms-status', `Role: ${role}`, 'success');
                 }
               }
             } catch (e) {
-              setStatus('perms-status', `✗ Failed to check permissions: ${e.message}`, 'error');
+              setStatus('perms-status', `Failed to check permissions: ${e.message}`, 'error');
+              showPre('perms-data', '');
             }
           } else {
-            setStatus('auth-status', '✗ Not authenticated. Please sign in first.', 'error');
+            setStatus('auth-status', 'Not authenticated. Sign in from the main app first.', 'error');
           }
         });
       } else {
-        setStatus('auth-status', '✗ Firebase config not found', 'error');
+        setStatus('auth-status', 'Firebase config not found', 'error');
       }
     }
-    
+
     init();
   </script>
 </body>

@@ -104,7 +104,6 @@ function getPermissions(role) {
       configuration:          r === 'admin' || r === 'owner',
       'user-management':      r === 'admin' || r === 'owner',
       'account-profile':      true,
-      'account-password':     true,
     },
     // Fine-grained action permissions
     canTriggerFeed:      true,                             // all roles can trigger manual feed
@@ -572,7 +571,7 @@ function setupAccountMenu() {
   window.addEventListener('scroll', closeDropdown, true);
 
   // ── Navigate to a page (reuses the existing nav system) ──────────────────
-  function navigateTo(pageId, titleText) {
+  function navigateTo(pageId, titleText, scrollTarget) {
     closeDropdown();
     document.querySelectorAll('.sidebar-nav a').forEach((x) => x.classList.remove('active'));
     document.querySelectorAll('.page-section').forEach((s) => s.classList.remove('active'));
@@ -585,15 +584,27 @@ function setupAccountMenu() {
     const titleEl = document.getElementById('topbar-page-title');
     if (titleEl) titleEl.textContent = titleText;
     document.body.classList.remove('sidebar-open');
+    window.dispatchEvent(new CustomEvent('page-activated', { detail: { page: navPage } }));
+    if (pageId === 'page-account-profile' && scrollTarget) {
+      const map = { profile: 'acct-account-top', security: 'acct-password-section' };
+      const anchorId = map[scrollTarget];
+      setTimeout(() => {
+        document.getElementById(anchorId)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 80);
+    }
   }
 
-  document.getElementById('acct-profile-btn')?.addEventListener('click', () => {
-    navigateTo('page-account-profile', 'My Profile');
+  function openAccountPage(scrollTarget) {
+    navigateTo('page-account-profile', 'Account & security', scrollTarget);
     populateProfilePage();
-  });
-  document.getElementById('acct-password-btn')?.addEventListener('click', () => {
-    navigateTo('page-account-password', 'Change Password');
     resetPasswordPage();
+  }
+
+  document.getElementById('acct-account-page-btn')?.addEventListener('click', () => {
+    openAccountPage('profile');
+  });
+  document.getElementById('acct-password-shortcut-btn')?.addEventListener('click', () => {
+    openAccountPage('security');
   });
 
   // ── Edit Profile (inline on the profile page) ─────────────────────────────
@@ -643,24 +654,6 @@ function setupAccountMenu() {
 
   function openEditProfileDialog() {
     const p = currentProfile || {};
-    const readText = (id) => (document.getElementById(id)?.textContent || '').trim();
-    const farmRaw = {
-      name: readText('farm-name-2') || readText('farm-name'),
-      location: readText('farm-location-2') || readText('farm-location'),
-      size: readText('farm-size'),
-      capacity: readText('farm-capacity'),
-      established: readText('farm-established'),
-      manager: readText('farm-manager'),
-    };
-    const clean = (v) => (v === '—' || v === 'No farm assigned' ? '' : v);
-    const farm = {
-      name: clean(farmRaw.name),
-      location: clean(farmRaw.location),
-      size: clean(farmRaw.size),
-      capacity: clean(farmRaw.capacity),
-      established: clean(farmRaw.established),
-      manager: clean(farmRaw.manager),
-    };
     const esc = (s) => String(s || '').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');
     const dlg = document.createElement('dialog');
     dlg.className = 'um-modal';
@@ -669,7 +662,7 @@ function setupAccountMenu() {
         <div class="um-modal-head">
           <div>
             <div class="um-modal-title">Edit Profile</div>
-            <div class="um-modal-sub">Update your profile and pond details in one place.</div>
+            <div class="um-modal-sub">Update your display name, email, and phone number.</div>
           </div>
           <button class="um-modal-close" aria-label="Close" id="ep-x">
             <svg class="icon icon-16"><use href="#icon-x"/></svg>
@@ -687,30 +680,6 @@ function setupAccountMenu() {
           <div class="um-field">
             <label>Phone Number</label>
             <input id="ep-phone" type="tel" value="${esc(p.phone)}" placeholder="+1 555 000 0000" />
-          </div>
-          <div class="um-field">
-            <label>Manager</label>
-            <input id="ep-farm-manager" type="text" value="${esc(farm.manager)}" placeholder="Manager name" />
-          </div>
-          <div class="um-field">
-            <label>Pond Name</label>
-            <input id="ep-farm-name" type="text" value="${esc(farm.name)}" placeholder="Main pond" />
-          </div>
-          <div class="um-field">
-            <label>Location</label>
-            <input id="ep-farm-location" type="text" value="${esc(farm.location)}" placeholder="City, Province" />
-          </div>
-          <div class="um-field">
-            <label>Size</label>
-            <input id="ep-farm-size" type="text" value="${esc(farm.size)}" placeholder="e.g. 2,500 m²" />
-          </div>
-          <div class="um-field">
-            <label>Capacity</label>
-            <input id="ep-farm-capacity" type="text" value="${esc(farm.capacity)}" placeholder="e.g. 8,000 pcs" />
-          </div>
-          <div class="um-field">
-            <label>Established</label>
-            <input id="ep-farm-established" type="text" value="${esc(farm.established)}" placeholder="e.g. 2022" />
           </div>
         </div>
         <div id="ep-error" style="color:var(--red-dark,#ef4444);font-size:0.8rem;margin-bottom:8px;display:none;"></div>
@@ -733,14 +702,6 @@ function setupAccountMenu() {
       const name  = (dlg.querySelector('#ep-name')?.value || '').trim();
       const email = (dlg.querySelector('#ep-email')?.value || '').trim();
       const phone = (dlg.querySelector('#ep-phone')?.value || '').trim();
-      const farmPayload = {
-        name: (dlg.querySelector('#ep-farm-name')?.value || '').trim(),
-        location: (dlg.querySelector('#ep-farm-location')?.value || '').trim(),
-        size: (dlg.querySelector('#ep-farm-size')?.value || '').trim(),
-        capacity: (dlg.querySelector('#ep-farm-capacity')?.value || '').trim(),
-        established: (dlg.querySelector('#ep-farm-established')?.value || '').trim(),
-        manager: (dlg.querySelector('#ep-farm-manager')?.value || '').trim(),
-      };
       if (!name) { errEl.textContent = 'Display name is required.'; errEl.style.display = 'block'; return; }
       if (!email) { errEl.textContent = 'Email is required.'; errEl.style.display = 'block'; return; }
       saveBtn.disabled = true; saveBtn.textContent = 'Saving…';
@@ -749,7 +710,7 @@ function setupAccountMenu() {
         const resp = await fetch('/api/users/me', {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-          body: JSON.stringify({ displayName: name, email, phone, farm: farmPayload }),
+          body: JSON.stringify({ displayName: name, email, phone }),
         });
         const data = await resp.json();
         if (!resp.ok) throw new Error(data.error || 'Save failed.');

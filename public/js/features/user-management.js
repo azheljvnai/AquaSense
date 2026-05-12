@@ -209,7 +209,7 @@ function openUserModal(user) {
           <label>Email Address</label>
           <input id="um-f-email" type="email" placeholder="user@company.com"
             value="${esc(user?.email || '')}"
-            ${isEdit ? 'readonly style="opacity:0.6;cursor:not-allowed;"' : ''} />
+            ${isEdit ? 'readonly class="um-readonly"' : ''} />
         </div>
         ${!isEdit ? `
         <div class="um-field full">
@@ -223,7 +223,7 @@ function openUserModal(user) {
           </select>
         </div>
         <div class="um-field full">
-          <label>Farm ID <span style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--text-faint)">(optional)</span></label>
+          <label>Farm ID <span class="um-field-label-hint">(optional)</span></label>
           <input id="um-f-farmid" type="text" placeholder="e.g. farm001" value="${esc(user?.farmId || '')}" />
         </div>
       </div>
@@ -319,7 +319,7 @@ function confirmToggle(user) {
           <svg class="icon icon-16"><use href="#icon-x"/></svg>
         </button>
       </div>
-      <p style="font-size:0.9rem;color:var(--text-2);margin-bottom:20px;">
+      <p class="um-confirm-text">
         ${isDisabled
           ? `Re-enable <strong>${esc(name)}</strong>? They will be able to sign in immediately.`
           : `Disable <strong>${esc(name)}</strong>? They will be signed out and blocked from logging in.`}
@@ -327,10 +327,7 @@ function confirmToggle(user) {
       <div id="ct-error" class="um-error"></div>
       <div class="um-modal-footer">
         <button type="button" class="btn btn-outline" id="ct-cancel">Cancel</button>
-        <button type="button" class="btn btn-primary" id="ct-confirm"
-          style="${isDisabled ? '' : 'background:var(--orange,#f59e0b);border-color:var(--orange,#f59e0b);'}">
-          ${action}
-        </button>
+        <button type="button" class="btn btn-primary${isDisabled ? '' : ' um-btn-warn'}" id="ct-confirm">${action}</button>
       </div>
     </div>
   `;
@@ -386,13 +383,13 @@ function confirmDelete(user) {
           <svg class="icon icon-16"><use href="#icon-x"/></svg>
         </button>
       </div>
-      <p style="font-size:0.9rem;color:var(--text-2);margin-bottom:20px;">
+      <p class="um-confirm-text">
         Permanently delete <strong>${esc(name)}</strong>? Their Firebase Auth account and all records will be removed.
       </p>
       <div id="cd-error" class="um-error"></div>
       <div class="um-modal-footer">
         <button type="button" class="btn btn-outline" id="cd-cancel">Cancel</button>
-        <button type="button" class="btn btn-primary" id="cd-confirm" style="background:var(--red);border-color:var(--red);">Delete</button>
+        <button type="button" class="btn btn-primary um-btn-danger" id="cd-confirm">Delete</button>
       </div>
     </div>
   `;

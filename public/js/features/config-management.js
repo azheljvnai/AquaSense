@@ -15,6 +15,7 @@ import {
   onConfigChange,
   SPECIES_PRESETS,
 } from '../pond-config.js';
+import { flexModalHtml, escapeHtml } from '../ui/templates.js';
 
 let _configurations = [];
 let _activeConfigId = null;
@@ -116,23 +117,36 @@ function renderConfigurationSelector() {
   // Active configuration details
   if (activeConfig) {
     const t = activeConfig.thresholds;
+    const speciesKey = String(activeConfig.species || 'crayfish').toLowerCase();
+    const speciesPresetName = escapeHtml(SPECIES_PRESETS[speciesKey]?.name || speciesKey);
+    const configTitle = escapeHtml(activeConfig.name || speciesPresetName);
+    const typeChip = activeConfig.isPreset
+      ? '<span class="config-type-chip config-type-chip--preset">Preset</span>'
+      : '<span class="config-type-chip config-type-chip--custom">Custom</span>';
     html += `
-      <div class="config-details-card">
+      <div class="config-details-card config-active-card">
+        <div class="config-active-hero">
+          <div class="config-active-meta">
+            ${typeChip}
+            <span class="species-badge species-${speciesKey}">${speciesPresetName}</span>
+          </div>
+          <h2 class="config-active-name">${configTitle}</h2>
+        </div>
         <h3 class="config-details-title">Current Thresholds</h3>
-        <div class="config-thresholds-grid">
-          <div class="threshold-item">
+        <div class="config-thresholds-grid config-thresholds-showcase">
+          <div class="threshold-item threshold-tile threshold-tile--ph">
             <div class="threshold-label">pH Range</div>
             <div class="threshold-value">${t.ph?.optimalMin ?? '—'} - ${t.ph?.optimalMax ?? '—'}</div>
           </div>
-          <div class="threshold-item">
+          <div class="threshold-item threshold-tile threshold-tile--temp">
             <div class="threshold-label">Temperature (°C)</div>
             <div class="threshold-value">${t.temp?.optimalMin ?? '—'} - ${t.temp?.optimalMax ?? '—'}</div>
           </div>
-          <div class="threshold-item">
+          <div class="threshold-item threshold-tile threshold-tile--do">
             <div class="threshold-label">Dissolved O₂ (mg/L)</div>
             <div class="threshold-value">≥ ${t.do?.optimalMin ?? '—'}</div>
           </div>
-          <div class="threshold-item">
+          <div class="threshold-item threshold-tile threshold-tile--turb">
             <div class="threshold-label">Turbidity (NTU)</div>
             <div class="threshold-value">≤ ${t.turb?.optimalMax ?? '—'}</div>
           </div>
@@ -231,14 +245,8 @@ function showCreateDialog() {
 }
 
 function createDialogHTML() {
-  const dialogHTML = `
-    <div id="create-config-dialog" class="modal" style="display:none;">
-      <div class="modal-content">
-        <div class="modal-header">
-          <h2>Create Configuration</h2>
-          <button class="modal-close" onclick="window.configManagement.closeDialog('create-config-dialog')">&times;</button>
-        </div>
-        <div class="modal-body">
+  const close = "window.configManagement.closeDialog('create-config-dialog')";
+  const bodyHtml = `
           <div class="form-group">
             <label for="config-name">Configuration Name</label>
             <input type="text" id="config-name" class="form-control" placeholder="e.g., Crayfish - Summer" required>
@@ -284,17 +292,20 @@ function createDialogHTML() {
               <label for="config-turb-max">Turbidity Max (NTU)</label>
               <input type="number" id="config-turb-max" class="form-control" step="1" required>
             </div>
-          </div>
-        </div>
-        <div class="modal-footer">
-          <button class="btn btn-secondary" onclick="window.configManagement.closeDialog('create-config-dialog')">Cancel</button>
-          <button class="btn btn-primary" onclick="window.configManagement.saveNewConfiguration()">Create</button>
-        </div>
-      </div>
-    </div>
-  `;
-  
-  document.body.insertAdjacentHTML('beforeend', dialogHTML);
+          </div>`;
+  const footerHtml = `
+          <button type="button" class="btn btn-secondary" onclick="${close}">Cancel</button>
+          <button type="button" class="btn btn-primary" onclick="window.configManagement.saveNewConfiguration()">Create</button>`;
+  document.body.insertAdjacentHTML(
+    'beforeend',
+    flexModalHtml({
+      id: 'create-config-dialog',
+      title: 'Create Configuration',
+      bodyHtml,
+      footerHtml,
+      closeAction: close,
+    }),
+  );
 }
 
 // ─── Show Preset Assignment Dialog ────────────────────────────────────────────
@@ -310,33 +321,30 @@ function showPresetDialog() {
 }
 
 function createPresetDialogHTML() {
-  const dialogHTML = `
-    <div id="preset-dialog" class="modal" style="display:none;">
-      <div class="modal-content">
-        <div class="modal-header">
-          <h2>Assign Species Preset</h2>
-          <button class="modal-close" onclick="window.configManagement.closeDialog('preset-dialog')">&times;</button>
-        </div>
-        <div class="modal-body">
+  const close = "window.configManagement.closeDialog('preset-dialog')";
+  const bodyHtml = `
           <p>Select a species preset to create a new configuration:</p>
           <div class="preset-grid">
             ${Object.entries(SPECIES_PRESETS).map(([key, preset]) => `
               <div class="preset-card" onclick="window.configManagement.assignPreset('${key}')">
-                <span class="species-badge species-${key}">${preset.name}</span>
+                <span class="species-badge species-${key}">${escapeHtml(preset.name)}</span>
                 <p>Optimal pH: ${preset.thresholds.ph.optimalMin} - ${preset.thresholds.ph.optimalMax}</p>
                 <p>Optimal Temp: ${preset.thresholds.temp.optimalMin}°C - ${preset.thresholds.temp.optimalMax}°C</p>
               </div>
             `).join('')}
-          </div>
-        </div>
-        <div class="modal-footer">
-          <button class="btn btn-secondary" onclick="window.configManagement.closeDialog('preset-dialog')">Cancel</button>
-        </div>
-      </div>
-    </div>
-  `;
-  
-  document.body.insertAdjacentHTML('beforeend', dialogHTML);
+          </div>`;
+  const footerHtml = `
+          <button type="button" class="btn btn-secondary" onclick="${close}">Cancel</button>`;
+  document.body.insertAdjacentHTML(
+    'beforeend',
+    flexModalHtml({
+      id: 'preset-dialog',
+      title: 'Assign Species Preset',
+      bodyHtml,
+      footerHtml,
+      closeAction: close,
+    }),
+  );
 }
 
 async function assignPreset(species) {
@@ -390,14 +398,8 @@ function editConfiguration(configId) {
 }
 
 function createEditDialogHTML() {
-  const dialogHTML = `
-    <div id="edit-config-dialog" class="modal" style="display:none;">
-      <div class="modal-content">
-        <div class="modal-header">
-          <h2>Edit Configuration</h2>
-          <button class="modal-close" onclick="window.configManagement.closeDialog('edit-config-dialog')">&times;</button>
-        </div>
-        <div class="modal-body">
+  const close = "window.configManagement.closeDialog('edit-config-dialog')";
+  const bodyHtml = `
           <input type="hidden" id="edit-config-id">
           
           <div class="form-group">
@@ -445,17 +447,20 @@ function createEditDialogHTML() {
               <label for="edit-turb-max">Turbidity Max (NTU)</label>
               <input type="number" id="edit-turb-max" class="form-control" step="1" required>
             </div>
-          </div>
-        </div>
-        <div class="modal-footer">
-          <button class="btn btn-secondary" onclick="window.configManagement.closeDialog('edit-config-dialog')">Cancel</button>
-          <button class="btn btn-primary" onclick="window.configManagement.saveEditedConfiguration()">Save Changes</button>
-        </div>
-      </div>
-    </div>
-  `;
-  
-  document.body.insertAdjacentHTML('beforeend', dialogHTML);
+          </div>`;
+  const footerHtml = `
+          <button type="button" class="btn btn-secondary" onclick="${close}">Cancel</button>
+          <button type="button" class="btn btn-primary" onclick="window.configManagement.saveEditedConfiguration()">Save Changes</button>`;
+  document.body.insertAdjacentHTML(
+    'beforeend',
+    flexModalHtml({
+      id: 'edit-config-dialog',
+      title: 'Edit Configuration',
+      bodyHtml,
+      footerHtml,
+      closeAction: close,
+    }),
+  );
 }
 
 // ─── Save New Configuration ────────────────────────────────────────────────────
@@ -604,12 +609,6 @@ function populateThresholdFields(species) {
 function closeDialog(dialogId) {
   const dialog = document.getElementById(dialogId);
   if (dialog) dialog.style.display = 'none';
-}
-
-function escapeHtml(text) {
-  const div = document.createElement('div');
-  div.textContent = text;
-  return div.innerHTML;
 }
 
 function showToast(message, type = 'info') {

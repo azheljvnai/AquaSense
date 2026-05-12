@@ -1,209 +1,151 @@
 /**
- * Farm & Profile feature: load farm + members from Firestore and allow profile edits.
- * All roles (admin, owner, farmer) can view this page and edit their own profile.
+ * Profile feature: load the signed-in user from Firestore for the Account & security page.
+ * Pond and team lists were removed from the profile UI; farm data is managed elsewhere.
  */
-import {
-  fbFirestore,
-  fbDoc,
-  fbGetDoc,
-  fbCollection,
-  fbGetDocs,
-  fbServerTimestamp,
-  fbGetIdToken,
-} from '../firebase-client.js';
+import { fbFirestore, fbDoc, fbGetDoc } from '../firebase-client.js';
+
+const ROLE_LABEL = {
+  admin: 'Admin',
+  owner: 'Owner',
+  farmer: 'Farmer',
+  manager: 'Owner',
+  viewer: 'Farmer',
+};
+
+const ROLE_DESC = {
+  admin: 'You can manage users, ponds, configurations, reports, and other administrative settings across the farm.',
+  owner: 'You can run day-to-day operations: ponds, feeding schedules, reports, configurations, and alerts for your team.',
+  farmer: 'You can monitor sensors, trigger manual feeds, view feeding logs, and work with alerts for assigned ponds.',
+  manager: 'You can run day-to-day operations: ponds, feeding schedules, reports, configurations, and alerts for your team.',
+  viewer: 'You can monitor sensors, trigger manual feeds, view feeding logs, and work with alerts for assigned ponds.',
+};
+
+function avatarLetter(nameOrEmail) {
+  const s = String(nameOrEmail || '').trim();
+  return (s[0] || 'U').toUpperCase();
+}
+
+function formatUid(uid) {
+  if (!uid) return '—';
+  if (uid.length <= 14) return uid;
+  return `${uid.slice(0, 6)}…${uid.slice(-4)}`;
+}
+
+function fmtDate(d) {
+  if (!d || !(d instanceof Date) || Number.isNaN(d.getTime())) return '—';
+  return d.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
+}
+
+function fmtDateTime(d) {
+  if (!d || !(d instanceof Date) || Number.isNaN(d.getTime())) return '—';
+  return d.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+}
+
+let lastAuthUser = null;
+let copyBound = false;
 
 export function init() {
   const els = {
-    farmName: document.getElementById('farm-name'),
-    farmName2: document.getElementById('farm-name-2'),
-    farmLocation: document.getElementById('farm-location'),
-    farmLocation2: document.getElementById('farm-location-2'),
-    farmCreated: document.getElementById('farm-created'),
-    farmEstablished: document.getElementById('farm-established'),
-    farmSize: document.getElementById('farm-size'),
-    farmCapacity: document.getElementById('farm-capacity'),
-    farmManager: document.getElementById('farm-manager'),
     userPhone: document.getElementById('user-phone'),
     userEmail: document.getElementById('user-email'),
-    staffList: document.getElementById('staff-list'),
-    btnEdit: document.getElementById('btn-edit-profile'),
     fpAvatarLetter: document.getElementById('fp-avatar-letter'),
     fpDisplayName: document.getElementById('fp-display-name'),
     fpRoleBadge: document.getElementById('fp-role-badge'),
     fpMemberSince: document.getElementById('fp-member-since'),
+    fpEmailVerified: document.getElementById('fp-email-verified'),
+    fpLastSignin: document.getElementById('fp-last-signin'),
+    fpUserId: document.getElementById('fp-user-id'),
+    fpFarmId: document.getElementById('fp-farm-id'),
+    fpRoleDesc: document.getElementById('fp-role-desc'),
   };
 
-  if (!els.farmName || !els.staffList) return;
+  if (!els.userEmail) return;
 
-  const fmtYear = (ts) => {
-    try {
-      const d = ts?.toDate ? ts.toDate() : (ts instanceof Date ? ts : null);
-      if (!d) return '—';
-      return `Est. ${d.getFullYear()}`;
-    } catch {
-      return '—';
-    }
-  };
-
-  const avatarLetter = (nameOrEmail) => {
-    const s = String(nameOrEmail || '').trim();
-    return (s[0] || 'U').toUpperCase();
-  };
-
-  const ROLE_LABEL = { admin: 'Admin', owner: 'Owner', farmer: 'Farmer',
-    // legacy aliases
-    manager: 'Owner', viewer: 'Farmer' };
-
-  function renderStaff(members) {
-    els.staffList.innerHTML = '';
-    if (!Array.isArray(members) || !members.length) {
-      els.staffList.innerHTML = `<div style="color:var(--text-muted);font-size:0.9rem;padding:12px 0;">No staff members found.</div>`;
-      return;
-    }
-    for (const m of members) {
-      const name = m.displayName || m.email || 'Member';
-      const email = m.email || '';
-      const role = (m.role || 'viewer').toString();
-      const since = m.joinedAt?.toDate ? m.joinedAt.toDate().getFullYear() : '';
-      const el = document.createElement('div');
-      el.className = 'staff-item';
-      el.innerHTML = `
-        <div class="avatar">${avatarLetter(name)}</div>
-        <div class="staff-info">
-          <div class="staff-name">${name}</div>
-          <div class="staff-email">${email}</div>
-        </div>
-        <span class="um-role-badge um-role-${role}" style="font-size:0.7rem;">${ROLE_LABEL[role] || role}</span>
-        <div style="font-size:0.75rem;color:var(--text-muted);margin-left:auto;">${since ? `Since ${since}` : ''}</div>
-      `;
-      els.staffList.appendChild(el);
-    }
+  if (!copyBound) {
+    copyBound = true;
+    document.getElementById('btn-copy-user-id')?.addEventListener('click', async () => {
+      const uid = lastAuthUser?.uid;
+      if (!uid) return;
+      try {
+        await navigator.clipboard.writeText(uid);
+        if (typeof window.showToast === 'function') window.showToast('User ID copied', 'success');
+      } catch {
+        if (typeof window.showToast === 'function') window.showToast('Could not copy ID', 'error');
+      }
+    });
   }
 
   async function loadForUser(user) {
+    lastAuthUser = user || null;
     const fs = fbFirestore();
     const userSnap = await fbGetDoc(fbDoc(fs, 'users', user.uid));
     const profile = userSnap.exists() ? userSnap.data() : {};
 
     const displayName = profile.displayName || (profile.email ? profile.email.split('@')[0] : 'User');
-    const role = profile.role || 'farmer';
+    const role = String(profile.role || 'farmer').toLowerCase();
+    const normRole = role === 'manager' ? 'owner' : role === 'viewer' ? 'farmer' : role;
 
     if (els.userEmail) els.userEmail.textContent = profile.email || user.email || '—';
     if (els.userPhone) els.userPhone.textContent = profile.phone || '—';
-    if (els.farmManager) els.farmManager.textContent = displayName;
 
-    // New profile fields
     if (els.fpAvatarLetter) els.fpAvatarLetter.textContent = avatarLetter(displayName);
     if (els.fpDisplayName) els.fpDisplayName.textContent = displayName;
     if (els.fpRoleBadge) {
-      els.fpRoleBadge.textContent = ROLE_LABEL[role] || role;
-      els.fpRoleBadge.className = `um-role-badge um-role-${role}`;
+      els.fpRoleBadge.textContent = ROLE_LABEL[role] || ROLE_LABEL[normRole] || role;
+      els.fpRoleBadge.className = `um-role-badge um-role-${normRole}`;
     }
     if (els.fpMemberSince) {
       try {
         const d = profile.createdAt?.toDate ? profile.createdAt.toDate() : null;
-        els.fpMemberSince.textContent = d ? d.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' }) : '—';
-      } catch { els.fpMemberSince.textContent = '—'; }
+        els.fpMemberSince.textContent = fmtDate(d);
+      } catch {
+        els.fpMemberSince.textContent = '—';
+      }
     }
 
-    const farmId = profile.farmId || '';
-    if (!farmId) {
-      els.farmName.textContent = 'No farm assigned';
-      if (els.farmName2) els.farmName2.textContent = '—';
-      if (els.farmLocation) els.farmLocation.textContent = '—';
-      if (els.farmLocation2) els.farmLocation2.textContent = '—';
-      if (els.farmCreated) els.farmCreated.textContent = '—';
-      if (els.farmEstablished) els.farmEstablished.textContent = '—';
-      if (els.farmSize) els.farmSize.textContent = '—';
-      if (els.farmCapacity) els.farmCapacity.textContent = '—';
-      renderStaff([]);
-      return { profile, farmId: '' };
+    if (els.fpEmailVerified) {
+      els.fpEmailVerified.textContent = '';
+      const ok = user.emailVerified === true;
+      const span = document.createElement('span');
+      span.className = ok ? 'badge-pill status-normal' : 'badge-pill status-warning';
+      span.textContent = ok ? 'Verified' : 'Not verified';
+      els.fpEmailVerified.appendChild(span);
     }
 
-    const farmSnap = await fbGetDoc(fbDoc(fs, 'farms', farmId));
-    const farm = farmSnap.exists() ? farmSnap.data() : {};
+    let lastDt = null;
+    try {
+      if (profile.lastLoginAt?.toDate) lastDt = profile.lastLoginAt.toDate();
+      else if (user.metadata?.lastSignInTime) lastDt = new Date(user.metadata.lastSignInTime);
+    } catch {
+      lastDt = null;
+    }
+    if (els.fpLastSignin) els.fpLastSignin.textContent = fmtDateTime(lastDt);
 
-    const farmName = farm.name || 'Farm';
-    const location = farm.location || '—';
-    const manager = farm.manager || displayName;
-    els.farmName.textContent = farmName;
-    if (els.farmName2) els.farmName2.textContent = farmName;
-    if (els.farmLocation) els.farmLocation.textContent = location;
-    if (els.farmLocation2) els.farmLocation2.textContent = location;
-    if (els.farmCreated) els.farmCreated.textContent = fmtYear(farm.createdAt);
-    if (els.farmEstablished) els.farmEstablished.textContent = farm.established || fmtYear(farm.createdAt);
-    if (els.farmSize) els.farmSize.textContent = farm.size || '—';
-    if (els.farmCapacity) els.farmCapacity.textContent = farm.capacity || '—';
-    if (els.farmManager) els.farmManager.textContent = manager;
+    const uid = user.uid || '';
+    if (els.fpUserId) {
+      els.fpUserId.textContent = formatUid(uid);
+      els.fpUserId.title = uid || '';
+    }
 
-    const memCol = fbCollection(fs, 'farms', farmId, 'members');
-    const memSnap = await fbGetDocs(memCol);
-    const members = memSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
-    renderStaff(members);
+    const farmId = String(profile.farmId || '').trim();
+    if (els.fpFarmId) {
+      els.fpFarmId.textContent = farmId || '—';
+      els.fpFarmId.title = farmId || '';
+    }
+
+    if (els.fpRoleDesc) {
+      els.fpRoleDesc.textContent = ROLE_DESC[normRole] || ROLE_DESC.farmer;
+    }
+
     return { profile, farmId };
   }
 
-  function openEditDialog(profile) {
-    const esc = (s) =>
-      String(s || '')
-        .replaceAll('&', '&amp;')
-        .replaceAll('<', '&lt;')
-        .replaceAll('>', '&gt;')
-        .replaceAll('"', '&quot;');
-    const dlg = document.createElement('dialog');
-    dlg.className = 'um-modal';
-    dlg.innerHTML = `
-      <div class="um-modal-inner">
-        <div class="um-modal-head">
-          <div>
-            <div class="um-modal-title">Edit Profile</div>
-            <div class="um-modal-sub">Update your display name and phone number.</div>
-          </div>
-          <button class="um-modal-close" value="cancel" aria-label="Close" id="ep-x">
-            <svg class="icon icon-16"><use href="#icon-x"/></svg>
-          </button>
-        </div>
-        <div class="um-form-grid">
-          <div class="um-field">
-            <label>Display Name</label>
-            <input id="ep-name" type="text" value="${esc(profile.displayName)}" placeholder="Your name" />
-          </div>
-          <div class="um-field">
-            <label>Phone Number</label>
-            <input id="ep-phone" type="text" value="${esc(profile.phone)}" placeholder="+1 555 000 0000" />
-          </div>
-        </div>
-        <div id="ep-error" style="color:var(--red-dark);font-size:0.8rem;margin-bottom:8px;display:none;"></div>
-        <div class="um-modal-footer">
-          <button type="button" class="btn btn-outline" id="ep-cancel">Cancel</button>
-          <button type="button" class="btn btn-primary" id="ep-save">Save Changes</button>
-        </div>
-      </div>
-    `;
-    document.body.appendChild(dlg);
-    dlg.showModal();
-
-    const close = () => { dlg.close(); setTimeout(() => dlg.remove(), 0); };
-    dlg.querySelector('#ep-x')?.addEventListener('click', close);
-    dlg.querySelector('#ep-cancel')?.addEventListener('click', close);
-    dlg.addEventListener('close', () => setTimeout(() => dlg.remove(), 0));
-    return dlg;
-  }
-
-  let lastProfile = {};
-  let lastUser = null;
-
-  // Called by app.js after Firebase is initialized and user signs in
   window._farmProfileOnUser = async (user) => {
-    lastUser = user || null;
     if (!user) return;
     try {
-      const { profile } = await loadForUser(user);
-      lastProfile = profile || {};
+      await loadForUser(user);
     } catch {
       // ignore
     }
   };
-
-  // Edit Profile button is handled by setupAccountMenu in app.js
 }

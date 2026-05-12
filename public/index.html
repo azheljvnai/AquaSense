@@ -49,6 +49,10 @@
   <symbol id="icon-shield" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></symbol>
   <symbol id="icon-trash" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></symbol>
   <symbol id="icon-key" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></symbol>
+  <symbol id="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></symbol>
+  <symbol id="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></symbol>
+  <symbol id="icon-chevron-left" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></symbol>
+  <symbol id="icon-chevron-right" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></symbol>
 </svg>
 
 <!-- Auth screen -->
@@ -133,7 +137,7 @@
         <div class="sidebar-user-name" id="sb-user-name">—</div>
         <div class="sidebar-user-email" id="sb-user-email">—</div>
       </div>
-      <button class="btn btn-outline" id="btn-logout" type="button" style="margin-left:auto;padding:6px 10px;font-size:0.8rem;">Logout</button>
+      <button class="btn btn-outline sidebar-logout" id="btn-logout" type="button">Logout</button>
     </div>
   </aside>
 
@@ -167,28 +171,28 @@
       </div>
       <div class="dash-metrics">
         <div class="metric-card scard temp">
-          <div class="metric-icon" style="background:var(--red-light);color:var(--temp-c)"><svg class="icon icon-20"><use href="#icon-thermometer"/></svg></div>
+          <div class="metric-icon metric-icon--temp"><svg class="icon icon-20"><use href="#icon-thermometer"/></svg></div>
           <div class="scard-label">Water Temperature</div>
           <div class="scard-val" id="v-temp">—</div>
           <div class="scard-badge ok" id="b-temp">Normal</div>
           <svg class="spark" id="sp-temp"></svg>
         </div>
         <div class="metric-card scard ph">
-          <div class="metric-icon" style="background:var(--blue-light);color:var(--ph-c)"><svg class="icon icon-20"><use href="#icon-droplet"/></svg></div>
+          <div class="metric-icon metric-icon--ph"><svg class="icon icon-20"><use href="#icon-droplet"/></svg></div>
           <div class="scard-label">pH Level</div>
           <div class="scard-val" id="v-ph">—</div>
           <div class="scard-badge ok" id="b-ph">Normal</div>
           <svg class="spark" id="sp-ph"></svg>
         </div>
         <div class="metric-card scard do">
-          <div class="metric-icon" style="background:var(--green-light);color:var(--do-c)"><svg class="icon icon-20"><use href="#icon-activity"/></svg></div>
+          <div class="metric-icon metric-icon--do"><svg class="icon icon-20"><use href="#icon-activity"/></svg></div>
           <div class="scard-label">Dissolved Oxygen</div>
           <div class="scard-val" id="v-do">—</div>
           <div class="scard-badge ok" id="b-do">Normal</div>
           <svg class="spark" id="sp-do"></svg>
         </div>
         <div class="metric-card scard turb">
-          <div class="metric-icon" style="background:var(--yellow-light);color:var(--turb-c)"><svg class="icon icon-20"><use href="#icon-activity"/></svg></div>
+          <div class="metric-icon metric-icon--turb"><svg class="icon icon-20"><use href="#icon-activity"/></svg></div>
           <div class="scard-label">Turbidity (NTU)</div>
           <div class="scard-val" id="v-turb">—</div>
           <div class="scard-badge ok" id="b-turb">Normal</div>
@@ -204,18 +208,18 @@
           </div>
           <canvas id="chart"></canvas>
           <div class="chart-legend">
-            <div class="chart-legend-item"><div class="chart-legend-dot" style="background:var(--ph-c)"></div>pH</div>
-            <div class="chart-legend-item"><div class="chart-legend-dot" style="background:var(--do-c)"></div>Dissolved O₂</div>
-            <div class="chart-legend-item"><div class="chart-legend-dot" style="background:var(--turb-c)"></div>Turbidity</div>
-            <div class="chart-legend-item"><div class="chart-legend-dot" style="background:var(--temp-c)"></div>Temperature</div>
+            <div class="chart-legend-item"><div class="chart-legend-dot chart-legend-dot--ph"></div>pH</div>
+            <div class="chart-legend-item"><div class="chart-legend-dot chart-legend-dot--do"></div>Dissolved O₂</div>
+            <div class="chart-legend-item"><div class="chart-legend-dot chart-legend-dot--turb"></div>Turbidity</div>
+            <div class="chart-legend-item"><div class="chart-legend-dot chart-legend-dot--temp"></div>Temperature</div>
           </div>
         </div>
         <div class="card dash-alerts-card">
           <div class="panel-title"><svg class="icon icon-16"><use href="#icon-warning"/></svg> Recent Alerts</div>
           <div class="recent-alerts" id="recent-alerts">
-            <div style="padding:20px 0;text-align:center;color:var(--text-muted);font-size:0.82rem;">Loading alerts…</div>
+            <div class="flex-center-soft text-sm">Loading alerts…</div>
           </div>
-          <div class="panel-title" style="margin-top:16px">Activity Log</div>
+          <div class="panel-title panel-title--spaced">Activity Log</div>
           <ul id="loglist"></ul>
         </div>
         <div class="feed-panel card">
@@ -250,28 +254,28 @@
       <h1 class="page-title">Water Quality</h1>
       <div class="wq-avg-row">
         <div class="wq-avg-card">
-          <div style="color:#3b82f6;"><svg class="icon icon-24"><use href="#icon-droplet"/></svg></div>
+          <div class="wq-icon wq-icon--ph"><svg class="icon icon-24"><use href="#icon-droplet"/></svg></div>
           <div class="val" id="wq-avg-ph">7.3</div>
-          <div style="font-size:0.8rem;color:var(--text-muted);">Avg pH Level</div>
-          <div class="bar"><div class="bar-fill" style="width:73%;background:#3b82f6;"></div></div>
+          <div class="wq-avg-label">Avg pH Level</div>
+          <div class="bar"><div class="bar-fill wq-bar-fill--ph"></div></div>
         </div>
         <div class="wq-avg-card">
-          <div style="color:#ef4444;"><svg class="icon icon-24"><use href="#icon-thermometer"/></svg></div>
+          <div class="wq-icon wq-icon--temp"><svg class="icon icon-24"><use href="#icon-thermometer"/></svg></div>
           <div class="val" id="wq-avg-temp">22.7°C</div>
-          <div style="font-size:0.8rem;color:var(--text-muted);">Avg Temperature</div>
-          <div class="bar"><div class="bar-fill" style="width:57%;background:#ef4444;"></div></div>
+          <div class="wq-avg-label">Avg Temperature</div>
+          <div class="bar"><div class="bar-fill wq-bar-fill--temp"></div></div>
         </div>
         <div class="wq-avg-card">
-          <div style="color:#22c55e;"><svg class="icon icon-24"><use href="#icon-activity"/></svg></div>
+          <div class="wq-icon wq-icon--do"><svg class="icon icon-24"><use href="#icon-activity"/></svg></div>
           <div class="val" id="wq-avg-do">8.5 mg/L</div>
-          <div style="font-size:0.8rem;color:var(--text-muted);">Avg Oxygen</div>
-          <div class="bar"><div class="bar-fill" style="width:85%;background:#22c55e;"></div></div>
+          <div class="wq-avg-label">Avg Oxygen</div>
+          <div class="bar"><div class="bar-fill wq-bar-fill--do"></div></div>
         </div>
         <div class="wq-avg-card">
-          <div style="color:#eab308;"><svg class="icon icon-24"><use href="#icon-activity"/></svg></div>
+          <div class="wq-icon wq-icon--turb"><svg class="icon icon-24"><use href="#icon-activity"/></svg></div>
           <div class="val" id="wq-avg-turb">— NTU</div>
-          <div style="font-size:0.8rem;color:var(--text-muted);">Avg Turbidity</div>
-          <div class="bar"><div class="bar-fill" style="width:40%;background:#eab308;"></div></div>
+          <div class="wq-avg-label">Avg Turbidity</div>
+          <div class="bar"><div class="bar-fill wq-bar-fill--turb"></div></div>
         </div>
       </div>
       <div class="wq-tanks">
@@ -292,28 +296,28 @@
       <!-- Summary stat cards -->
       <div class="hist-stat-row">
         <div class="metric-card scard temp">
-          <div class="metric-icon" style="background:var(--red-light);color:var(--temp-c)"><svg class="icon icon-20"><use href="#icon-thermometer"/></svg></div>
+          <div class="metric-icon metric-icon--temp"><svg class="icon icon-20"><use href="#icon-thermometer"/></svg></div>
           <div class="scard-label">Water Temperature</div>
           <div class="scard-val" id="hist-v-temp">—</div>
           <div class="scard-badge ok" id="hist-b-temp">Normal</div>
           <svg class="spark" id="hist-sp-temp"></svg>
         </div>
         <div class="metric-card scard ph">
-          <div class="metric-icon" style="background:var(--blue-light);color:var(--ph-c)"><svg class="icon icon-20"><use href="#icon-droplet"/></svg></div>
+          <div class="metric-icon metric-icon--ph"><svg class="icon icon-20"><use href="#icon-droplet"/></svg></div>
           <div class="scard-label">pH Level</div>
           <div class="scard-val" id="hist-v-ph">—</div>
           <div class="scard-badge ok" id="hist-b-ph">Normal</div>
           <svg class="spark" id="hist-sp-ph"></svg>
         </div>
         <div class="metric-card scard do">
-          <div class="metric-icon" style="background:var(--green-light);color:var(--do-c)"><svg class="icon icon-20"><use href="#icon-activity"/></svg></div>
+          <div class="metric-icon metric-icon--do"><svg class="icon icon-20"><use href="#icon-activity"/></svg></div>
           <div class="scard-label">Dissolved Oxygen</div>
           <div class="scard-val" id="hist-v-do">—</div>
           <div class="scard-badge ok" id="hist-b-do">Normal</div>
           <svg class="spark" id="hist-sp-do"></svg>
         </div>
         <div class="metric-card scard turb">
-          <div class="metric-icon" style="background:var(--yellow-light);color:var(--turb-c)"><svg class="icon icon-20"><use href="#icon-activity"/></svg></div>
+          <div class="metric-icon metric-icon--turb"><svg class="icon icon-20"><use href="#icon-activity"/></svg></div>
           <div class="scard-label">Turbidity (NTU)</div>
           <div class="scard-val" id="hist-v-turb">—</div>
           <div class="scard-badge ok" id="hist-b-turb">Normal</div>
@@ -360,30 +364,30 @@
               <option value="month">This Month</option>
               <option value="custom">Custom Range</option>
             </select>
-            <div id="hist-custom-range" style="display:none;align-items:center;gap:6px;">
+            <div id="hist-custom-range" class="hist-custom-range">
               <input type="date" id="hist-from" class="hist-date-input" />
-              <span style="color:var(--text-muted);font-size:0.8rem">to</span>
+              <span class="hist-range-sep">to</span>
               <input type="date" id="hist-to" class="hist-date-input" />
-              <button type="button" class="btn btn-primary" id="btn-hist-apply" style="padding:6px 12px;font-size:0.8rem">Apply</button>
+              <button type="button" class="btn btn-primary hist-toolbar-btn-compact" id="btn-hist-apply">Apply</button>
             </div>
             <button type="button" class="btn btn-outline" id="btn-hist-download">
-              <svg class="icon icon-16" style="vertical-align:middle"><use href="#icon-download"/></svg>
+              <svg class="icon icon-16 icon-mid"><use href="#icon-download"/></svg>
               Export CSV
             </button>
           </div>
         </div>
         <div id="hist-no-data" class="hist-no-data" style="display:none">
-          <svg class="icon icon-24" style="color:var(--text-muted)"><use href="#icon-clock"/></svg>
-          <p>No readings recorded for this period yet.<br><span style="font-size:0.8rem">Data is collected automatically when the device is connected.</span></p>
+          <svg class="icon icon-24 muted"><use href="#icon-clock"/></svg>
+          <p>No readings recorded for this period yet.<br><span class="text-sm muted">Data is collected automatically when the device is connected.</span></p>
         </div>
         <div class="hist-chart-wrap" id="hist-chart-wrap">
           <canvas id="hist-chart"></canvas>
         </div>
         <div class="chart-legend">
-          <div class="chart-legend-item"><div class="chart-legend-dot" style="background:var(--ph-c)"></div>pH</div>
-          <div class="chart-legend-item"><div class="chart-legend-dot" style="background:var(--do-c)"></div>Dissolved O₂</div>
-          <div class="chart-legend-item"><div class="chart-legend-dot" style="background:var(--turb-c)"></div>Turbidity</div>
-          <div class="chart-legend-item"><div class="chart-legend-dot" style="background:var(--temp-c)"></div>Temperature</div>
+          <div class="chart-legend-item"><div class="chart-legend-dot chart-legend-dot--ph"></div>pH</div>
+          <div class="chart-legend-item"><div class="chart-legend-dot chart-legend-dot--do"></div>Dissolved O₂</div>
+          <div class="chart-legend-item"><div class="chart-legend-dot chart-legend-dot--turb"></div>Turbidity</div>
+          <div class="chart-legend-item"><div class="chart-legend-dot chart-legend-dot--temp"></div>Temperature</div>
         </div>
       </div>
     </section>
@@ -391,8 +395,8 @@
     <!-- Feeding -->
     <section id="page-feeding" class="page-section">
       <h1 class="page-title">Feeding</h1>
-      <div style="margin-bottom:16px;color:var(--text-muted);font-size:0.9rem;">
-        <span style="font-weight:500;">Configuration:</span> <span id="feed-config-name">—</span>
+      <div class="feed-config-line">
+        <strong>Configuration:</strong> <span id="feed-config-name">—</span>
       </div>
 
       <!-- No-pond placeholder -->
@@ -424,24 +428,24 @@
         </div>
 
         <!-- Schedule + Chart row -->
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;">
+        <div class="layout-two-col">
 
           <!-- Schedule List card -->
           <div class="card">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
-              <h3 class="card-title" style="margin:0">Today's Feeding Schedule</h3>
+            <div class="card-header">
+              <h3 class="card-title">Today's Feeding Schedule</h3>
               <button id="feed-add-schedule-btn" class="btn btn-primary" style="display:none">
                 <svg class="icon icon-16"><use href="#icon-plus"/></svg> Add Schedule
               </button>
             </div>
             <!-- Inline add/edit form -->
             <div id="feed-schedule-form" style="display:none;margin-bottom:12px;">
-              <div style="margin-bottom:10px;">
-                <label style="font-size:0.75rem;font-weight:600;color:var(--text-muted);display:block;margin-bottom:6px;">Time</label>
-                <input id="feed-schedule-input" type="time" class="input-field" style="margin-right:0;" />
+              <div class="feed-field-block">
+                <label class="feed-field-label" for="feed-schedule-input">Time</label>
+                <input id="feed-schedule-input" type="time" class="input-field" />
               </div>
-              <div style="margin-bottom:12px;">
-                <label style="font-size:0.75rem;font-weight:600;color:var(--text-muted);display:block;margin-bottom:8px;">Repeat on</label>
+              <div class="feed-field-block--days">
+                <label class="feed-field-label feed-field-label--days" for="feed-day-0">Repeat on</label>
                 <div class="feed-day-selector">
                   <label class="feed-day-checkbox">
                     <input type="checkbox" id="feed-day-0" value="0" />
@@ -473,11 +477,11 @@
                   </label>
                 </div>
               </div>
-              <div style="display:flex;gap:8px;">
+              <div class="feed-actions-row">
                 <button id="feed-schedule-confirm" class="btn btn-primary btn-sm">Save</button>
                 <button id="feed-schedule-cancel" class="btn btn-outline btn-sm">Cancel</button>
               </div>
-              <div id="feed-schedule-error" style="color:var(--red-dark);font-size:0.8rem;display:none;margin-top:8px;"></div>
+              <div id="feed-schedule-error" class="feed-schedule-error"></div>
             </div>
             <ul id="feed-schedule-list" class="feed-schedule-list"></ul>
           </div>
@@ -490,21 +494,21 @@
         </div>
 
         <!-- Manual Feed + Feed Log row -->
-        <div style="display:grid;grid-template-columns:auto 1fr;gap:24px;margin-top:24px;align-items:start;">
+        <div class="layout-feed-manual">
 
           <!-- Manual Feed card -->
-          <div class="card" style="min-width:200px;">
+          <div class="card feed-manual-card">
             <h3 class="card-title">Manual Feed</h3>
-            <button id="feed-manual-btn" class="btn btn-primary" style="width:100%;">
+            <button id="feed-manual-btn" class="btn btn-primary btn-block">
               ▶ Manual Feed
             </button>
-            <div id="feed-manual-status" style="font-size:0.8rem;color:var(--text-muted);margin-top:8px;"></div>
+            <div id="feed-manual-status" class="text-sm muted" style="margin-top:8px;"></div>
           </div>
 
           <!-- Feed Log card -->
           <div class="card">
             <h3 class="card-title">Feed Log</h3>
-            <div id="feed-log-list" style="max-height:260px;overflow-y:auto;font-size:0.85rem;"></div>
+            <div id="feed-log-list" class="card-body--scroll"></div>
           </div>
         </div>
 
@@ -515,19 +519,19 @@
     <section id="page-alerts" class="page-section">
       <h1 class="page-title">Alerts</h1>
       <div class="alert-summary">
-        <div class="card"><div class="icon-wrap" style="background:#ef4444;color:white"><svg class="icon icon-24"><use href="#icon-x"/></svg></div><div style="font-size:0.8rem;color:var(--text-muted);">Critical</div><div class="count" id="alert-critical">0</div></div>
-        <div class="card"><div class="icon-wrap" style="background:#eab308;color:white"><svg class="icon icon-24"><use href="#icon-warning"/></svg></div><div style="font-size:0.8rem;color:var(--text-muted);">Warnings</div><div class="count" id="alert-warnings">0</div></div>
-        <div class="card"><div class="icon-wrap" style="background:#3b82f6;color:white"><svg class="icon icon-24"><use href="#icon-info"/></svg></div><div style="font-size:0.8rem;color:var(--text-muted);">Info</div><div class="count" id="alert-info">0</div></div>
-        <div class="card"><div class="icon-wrap" style="background:#22c55e;color:white"><svg class="icon icon-24"><use href="#icon-check"/></svg></div><div style="font-size:0.8rem;color:var(--text-muted);">Resolved</div><div class="count" id="alert-resolved">0</div></div>
+        <div class="card"><div class="icon-wrap icon-wrap--critical"><svg class="icon icon-24"><use href="#icon-x"/></svg></div><div class="muted text-sm">Critical</div><div class="count" id="alert-critical">0</div></div>
+        <div class="card"><div class="icon-wrap icon-wrap--warning"><svg class="icon icon-24"><use href="#icon-warning"/></svg></div><div class="muted text-sm">Warnings</div><div class="count" id="alert-warnings">0</div></div>
+        <div class="card"><div class="icon-wrap icon-wrap--info"><svg class="icon icon-24"><use href="#icon-info"/></svg></div><div class="muted text-sm">Info</div><div class="count" id="alert-info">0</div></div>
+        <div class="card"><div class="icon-wrap icon-wrap--resolved"><svg class="icon icon-24"><use href="#icon-check"/></svg></div><div class="muted text-sm">Resolved</div><div class="count" id="alert-resolved">0</div></div>
       </div>
       <div class="alert-layout">
         <div class="card">
           <div class="alert-card-head">
-            <h3 class="card-title" style="margin:0">Recent Alerts &amp; Notifications</h3>
+            <h3 class="card-title">Recent Alerts &amp; Notifications</h3>
             <div class="alert-bulk-actions">
               <div class="alert-email-toggle-row">
-                <span class="badge-pill" style="background:var(--blue-light);color:var(--blue-dark);border:1px solid rgba(59,130,246,0.2);">
-                  <svg class="icon icon-14" style="vertical-align:middle;margin-right:6px;"><use href="#icon-mail"/></svg>
+                <span class="badge-pill badge-pill--email">
+                  <svg class="icon icon-14 icon-mid icon-gap"><use href="#icon-mail"/></svg>
                   Email alerts
                 </span>
                 <label class="switch" title="Enable email alerts for your account">
@@ -536,8 +540,8 @@
                 </label>
               </div>
               <div class="alert-email-toggle-row">
-                <span class="badge-pill" style="background:var(--green-light);color:var(--green-dark);border:1px solid rgba(34,197,94,0.2);">
-                  <svg class="icon icon-14" style="vertical-align:middle;margin-right:6px;"><use href="#icon-message"/></svg>
+                <span class="badge-pill badge-pill--sms">
+                  <svg class="icon icon-14 icon-mid icon-gap"><use href="#icon-message"/></svg>
                   SMS alerts
                 </span>
                 <label class="switch" title="Enable SMS alerts for your account (requires phone number)">
@@ -546,11 +550,11 @@
                 </label>
               </div>
               <button type="button" id="btn-mark-all-resolved" class="btn btn-outline btn-sm">
-                <svg class="icon icon-16" style="vertical-align:middle"><use href="#icon-check"/></svg>
+                <svg class="icon icon-16 icon-mid"><use href="#icon-check"/></svg>
                 Mark all resolved
               </button>
               <button type="button" id="btn-clear-all-alerts" class="btn btn-outline btn-sm">
-                <svg class="icon icon-16" style="vertical-align:middle"><use href="#icon-trash"/></svg>
+                <svg class="icon icon-16 icon-mid"><use href="#icon-trash"/></svg>
                 Clear all
               </button>
             </div>
@@ -564,17 +568,17 @@
 
           <!-- Email alerts toggle (recipient = logged-in user's email) -->
           <div id="notif-config-warning" class="alert-inline-warning" style="display:none">
-            <svg class="icon icon-14" style="vertical-align:middle;margin-right:6px;"><use href="#icon-warning"/></svg>
+            <svg class="icon icon-14 icon-mid icon-gap"><use href="#icon-warning"/></svg>
             EmailJS is not configured. Add <code>EMAILJS_PUBLIC_KEY</code>, <code>EMAILJS_SERVICE_ID</code>, and <code>EMAILJS_TEMPLATE_ID</code> to your <code>.env</code> file.
           </div>
           <div id="notif-sms-warning" class="alert-inline-warning" style="display:none">
-            <svg class="icon icon-14" style="vertical-align:middle;margin-right:6px;"><use href="#icon-warning"/></svg>
-            SMS alerts require a phone number. Add one in <strong>My Profile</strong>, then return here to enable SMS alerts.
+            <svg class="icon icon-14 icon-mid icon-gap"><use href="#icon-warning"/></svg>
+            SMS alerts require a phone number. Add one under <strong>Account &amp; security</strong>, then return here to enable SMS alerts.
           </div>
 
           <div class="alert-list-scroll">
             <div class="alert-list" id="alert-list-dynamic">
-              <div class="alert-row" style="justify-content:center;padding:32px 0;color:var(--text-muted);font-size:0.9rem;">
+              <div class="alert-row alert-empty-row">
                 <svg class="icon icon-20" style="margin-right:8px;opacity:0.4"><use href="#icon-check"/></svg>
                 No alerts — all parameters within optimal range.
               </div>
@@ -595,183 +599,228 @@
       </div>
     </section>
 
-    <!-- Account: Profile & Farm -->
+    <!-- Account: profile + password (stacked sections) -->
     <section id="page-account-profile" class="page-section">
-      <div class="acct-page-topbar">
-        <h1 class="page-title" style="margin-bottom:0;">My Profile</h1>
-        <button class="btn btn-primary" id="btn-edit-profile" type="button">
-          <svg class="icon icon-15" style="vertical-align:middle"><use href="#icon-edit"/></svg> Edit Profile
-        </button>
-      </div>
+      <div class="acct-account-shell" id="acct-account-top">
+        <header class="acct-page-hero">
+          <h1 class="page-title acct-profile-title">Account &amp; security</h1>
+          <p class="acct-profile-lead">Manage your profile and password in one place. Each section below is independent.</p>
+        </header>
 
-      <!-- Profile hero strip -->
-      <div class="card acct-hero-strip">
-        <div class="acct-hero-avatar" id="fp-avatar-letter">U</div>
-        <div class="acct-hero-body">
-          <div class="acct-hero-name" id="fp-display-name">—</div>
-          <span class="um-role-badge" id="fp-role-badge">farmer</span>
-        </div>
-      </div>
-
-      <div class="acct-page-grid">
-        <!-- Personal Info card -->
-        <div class="card acct-info-card">
-          <div class="acct-info-card-title">
-            <svg class="icon icon-14"><use href="#icon-edit"/></svg> Personal Info
-          </div>
-          <div class="acct-info-rows">
-            <div class="acct-info-row">
-              <span class="acct-info-label">Email</span>
-              <span class="acct-info-val" id="user-email">—</span>
+        <section class="acct-section acct-section--profile" aria-labelledby="acct-profile-heading">
+          <div class="acct-section-head">
+            <div class="acct-section-head-text">
+              <h2 id="acct-profile-heading" class="acct-section-title">Profile</h2>
+              <p class="acct-section-desc">Your display name, role, and how we reach you.</p>
             </div>
-            <div class="acct-info-row">
-              <span class="acct-info-label">Phone</span>
-              <span class="acct-info-val" id="user-phone">—</span>
-            </div>
-            <div class="acct-info-row">
-              <span class="acct-info-label">Status</span>
-              <span class="acct-info-val"><span class="badge-pill status-normal">Active</span></span>
-            </div>
-            <div class="acct-info-row">
-              <span class="acct-info-label">Member since</span>
-              <span class="acct-info-val" id="fp-member-since">—</span>
-            </div>
-          </div>
-        </div>
-
-        <!-- Pond Details card -->
-        <div class="card acct-info-card">
-          <div class="acct-info-card-title">
-            <svg class="icon icon-14"><use href="#icon-building"/></svg> Pond Details
-          </div>
-          <div class="acct-info-rows">
-            <div class="acct-info-row">
-              <span class="acct-info-label">Pond name</span>
-              <span class="acct-info-val" id="farm-name-2">—</span>
-            </div>
-            <div class="acct-info-row">
-              <span class="acct-info-label">Location</span>
-              <span class="acct-info-val" id="farm-location-2">—</span>
-            </div>
-            <div class="acct-info-row">
-              <span class="acct-info-label">Size</span>
-              <span class="acct-info-val" id="farm-size">—</span>
-            </div>
-            <div class="acct-info-row">
-              <span class="acct-info-label">Capacity</span>
-              <span class="acct-info-val" id="farm-capacity">—</span>
-            </div>
-            <div class="acct-info-row">
-              <span class="acct-info-label">Established</span>
-              <span class="acct-info-val" id="farm-established">—</span>
-            </div>
-            <div class="acct-info-row">
-              <span class="acct-info-label">Manager</span>
-              <span class="acct-info-val" id="farm-manager">—</span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Team Members -->
-      <div class="card acct-team-card">
-        <div class="acct-info-card-title" style="margin-bottom:14px;">
-          <svg class="icon icon-14"><use href="#icon-users"/></svg> Team Members
-        </div>
-        <div class="staff-list" id="staff-list"></div>
-      </div>
-
-      <!-- Hidden legacy IDs kept for farm-profile.js compatibility -->
-      <span id="farm-name" style="display:none"></span>
-      <span id="farm-location" style="display:none"></span>
-      <span id="farm-created" style="display:none"></span>
-    </section>
-
-    <!-- Account: Change Password -->
-    <section id="page-account-password" class="page-section">
-      <h1 class="page-title">Change Password</h1>
-
-      <div class="acct-pw-layout">
-        <!-- Left: form -->
-        <div class="card acct-pw-form-card">
-          <div class="acct-pw-form-header">
-            <div class="acct-pw-form-icon">
-              <svg class="icon icon-20" style="color:white"><use href="#icon-key"/></svg>
-            </div>
-            <div>
-              <div class="acct-pw-form-title">Update your password</div>
-              <p class="acct-pw-hint">Enter your current password to verify your identity, then choose a new strong password.</p>
-            </div>
-          </div>
-
-          <div class="acct-pw-fields">
-            <div class="um-field">
-              <label for="acct-pw-current">Current Password</label>
-              <input id="acct-pw-current" type="password" autocomplete="current-password" placeholder="••••••••" />
-            </div>
-            <div class="um-field">
-              <label for="acct-pw-new">New Password</label>
-              <input id="acct-pw-new" type="password" autocomplete="new-password" placeholder="Min 8 chars, mixed case + number" />
-            </div>
-            <div class="um-field">
-              <label for="acct-pw-confirm">Confirm New Password</label>
-              <input id="acct-pw-confirm" type="password" autocomplete="new-password" placeholder="Repeat new password" />
-            </div>
-          </div>
-
-          <ul class="acct-pw-rules" id="acct-pw-rules">
-            <li id="rule-length">At least 8 characters</li>
-            <li id="rule-upper">Uppercase letter</li>
-            <li id="rule-lower">Lowercase letter</li>
-            <li id="rule-number">Number</li>
-          </ul>
-
-          <div id="acct-pw-error" class="acct-error" style="display:none;"></div>
-          <div id="acct-pw-success" class="acct-success" style="display:none;">Password updated successfully.</div>
-
-          <div class="acct-pw-actions">
-            <button type="button" class="btn btn-primary" id="acct-pw-save">
-              <svg class="icon icon-16"><use href="#icon-check"/></svg>
-              Update Password
+            <button class="btn btn-primary" id="btn-edit-profile" type="button">
+              <svg class="icon icon-15"><use href="#icon-edit"/></svg>
+              Edit profile
             </button>
           </div>
-        </div>
-
-        <!-- Right: tips -->
-        <div class="acct-pw-tips-col">
-          <div class="card acct-pw-tips-card">
-            <div class="panel-title">
-              <svg class="icon icon-16"><use href="#icon-shield"/></svg>
-              Password Tips
+          <div class="card acct-profile-panel">
+            <div class="acct-profile-panel-inner">
+              <aside class="acct-profile-aside">
+                <div class="acct-profile-avatar" id="fp-avatar-letter">U</div>
+                <div class="acct-profile-identity-text">
+                  <div class="acct-profile-display-name" id="fp-display-name">—</div>
+                  <span class="um-role-badge" id="fp-role-badge">farmer</span>
+                </div>
+              </aside>
+              <div class="acct-profile-body">
+                <h3 class="acct-profile-section-title">Contact &amp; status</h3>
+                <ul class="acct-profile-list">
+                  <li class="acct-profile-row">
+                    <span class="acct-profile-row-icon" aria-hidden="true">
+                      <svg class="icon icon-18"><use href="#icon-mail"/></svg>
+                    </span>
+                    <div class="acct-profile-row-main">
+                      <span class="acct-profile-row-label">Email</span>
+                      <span class="acct-profile-row-value" id="user-email">—</span>
+                    </div>
+                  </li>
+                  <li class="acct-profile-row">
+                    <span class="acct-profile-row-icon" aria-hidden="true">
+                      <svg class="icon icon-18"><use href="#icon-message"/></svg>
+                    </span>
+                    <div class="acct-profile-row-main">
+                      <span class="acct-profile-row-label">Phone</span>
+                      <span class="acct-profile-row-value" id="user-phone">—</span>
+                    </div>
+                  </li>
+                  <li class="acct-profile-row">
+                    <span class="acct-profile-row-icon" aria-hidden="true">
+                      <svg class="icon icon-18"><use href="#icon-shield"/></svg>
+                    </span>
+                    <div class="acct-profile-row-main">
+                      <span class="acct-profile-row-label">Account status</span>
+                      <span class="acct-profile-row-value"><span class="badge-pill status-normal">Active</span></span>
+                    </div>
+                  </li>
+                  <li class="acct-profile-row">
+                    <span class="acct-profile-row-icon" aria-hidden="true">
+                      <svg class="icon icon-18"><use href="#icon-clock"/></svg>
+                    </span>
+                    <div class="acct-profile-row-main">
+                      <span class="acct-profile-row-label">Member since</span>
+                      <span class="acct-profile-row-value" id="fp-member-since">—</span>
+                    </div>
+                  </li>
+                </ul>
+              </div>
             </div>
-            <ul class="acct-pw-tip-list">
-              <li>
-                <div class="acct-pw-tip-icon" style="background:var(--blue-light);color:var(--blue)"><svg class="icon icon-14"><use href="#icon-check"/></svg></div>
-                <div>Use at least 8 characters with a mix of uppercase, lowercase, and numbers.</div>
-              </li>
-              <li>
-                <div class="acct-pw-tip-icon" style="background:var(--green-light);color:var(--green-dark)"><svg class="icon icon-14"><use href="#icon-check"/></svg></div>
-                <div>Avoid reusing passwords from other accounts or services.</div>
-              </li>
-              <li>
-                <div class="acct-pw-tip-icon" style="background:var(--yellow-light);color:var(--yellow-dark)"><svg class="icon icon-14"><use href="#icon-warning"/></svg></div>
-                <div>Never share your password with anyone, including administrators.</div>
-              </li>
-              <li>
-                <div class="acct-pw-tip-icon" style="background:var(--red-light);color:var(--red-dark)"><svg class="icon icon-14"><use href="#icon-warning"/></svg></div>
-                <div>If you suspect your account is compromised, change your password immediately.</div>
-              </li>
-            </ul>
           </div>
 
-          <div class="card acct-pw-session-card">
-            <div class="panel-title">
-              <svg class="icon icon-16"><use href="#icon-info"/></svg>
-              After Changing
+          <div class="acct-profile-below">
+            <div class="card acct-profile-subcard">
+              <h3 class="acct-profile-section-title">Sign-in &amp; identifiers</h3>
+              <ul class="acct-profile-list">
+                <li class="acct-profile-row">
+                  <span class="acct-profile-row-icon" aria-hidden="true">
+                    <svg class="icon icon-18"><use href="#icon-check"/></svg>
+                  </span>
+                  <div class="acct-profile-row-main">
+                    <span class="acct-profile-row-label">Email verification</span>
+                    <span class="acct-profile-row-value" id="fp-email-verified">—</span>
+                  </div>
+                </li>
+                <li class="acct-profile-row">
+                  <span class="acct-profile-row-icon" aria-hidden="true">
+                    <svg class="icon icon-18"><use href="#icon-clock"/></svg>
+                  </span>
+                  <div class="acct-profile-row-main">
+                    <span class="acct-profile-row-label">Last sign-in</span>
+                    <span class="acct-profile-row-value" id="fp-last-signin">—</span>
+                  </div>
+                </li>
+                <li class="acct-profile-row acct-profile-row--uid">
+                  <span class="acct-profile-row-icon" aria-hidden="true">
+                    <svg class="icon icon-18"><use href="#icon-document"/></svg>
+                  </span>
+                  <div class="acct-profile-row-main">
+                    <span class="acct-profile-row-label">User ID</span>
+                    <div class="acct-profile-row-value acct-profile-uid-row">
+                      <code class="acct-profile-uid" id="fp-user-id" title="">—</code>
+                      <button type="button" class="btn btn-sm btn-outline" id="btn-copy-user-id">Copy</button>
+                    </div>
+                  </div>
+                </li>
+                <li class="acct-profile-row">
+                  <span class="acct-profile-row-icon" aria-hidden="true">
+                    <svg class="icon icon-18"><use href="#icon-building"/></svg>
+                  </span>
+                  <div class="acct-profile-row-main">
+                    <span class="acct-profile-row-label">Farm / organization ID</span>
+                    <span class="acct-profile-row-value"><code class="acct-profile-mono" id="fp-farm-id">—</code></span>
+                  </div>
+                </li>
+              </ul>
             </div>
-            <p style="font-size:0.82rem;color:var(--text-muted);line-height:1.6;">You will remain signed in on this device. Other active sessions may require you to sign in again with your new password.</p>
+            <div class="card acct-profile-subcard acct-profile-subcard--access">
+              <h3 class="acct-profile-section-title">Your access</h3>
+              <p class="acct-role-desc" id="fp-role-desc">—</p>
+              <div class="acct-profile-callout" role="note">
+                <span class="acct-profile-callout-icon" aria-hidden="true">
+                  <svg class="icon icon-18"><use href="#icon-bell"/></svg>
+                </span>
+                <div class="acct-profile-callout-text">
+                  <strong>SMS alerts</strong> use the phone number saved in your profile. Add or update it with <strong>Edit profile</strong>, then enable SMS on the Alerts page.
+                </div>
+              </div>
+            </div>
           </div>
-        </div>
+        </section>
+
+        <div class="acct-section-spacer" aria-hidden="true"></div>
+
+        <section class="acct-section acct-section--password" id="acct-password-section" aria-labelledby="acct-pw-heading">
+          <div class="acct-section-head">
+            <div class="acct-section-head-text">
+              <h2 id="acct-pw-heading" class="acct-section-title">Password</h2>
+              <p class="acct-section-desc">Confirm your current password, then set a new one. Requirements update as you type.</p>
+            </div>
+          </div>
+          <div class="acct-security-stack">
+            <div class="card acct-pw-form-card">
+              <div class="acct-pw-form-header">
+                <div class="acct-pw-form-icon">
+                  <svg class="icon icon-20" style="color:white"><use href="#icon-key"/></svg>
+                </div>
+                <div>
+                  <div class="acct-pw-form-title">Update password</div>
+                  <p class="acct-pw-hint">Use a strong password you do not reuse elsewhere.</p>
+                </div>
+              </div>
+
+              <div class="acct-pw-fields">
+                <div class="um-field">
+                  <label for="acct-pw-current">Current Password</label>
+                  <input id="acct-pw-current" type="password" autocomplete="current-password" placeholder="••••••••" />
+                </div>
+                <div class="um-field">
+                  <label for="acct-pw-new">New Password</label>
+                  <input id="acct-pw-new" type="password" autocomplete="new-password" placeholder="Min 8 chars, mixed case + number" />
+                </div>
+                <div class="um-field">
+                  <label for="acct-pw-confirm">Confirm New Password</label>
+                  <input id="acct-pw-confirm" type="password" autocomplete="new-password" placeholder="Repeat new password" />
+                </div>
+              </div>
+
+              <ul class="acct-pw-rules" id="acct-pw-rules">
+                <li id="rule-length">At least 8 characters</li>
+                <li id="rule-upper">Uppercase letter</li>
+                <li id="rule-lower">Lowercase letter</li>
+                <li id="rule-number">Number</li>
+              </ul>
+
+              <div id="acct-pw-error" class="acct-error" style="display:none;"></div>
+              <div id="acct-pw-success" class="acct-success" style="display:none;">Password updated successfully.</div>
+
+              <div class="acct-pw-actions">
+                <button type="button" class="btn btn-primary" id="acct-pw-save">
+                  <svg class="icon icon-16"><use href="#icon-check"/></svg>
+                  Update Password
+                </button>
+              </div>
+            </div>
+
+            <div class="acct-pw-side-col">
+              <div class="card acct-pw-tips-card">
+                <div class="panel-title">
+                  <svg class="icon icon-16"><use href="#icon-shield"/></svg>
+                  Password tips
+                </div>
+                <ul class="acct-pw-tip-list">
+                  <li>
+                    <div class="acct-pw-tip-icon" style="background:var(--blue-light);color:var(--blue)"><svg class="icon icon-14"><use href="#icon-check"/></svg></div>
+                    <div>Use at least 8 characters with a mix of uppercase, lowercase, and numbers.</div>
+                  </li>
+                  <li>
+                    <div class="acct-pw-tip-icon" style="background:var(--green-light);color:var(--green-dark)"><svg class="icon icon-14"><use href="#icon-check"/></svg></div>
+                    <div>Avoid reusing passwords from other accounts or services.</div>
+                  </li>
+                  <li>
+                    <div class="acct-pw-tip-icon" style="background:var(--yellow-light);color:var(--yellow-dark)"><svg class="icon icon-14"><use href="#icon-warning"/></svg></div>
+                    <div>Never share your password with anyone, including administrators.</div>
+                  </li>
+                  <li>
+                    <div class="acct-pw-tip-icon" style="background:var(--red-light);color:var(--red-dark)"><svg class="icon icon-14"><use href="#icon-warning"/></svg></div>
+                    <div>If you suspect your account is compromised, change your password immediately.</div>
+                  </li>
+                </ul>
+              </div>
+
+              <div class="card acct-pw-session-card">
+                <div class="panel-title">
+                  <svg class="icon icon-16"><use href="#icon-info"/></svg>
+                  After changing
+                </div>
+                <p style="font-size:0.82rem;color:var(--text-muted);line-height:1.6;">You will remain signed in on this device. Other active sessions may require you to sign in again with your new password.</p>
+              </div>
+            </div>
+          </div>
+        </section>
       </div>
     </section>
 
@@ -1170,7 +1219,7 @@
 
       <!-- Users table -->
       <div class="card um-table-card">
-        <div class="um-table-wrap">
+        <div class="um-table-wrap table-scroll">
           <table class="um-table">
             <thead>
               <tr>
@@ -1213,13 +1262,13 @@
     </div>
   </div>
   <div class="account-popover-divider"></div>
-  <button class="account-popover-item" id="acct-profile-btn" role="menuitem">
+  <button class="account-popover-item" id="acct-account-page-btn" role="menuitem">
     <span class="account-popover-icon"><svg class="icon icon-15"><use href="#icon-edit"/></svg></span>
-    <span>My Profile</span>
+    <span>Account &amp; security</span>
   </button>
-  <button class="account-popover-item" id="acct-password-btn" role="menuitem">
+  <button class="account-popover-item" id="acct-password-shortcut-btn" role="menuitem">
     <span class="account-popover-icon"><svg class="icon icon-15"><use href="#icon-key"/></svg></span>
-    <span>Change Password</span>
+    <span>Change password</span>
   </button>
 </div>
 

@@ -202,7 +202,7 @@ function _renderScheduleList() {
   if (addBtn) addBtn.style.display = perms.canEditSchedules ? '' : 'none';
 
   if (_schedules.length === 0) {
-    ul.innerHTML = '<li style="color:var(--text-muted);font-size:0.85rem;padding:12px 0;">No schedules configured for this device.</li>';
+    ul.innerHTML = '<li class="empty-state empty-state--tight text-sm muted">No schedules configured for this device.</li>';
     return;
   }
 
@@ -229,8 +229,8 @@ function _renderScheduleList() {
       : '';
     return `<li>
       <span class="sched-icon ${iconClass}">${iconSvg}</span>
-      <div style="flex:1;min-width:0;">
-        <div style="display:flex;align-items:center;gap:10px;margin-bottom:2px;">
+      <div class="feed-sched-li-main">
+        <div class="feed-sched-li-head">
           <span class="time">${_fmt12h(time)}</span>
           ${statusLabel}
         </div>
@@ -341,7 +341,7 @@ function _renderFeedLog() {
   if (!container) return;
 
   if (_logEntries.length === 0) {
-    container.innerHTML = '<p style="text-align:center;color:var(--text-muted);padding:16px 0;">No feed events recorded yet.</p>';
+    container.innerHTML = '<p class="empty-state empty-state--tight muted">No feed events recorded yet.</p>';
     return;
   }
 

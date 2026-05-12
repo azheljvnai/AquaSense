@@ -236,7 +236,7 @@ export function init() {
       monthOffset = 0;
     }
     
-    if (customRangeEl) customRangeEl.style.display = activeRange === 'custom' ? 'flex' : 'none';
+    if (customRangeEl) customRangeEl.classList.toggle('is-visible', activeRange === 'custom');
     
     // Update navigator UI after range change
     updateNavigatorUI(activeRange, weekOffset, monthOffset);

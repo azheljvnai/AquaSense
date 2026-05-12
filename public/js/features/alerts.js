@@ -26,6 +26,7 @@ import {
   fbOnSnapshot,
   fbWriteBatch,
 } from '../firebase-client.js';
+import { alertPondFilterButton, alertEmptyListRow, escapeHtml } from '../ui/templates.js';
 
 /** Set in init() so module-level helpers can refresh the alerts tab UI. */
 let rerenderAlertsTab = () => {};
@@ -526,10 +527,10 @@ export function init() {
     return '#icon-info';
   }
 
-  function severityColor(severity) {
-    if (severity === 'critical') return '#ef4444';
-    if (severity === 'warning')  return '#eab308';
-    return '#3b82f6';
+  function severityIconClass(severity) {
+    if (severity === 'critical') return 'alert-icon--critical';
+    if (severity === 'warning')  return 'alert-icon--warning';
+    return 'alert-icon--info';
   }
 
   function renderPondFilters(alerts) {
@@ -540,10 +541,9 @@ export function init() {
     const ponds = [...new Set(alerts.filter(a => !a.resolved).map(a => a.pond))].sort();
 
     // Rebuild buttons — keep current selection if still valid
-    toolbar.innerHTML = `<button class="alert-pond-btn${_activePondFilter === 'all' ? ' active' : ''}" data-pond="all">All Ponds</button>`;
+    toolbar.innerHTML = alertPondFilterButton('all', 'All Ponds', _activePondFilter === 'all');
     for (const pond of ponds) {
-      const active = _activePondFilter === pond ? ' active' : '';
-      toolbar.innerHTML += `<button class="alert-pond-btn${active}" data-pond="${pond}">${pond}</button>`;
+      toolbar.innerHTML += alertPondFilterButton(pond, pond, _activePondFilter === pond);
     }
 
     // If the previously selected pond no longer has alerts, reset to 'all'
@@ -596,26 +596,22 @@ export function init() {
       const msg = _activePondFilter === 'all'
         ? 'No active alerts — all parameters within optimal range.'
         : `No active alerts for ${_activePondFilter}.`;
-      container.innerHTML = `
-        <div class="alert-row" style="justify-content:center;padding:32px 0;color:var(--text-muted);font-size:0.9rem;">
-          <svg class="icon icon-20" style="margin-right:8px;opacity:0.4"><use href="#icon-check"/></svg>
-          ${msg}
-        </div>`;
+      container.innerHTML = alertEmptyListRow(msg);
       return;
     }
 
     container.innerHTML = visible.map(alert => `
       <div class="alert-row" data-alert-id="${alert.id}">
-        <div class="alert-icon" style="background:${severityColor(alert.severity)};color:white">
+        <div class="alert-icon ${severityIconClass(alert.severity)}">
           <svg class="icon icon-20"><use href="${severityIcon(alert.severity)}"/></svg>
         </div>
         <div class="alert-body">
-          <div class="alert-title">${alert.label}</div>
-          <div class="alert-desc">${alert.description}</div>
+          <div class="alert-title">${escapeHtml(alert.label)}</div>
+          <div class="alert-desc">${escapeHtml(alert.description)}</div>
           <div class="alert-meta">
             <span>${timeAgo(alert.ts)}</span>
-            <span class="badge-pill" style="background:#f1f5f9;">${alert.pond}</span>
-            <button class="btn btn-outline btn-resolve" style="padding:6px 12px;font-size:0.8rem;" data-id="${alert.id}">Mark Resolved</button>
+            <span class="badge-pill badge-pill--muted">${escapeHtml(alert.pond)}</span>
+            <button type="button" class="btn btn-outline btn-sm btn-resolve" data-id="${alert.id}">Mark Resolved</button>
           </div>
         </div>
       </div>`).join('');
