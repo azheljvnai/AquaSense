@@ -157,6 +157,9 @@ app.get('/dashboard.html', (_req, res) => res.redirect('/'));
  * All sensitive values stay in .env and are never logged or exposed elsewhere.
  */
 app.get('/api/config', (_req, res) => {
+  const useFirebaseEmulators =
+    process.env.USE_FIREBASE_EMULATORS === '1' ||
+    String(process.env.USE_FIREBASE_EMULATORS || '').toLowerCase() === 'true';
   res.json({
     firebaseDatabaseUrl: process.env.FIREBASE_DATABASE_URL || '',
     deviceId: process.env.DEVICE_ID || 'device001',
@@ -168,6 +171,10 @@ app.get('/api/config', (_req, res) => {
       messagingSenderId: process.env.FIREBASE_MESSAGING_SENDER_ID || '',
       appId: process.env.FIREBASE_APP_ID || '',
       databaseURL: process.env.FIREBASE_DATABASE_URL || '',
+      useFirebaseEmulators,
+      firebaseEmulatorHost: process.env.FIREBASE_EMULATOR_HOST || '127.0.0.1',
+      firestoreEmulatorPort: parseInt(process.env.FIRESTORE_EMULATOR_PORT || '8080', 10) || 8080,
+      authEmulatorPort: parseInt(process.env.FIREBASE_AUTH_EMULATOR_PORT || '9099', 10) || 9099,
     },
     emailjsPublicKey: process.env.EMAILJS_PUBLIC_KEY || '',
     emailjsServiceId: process.env.EMAILJS_SERVICE_ID || '',

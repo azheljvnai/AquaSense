@@ -230,19 +230,20 @@ export async function postDispatchAlert(req, res) {
     const uid = userDoc.id;
     processed += 1;
 
-    // Default: farm alerts go to every active user on both channels (opt-out via prefs).
-    let prefs = { email: { enabled: true, address: '' }, sms: { enabled: true } };
+    // Opt-in only (matches public/js/features/notifications.js loadPrefs): no prefs doc or
+    // non-boolean enabled => channel off; do not send until the user explicitly enables it.
+    let prefs = { email: { enabled: false, address: '' }, sms: { enabled: false } };
     try {
       const prefSnap = await fs.doc(`users/${uid}/notificationPrefs/settings`).get();
       if (prefSnap.exists) {
         const data = prefSnap.data();
         prefs = {
           email: {
-            enabled: typeof data?.email?.enabled === 'boolean' ? data.email.enabled : true,
+            enabled: typeof data?.email?.enabled === 'boolean' ? data.email.enabled : false,
             address: data?.email?.address || '',
           },
           sms: {
-            enabled: typeof data?.sms?.enabled === 'boolean' ? data.sms.enabled : true,
+            enabled: typeof data?.sms?.enabled === 'boolean' ? data.sms.enabled : false,
           },
         };
       }
@@ -260,7 +261,7 @@ export async function postDispatchAlert(req, res) {
     const smsCapable = normalizedPhone.startsWith('+');
 
     const channels = [];
-    if (prefs.email.enabled !== false && resolvedEmail) {
+    if (prefs.email.enabled === true && resolvedEmail) {
       if (emailJsConfigured) channels.push('email');
       else {
         console.warn(
@@ -268,10 +269,10 @@ export async function postDispatchAlert(req, res) {
         );
       }
     }
-    if (prefs.sms.enabled !== false && smsCapable) channels.push('sms');
+    if (prefs.sms.enabled === true && smsCapable) channels.push('sms');
 
     if (!channels.length) {
-      if (!emailJsConfigured && prefs.email.enabled !== false && resolvedEmail) {
+      if (!emailJsConfigured && prefs.email.enabled === true && resolvedEmail) {
         /* already warned above */
       }
       skipped += 1;

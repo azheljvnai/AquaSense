@@ -24,7 +24,11 @@ import {
   fbDoc,
   fbWhere,
   fbOnSnapshot,
+  fbWriteBatch,
 } from '../firebase-client.js';
+
+/** Set in init() so module-level helpers can refresh the alerts tab UI. */
+let rerenderAlertsTab = () => {};
 
 /** Human-readable optimal range for notification emails (mirrors server email template). */
 function thresholdSummaryForKey(key) {
@@ -213,16 +217,20 @@ function firestoreDataToAlert(data, docId) {
 
 let _alertsRealtimeUnsub = null;
 
-/**
- * Merge remote alert writes into localStorage so other logged-in sessions see updates.
- */
-function subscribeAlertsRealtime() {
+function unsubscribeAlertsRealtime() {
   if (_alertsRealtimeUnsub) {
     try {
       _alertsRealtimeUnsub();
     } catch { /* ignore */ }
     _alertsRealtimeUnsub = null;
   }
+}
+
+/**
+ * Merge remote alert writes into localStorage so other logged-in sessions see updates.
+ */
+function subscribeAlertsRealtime() {
+  unsubscribeAlertsRealtime();
   try {
     const alertsRef = fbCollection(fbFirestore(), 'alerts');
     const q = fbQuery(alertsRef, fbOrderBy('ts', 'desc'), fbLimit(250));
@@ -241,7 +249,7 @@ function subscribeAlertsRealtime() {
         });
         const merged = pruneAlerts([...byId.values()].sort((a, b) => b.ts - a.ts));
         saveAlerts(merged);
-        renderAlertList();
+        rerenderAlertsTab();
         window.dispatchEvent(new Event('alerts-updated'));
       },
       (err) => {
@@ -250,6 +258,26 @@ function subscribeAlertsRealtime() {
     );
   } catch (err) {
     console.error('[subscribeAlertsRealtime] setup failed:', err);
+  }
+}
+
+/**
+ * Delete up to maxDocs most recent alert documents (matches listener window).
+ * @param {number} maxDocs
+ */
+async function deleteRecentAlertDocumentsFromFirestore(maxDocs) {
+  const db = fbFirestore();
+  const alertsRef = fbCollection(db, 'alerts');
+  const q = fbQuery(alertsRef, fbOrderBy('ts', 'desc'), fbLimit(maxDocs));
+  const snap = await fbGetDocs(q);
+  const refs = snap.docs.map((d) => d.ref);
+  const CHUNK = 450;
+  for (let i = 0; i < refs.length; i += CHUNK) {
+    const batch = fbWriteBatch(db);
+    for (const ref of refs.slice(i, i + CHUNK)) {
+      batch.delete(ref);
+    }
+    await batch.commit();
   }
 }
 
@@ -428,7 +456,7 @@ export function init() {
         return;
       }
       if (confirm(`Are you sure you want to clear all ${totalCount} alerts? This action cannot be undone.`)) {
-        clearAllAlerts();
+        void clearAllAlerts();
       }
     });
   }
@@ -614,6 +642,8 @@ export function init() {
     });
   }
 
+  rerenderAlertsTab = renderAlertList;
+
   renderAlertList();
 
   // Purge any stale alerts stored before a real pond was selected (pond name was 'Pond')
@@ -686,18 +716,30 @@ export function init() {
 // ─── Alert Management Functions ───────────────────────────────────────────────
 
 /**
- * Clear all alerts from localStorage
+ * Clear all alerts from localStorage and remove recent copies from Firestore so they do not reappear.
  */
-function clearAllAlerts() {
+async function clearAllAlerts() {
+  const totalCount = loadAlerts().length;
   try {
-    const totalCount = loadAlerts().length;
+    unsubscribeAlertsRealtime();
+    if (fbAuth().currentUser) {
+      try {
+        await deleteRecentAlertDocumentsFromFirestore(500);
+      } catch (err) {
+        console.error('[clearAllAlerts] Firestore delete failed:', err);
+      }
+    }
     localStorage.removeItem(ALERT_STORAGE_KEY);
-    renderAlertList();
+    rerenderAlertsTab();
     window.dispatchEvent(new Event('alerts-updated'));
+    subscribeAlertsRealtime();
     showToast(totalCount ? `Successfully cleared ${totalCount} alerts` : 'Alerts cleared', 'success');
   } catch (err) {
     console.error('[clearAllAlerts] Error:', err);
     showToast('Failed to clear alerts', 'error');
+    try {
+      subscribeAlertsRealtime();
+    } catch { /* ignore */ }
   }
 }
 
@@ -730,7 +772,7 @@ async function markAllAlertsAsResolved() {
       console.error('[markAllAlertsAsResolved] Some Firestore updates failed:', err);
     });
     
-    renderAlertList();
+    rerenderAlertsTab();
     window.dispatchEvent(new Event('alerts-updated'));
     showToast(`Successfully marked ${unresolvedAlerts.length} alerts as resolved`, 'success');
   } catch (err) {
