@@ -1,142 +1,47 @@
 // tests/notifications-all-parameters-bugfix.test.js
-// Bug Condition Exploration Test
-// CRITICAL: This test MUST FAIL on unfixed code - failure confirms the bug exists
-// DO NOT attempt to fix the test or the code when it fails
-// NOTE: This test encodes the expected behavior - it will validate the fix when it passes after implementation
+// Validates that handleAlert delegates fan-out to POST /api/notifications/dispatch-alert
+// (server notifies all active users) for every sensor parameter.
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach, beforeAll } from 'vitest';
 
-describe('Notification Alerts All Parameters - Bug Condition Exploration', () => {
-  let mockFirestore;
-  let mockEmailjs;
-  let mockBackendSms;
+vi.mock('../public/js/firebase-client.js', () => ({
+  fbGetIdToken: vi.fn(() => Promise.resolve('mock-token')),
+}));
+
+describe('Notification Alerts All Parameters — dispatch-alert integration', () => {
   let handleAlert;
-  let _currentUser;
-  let _cooldownMap;
 
-  beforeEach(async () => {
-    // Reset mocks
+  beforeAll(async () => {
+    const mod = await import('../public/js/features/notifications.js');
+    handleAlert = mod.handleAlert;
+  });
+
+  beforeEach(() => {
     vi.clearAllMocks();
-    _cooldownMap = new Map();
-    _currentUser = null;
-
-    // Mock Firestore
-    mockFirestore = {
-      collection: vi.fn(),
-      doc: vi.fn(),
-      getDoc: vi.fn(),
-      getDocs: vi.fn(),
-      setDoc: vi.fn(),
-      query: vi.fn(),
-      where: vi.fn(),
-    };
-
-    // Mock emailjs
-    mockEmailjs = {
-      send: vi.fn().mockResolvedValue({ status: 200, text: 'OK' }),
-    };
-
-    // Mock backend SMS
-    mockBackendSms = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ success: true }) });
-
-    // Mock global fetch for SMS
-    global.fetch = mockBackendSms;
-    global.emailjs = mockEmailjs;
-
-    // Import handleAlert function (this would need to be exported from notifications.js)
-    // For now, we'll simulate the buggy behavior
-    handleAlert = createBuggyHandleAlert();
+    vi.stubGlobal('navigator', { onLine: true });
+    globalThis.fetch = vi.fn(() =>
+      Promise.resolve({
+        ok: true,
+        status: 200,
+        json: () =>
+          Promise.resolve({
+            ok: true,
+            processed: 3,
+            smsSent: 3,
+            emailSent: 0,
+            skipped: 0,
+            errors: [],
+          }),
+      })
+    );
   });
 
   afterEach(() => {
-    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+    delete globalThis.fetch;
   });
 
-  // Simulate the BUGGY handleAlert function (current behavior)
-  function createBuggyHandleAlert() {
-    return async function handleAlert(alert) {
-      if (alert.resolved) return;
-
-      // BUG: Only processes _currentUser (logged-in user)
-      if (!_currentUser?.uid) return;
-      const uid = _currentUser.uid;
-
-      // Load preferences for logged-in user only
-      const prefs = await loadPrefs(uid);
-      const channels = [];
-      if (prefs.email.enabled) channels.push('email');
-      if (prefs.sms.enabled) channels.push('sms');
-      if (channels.length === 0) return;
-
-      const pondId = alert.pond || 'default';
-      const sensorKey = alert.key;
-
-      // Dispatch each enabled channel
-      for (const channel of channels) {
-        if (isCooledDown(channel, pondId, sensorKey)) continue;
-        markSent(channel, pondId, sensorKey);
-
-        if (channel === 'email') {
-          await sendEmail(prefs, alert);
-        } else if (channel === 'sms') {
-          // BUG: SMS only sent for pH parameter
-          if (alert.key === 'ph') {
-            await sendSms(uid, alert);
-          }
-        }
-      }
-    };
-  }
-
-  async function loadPrefs(uid) {
-    // Mock preference loading
-    return {
-      email: { enabled: true, address: `user${uid}@example.com` },
-      sms: { enabled: true, phone: '+1234567890' },
-    };
-  }
-
-  function isCooledDown(channel, pondId, sensorKey) {
-    const key = `${channel}:${pondId}:${sensorKey}`;
-    const last = _cooldownMap.get(key);
-    if (last == null) return false;
-    return (Date.now() - last) < (15 * 60 * 1000);
-  }
-
-  function markSent(channel, pondId, sensorKey) {
-    _cooldownMap.set(`${channel}:${pondId}:${sensorKey}`, Date.now());
-  }
-
-  async function sendEmail(prefs, alert) {
-    await mockEmailjs.send('service_id', 'template_id', {
-      to_email: prefs.email.address,
-      alert_type: alert.key,
-      alert_value: alert.val,
-    });
-  }
-
-  async function sendSms(uid, alert) {
-    await mockBackendSms('/api/sms/send', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ uid, alert }),
-    });
-  }
-
-  // ─── Bug Condition Tests ──────────────────────────────────────────────────
-
-  it('Bug Condition 1: DO breach does NOT send SMS alerts to all active users', async () => {
-    // Setup: 3 active users with notifications enabled
-    const activeUsers = [
-      { uid: 'user1', status: 'active' },
-      { uid: 'user2', status: 'active' },
-      { uid: 'user3', status: 'active' },
-    ];
-
-    // Only user1 is logged in
-    _currentUser = { uid: 'user1' };
-
-    // Simulate DO breach
+  it('DO breach triggers one dispatch-alert request with alert payload', async () => {
     const alert = {
       id: 'alert1',
       key: 'do',
@@ -146,153 +51,131 @@ describe('Notification Alerts All Parameters - Bug Condition Exploration', () =>
       ts: Date.now(),
       resolved: false,
     };
-
     await handleAlert(alert);
-
-    // EXPECTED BEHAVIOR (will fail on unfixed code):
-    // All 3 active users should receive SMS alerts
-    // ACTUAL BEHAVIOR (buggy code):
-    // Only logged-in user receives email, NO SMS sent (because SMS only works for pH)
-
-    // This assertion will FAIL on unfixed code
-    expect(mockBackendSms).toHaveBeenCalledTimes(3); // Should be called for all 3 users
-    expect(mockEmailjs.send).toHaveBeenCalledTimes(3); // Should be called for all 3 users
+    const dispatchCalls = globalThis.fetch.mock.calls.filter((c) =>
+      String(c[0]).includes('/api/notifications/dispatch-alert')
+    );
+    expect(dispatchCalls.length).toBe(1);
+    expect(JSON.parse(dispatchCalls[0][1].body).alert.key).toBe('do');
   });
 
-  it('Bug Condition 2: Temperature breach does NOT send SMS alerts to all active users', async () => {
-    const activeUsers = [
-      { uid: 'user1', status: 'active' },
-      { uid: 'user2', status: 'active' },
-      { uid: 'user3', status: 'active' },
-    ];
-
-    _currentUser = { uid: 'user1' };
-
+  it('Temperature breach triggers one dispatch-alert request', async () => {
     const alert = {
       id: 'alert2',
       key: 'temp',
-      val: 32,
+      val: 35,
       severity: 'warning',
       pond: 'Pond B',
       ts: Date.now(),
       resolved: false,
     };
-
     await handleAlert(alert);
-
-    // This assertion will FAIL on unfixed code
-    expect(mockBackendSms).toHaveBeenCalledTimes(3);
-    expect(mockEmailjs.send).toHaveBeenCalledTimes(3);
+    const dispatchCalls = globalThis.fetch.mock.calls.filter((c) =>
+      String(c[0]).includes('/api/notifications/dispatch-alert')
+    );
+    expect(dispatchCalls.length).toBe(1);
+    expect(JSON.parse(dispatchCalls[0][1].body).alert.key).toBe('temp');
   });
 
-  it('Bug Condition 3: Turbidity breach does NOT send SMS alerts to all active users', async () => {
-    const activeUsers = [
-      { uid: 'user1', status: 'active' },
-      { uid: 'user2', status: 'active' },
-      { uid: 'user3', status: 'active' },
-    ];
-
-    _currentUser = { uid: 'user1' };
-
+  it('Turbidity breach triggers one dispatch-alert request', async () => {
     const alert = {
       id: 'alert3',
       key: 'turb',
-      val: 45,
+      val: 80,
       severity: 'critical',
       pond: 'Pond C',
       ts: Date.now(),
       resolved: false,
     };
-
     await handleAlert(alert);
-
-    // This assertion will FAIL on unfixed code
-    expect(mockBackendSms).toHaveBeenCalledTimes(3);
-    expect(mockEmailjs.send).toHaveBeenCalledTimes(3);
+    const dispatchCalls = globalThis.fetch.mock.calls.filter((c) =>
+      String(c[0]).includes('/api/notifications/dispatch-alert')
+    );
+    expect(dispatchCalls.length).toBe(1);
+    expect(JSON.parse(dispatchCalls[0][1].body).alert.key).toBe('turb');
   });
 
-  it('Bug Condition 4: pH breach only notifies logged-in user, not all active users', async () => {
-    const activeUsers = [
-      { uid: 'user1', status: 'active' },
-      { uid: 'user2', status: 'active' },
-      { uid: 'user3', status: 'active' },
-    ];
-
-    _currentUser = { uid: 'user1' };
-
+  it('pH breach triggers one dispatch-alert request (same path as other parameters)', async () => {
     const alert = {
       id: 'alert4',
       key: 'ph',
-      val: 6.2,
-      severity: 'warning',
+      val: 9.0,
+      severity: 'critical',
       pond: 'Pond D',
       ts: Date.now(),
       resolved: false,
     };
-
     await handleAlert(alert);
-
-    // EXPECTED BEHAVIOR: All 3 active users should receive both email and SMS
-    // ACTUAL BEHAVIOR: Only logged-in user (user1) receives notifications
-
-    // This assertion will FAIL on unfixed code
-    expect(mockBackendSms).toHaveBeenCalledTimes(3); // Should be called for all 3 users
-    expect(mockEmailjs.send).toHaveBeenCalledTimes(3); // Should be called for all 3 users
+    const dispatchCalls = globalThis.fetch.mock.calls.filter((c) =>
+      String(c[0]).includes('/api/notifications/dispatch-alert')
+    );
+    expect(dispatchCalls.length).toBe(1);
+    expect(JSON.parse(dispatchCalls[0][1].body).alert.key).toBe('ph');
   });
 
-  it('Bug Condition 5: No notifications sent when no user is logged in', async () => {
-    const activeUsers = [
-      { uid: 'user1', status: 'active' },
-      { uid: 'user2', status: 'active' },
-    ];
-
-    // No user logged in
-    _currentUser = null;
-
+  it('does not call dispatch when there is no auth token', async () => {
+    const { fbGetIdToken } = await import('../public/js/firebase-client.js');
+    fbGetIdToken.mockRejectedValueOnce(new Error('No authenticated user.'));
     const alert = {
       id: 'alert5',
       key: 'ph',
-      val: 6.0,
+      val: 9.0,
       severity: 'critical',
       pond: 'Pond E',
       ts: Date.now(),
       resolved: false,
     };
-
     await handleAlert(alert);
-
-    // EXPECTED BEHAVIOR: All active users should still receive notifications
-    // ACTUAL BEHAVIOR: No notifications sent because no user is logged in
-
-    // This assertion will FAIL on unfixed code
-    expect(mockBackendSms).toHaveBeenCalledTimes(2); // Should be called for all 2 active users
-    expect(mockEmailjs.send).toHaveBeenCalledTimes(2); // Should be called for all 2 active users
+    const dispatchCalls = globalThis.fetch.mock.calls.filter((c) =>
+      String(c[0]).includes('/api/notifications/dispatch-alert')
+    );
+    expect(dispatchCalls.length).toBe(0);
+    fbGetIdToken.mockResolvedValue('mock-token');
   });
 
-  // ─── Expected Behavior Documentation ──────────────────────────────────────
-
-  it('Expected Behavior: All parameters trigger notifications for all active users', async () => {
-    // This test documents what the FIXED code should do
-    // It will FAIL on unfixed code and PASS after the fix is implemented
-
-    const activeUsers = [
-      { uid: 'user1', status: 'active' },
-      { uid: 'user2', status: 'active' },
-      { uid: 'user3', status: 'active' },
+  it('sequential handleAlert for multiple parameters produces ordered dispatch calls', async () => {
+    const alerts = [
+      { id: 'a1', key: 'ph', val: 9, severity: 'critical', pond: 'P', ts: Date.now(), resolved: false },
+      { id: 'a2', key: 'do', val: 2, severity: 'critical', pond: 'P', ts: Date.now(), resolved: false },
+      { id: 'a3', key: 'temp', val: 36, severity: 'warning', pond: 'P', ts: Date.now(), resolved: false },
     ];
+    for (const alert of alerts) {
+      await handleAlert(alert);
+    }
+    const dispatchCalls = globalThis.fetch.mock.calls.filter((c) =>
+      String(c[0]).includes('/api/notifications/dispatch-alert')
+    );
+    expect(dispatchCalls.length).toBe(3);
+    expect(JSON.parse(dispatchCalls[0][1].body).alert.key).toBe('ph');
+    expect(JSON.parse(dispatchCalls[1][1].body).alert.key).toBe('do');
+    expect(JSON.parse(dispatchCalls[2][1].body).alert.key).toBe('temp');
+  });
 
-    _currentUser = { uid: 'user1' }; // Even with a logged-in user, all active users should be notified
-
+  it('all parameters use the same dispatch endpoint', async () => {
     const parameters = ['ph', 'do', 'temp', 'turb'];
 
     for (const param of parameters) {
       vi.clearAllMocks();
-      _cooldownMap.clear();
+      globalThis.fetch = vi.fn(() =>
+        Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () =>
+            Promise.resolve({
+              ok: true,
+              processed: 3,
+              smsSent: 0,
+              emailSent: 0,
+              skipped: 0,
+              errors: [],
+            }),
+        })
+      );
 
       const alert = {
         id: `alert-${param}`,
         key: param,
-        val: param === 'ph' ? 6.5 : param === 'do' ? 4.0 : param === 'temp' ? 30 : 40,
+        val: param === 'ph' ? 9.0 : param === 'do' ? 3.0 : param === 'temp' ? 35 : 80,
         severity: 'warning',
         pond: 'Test Pond',
         ts: Date.now(),
@@ -301,9 +184,11 @@ describe('Notification Alerts All Parameters - Bug Condition Exploration', () =>
 
       await handleAlert(alert);
 
-      // EXPECTED: All 3 active users receive both email and SMS for ANY parameter
-      expect(mockEmailjs.send).toHaveBeenCalledTimes(3);
-      expect(mockBackendSms).toHaveBeenCalledTimes(3);
+      const dispatchCalls = globalThis.fetch.mock.calls.filter((c) =>
+        String(c[0]).includes('/api/notifications/dispatch-alert')
+      );
+      expect(dispatchCalls.length).toBe(1);
+      expect(JSON.parse(dispatchCalls[0][1].body).alert.key).toBe(param);
     }
   });
 });

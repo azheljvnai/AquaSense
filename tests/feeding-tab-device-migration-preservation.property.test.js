@@ -177,7 +177,7 @@ describe('Feeding Tab Device Migration — Preservation Properties', () => {
    * **Validates: Requirements 3.3**
    */
   it('Property 2.2: Schedule save writes to correct RTDB path with valid format', async () => {
-    fc.assert(
+    await fc.assert(
       fc.asyncProperty(
         fc.integer({ min: 0, max: 23 }),   // hour
         fc.integer({ min: 0, max: 59 }),   // minute

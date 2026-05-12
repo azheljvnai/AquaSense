@@ -10,13 +10,26 @@ import fs from 'fs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-// Load .env from project root (one level up from backend/)
+// Load .env: repo root first, then backend/.env (optional overrides / secrets only under backend/)
 const { config: dotenvConfig } = createRequire(import.meta.url)('dotenv');
-dotenvConfig({ path: path.join(__dirname, '..', '.env') });
+const rootEnvPath = path.join(__dirname, '..', '.env');
+const backendEnvPath = path.join(__dirname, '.env');
+dotenvConfig({ path: rootEnvPath });
+dotenvConfig({ path: backendEnvPath });
 
-import express from 'express';
+const _emailJsAlertEnv = getEmailJsServerEnv();
+if (_emailJsAlertEnv.configured) {
+  console.log('[EmailJS] Server-side alert emails: ready (all four keys set).');
+} else {
+  console.warn('[EmailJS] Server-side alert emails disabled — add to .env:', _emailJsAlertEnv.missing.join(' | '));
+}
+
+import express, { Router } from 'express';
 import admin from 'firebase-admin';
 import { checkAndSeedPresets } from './scripts/seed-presets.js';
+import { sendUniSms } from './lib/unisms.js';
+import { getEmailJsServerEnv } from './lib/emailjs-env.js';
+import { postDispatchAlert } from './notifications/dispatch-alert.js';
 
 // Initialise Firebase Admin SDK once
 function initAdmin() {
@@ -92,6 +105,8 @@ app.use((_req, res, next) => {
 
 app.use(express.json());
 
+const notificationsRouter = Router();
+
 // ─── Auth middleware ──────────────────────────────────────────────────────────
 
 /**
@@ -134,32 +149,6 @@ function requireRole(...allowedRoles) {
   };
 }
 
-// ─── UniSMS helpers ───────────────────────────────────────────────────────────
-
-function getUniSmsAuthHeader() {
-  const secretKey = process.env.UNISMS_SECRET_KEY || '';
-  if (!secretKey) return null;
-  const token = Buffer.from(`${secretKey}:`, 'utf8').toString('base64');
-  return `Basic ${token}`;
-}
-
-function normalizePhPhoneToE164(input) {
-  // UniSMS expects E.164, commonly +639xxxxxxxxx for PH.
-  const raw = String(input || '').trim();
-  if (!raw) return '';
-  const cleaned = raw.replace(/[^\d+]/g, ''); // keep digits and leading +
-
-  // Already E.164 +639XXXXXXXXX
-  if (/^\+639\d{9}$/.test(cleaned)) return cleaned;
-  // Missing + (e.g. 63917...)
-  if (/^639\d{9}$/.test(cleaned)) return `+${cleaned}`;
-  // Local PH format 09XXXXXXXXX
-  if (/^09\d{9}$/.test(cleaned)) return `+63${cleaned.slice(1)}`;
-
-  // Fall back to cleaned (may be non-PH international E.164)
-  return cleaned;
-}
-
 // Avoid confusion: legacy file should always load the SPA entry.
 app.get('/dashboard.html', (_req, res) => res.redirect('/'));
 
@@ -191,68 +180,44 @@ app.get('/api/config', (_req, res) => {
  * Body: { recipient: string, content: string, metadata?: object }
  * Auth: Firebase ID token (Bearer) via verifyToken
  */
-app.post('/api/notifications/sms', verifyToken, async (req, res) => {
+notificationsRouter.post('/sms', verifyToken, async (req, res) => {
   const { recipient, content, metadata, sender_id } = req.body || {};
 
-  const authHeader = getUniSmsAuthHeader();
-  if (!authHeader) {
-    return res.status(503).json({ error: 'UniSMS is not configured (missing UNISMS_SECRET_KEY).' });
+  const result = await sendUniSms({
+    recipient,
+    content,
+    metadata,
+    sender_id,
+  });
+
+  if (!result.ok) {
+    const errMsg = String(result.error || '');
+    if (errMsg.includes('UniSMS is not configured')) {
+      return res.status(503).json({ error: result.error });
+    }
+    if (
+      result.error === 'recipient is required.' ||
+      result.error === 'content is required.' ||
+      errMsg.includes('160')
+    ) {
+      return res.status(400).json({ error: result.error });
+    }
+    return res.status(result.status && result.status >= 400 ? result.status : 500).json({
+      error: result.error || 'Failed to send SMS.',
+    });
   }
 
-  const to = normalizePhPhoneToE164(recipient);
-  const msg = String(content || '').trim();
-  if (!to) return res.status(400).json({ error: 'recipient is required.' });
-  if (!msg) return res.status(400).json({ error: 'content is required.' });
-  if (msg.length > 160) return res.status(400).json({ error: 'content must be <= 160 characters.' });
-
-  try {
-    const senderId = String(sender_id || process.env.UNISMS_SENDER_ID || '').trim();
-
-    const baseBody = {
-      recipient: to,
-      content: msg,
-    };
-    if (metadata && typeof metadata === 'object') {
-      baseBody.metadata = metadata;
-    }
-
-    async function trySend(includeSenderId) {
-      const body = { ...baseBody };
-      if (includeSenderId && senderId) body.sender_id = senderId;
-      const resp = await fetch('https://unismsapi.com/api/sms', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': authHeader,
-        },
-        body: JSON.stringify(body),
-      });
-      const data = await resp.json().catch(() => ({}));
-      return { resp, data };
-    }
-
-    // First attempt: respect configured sender_id.
-    let { resp, data } = await trySend(true);
-
-    // If UniSMS rejects sender_id with 422, retry once without it.
-    if (!resp.ok && resp.status === 422 && senderId) {
-      const msgStr = String(data?.error || data?.message || '').toLowerCase();
-      if (msgStr.includes('sender') || msgStr.includes('sender_id')) {
-        ({ resp, data } = await trySend(false));
-      }
-    }
-
-    if (!resp.ok) {
-      const detail = data?.error || data?.message || `UniSMS request failed with ${resp.status}`;
-      return res.status(resp.status).json({ error: detail });
-    }
-
-    const referenceId = data?.message?.reference_id || null;
-    return res.status(200).json({ success: true, reference_id: referenceId, provider: 'unisms' });
-  } catch (e) {
-    return res.status(500).json({ error: e?.message || 'Failed to send SMS.' });
-  }
+  return res.status(200).json({ success: true, reference_id: result.reference_id, provider: 'unisms' });
 });
+
+/**
+ * POST /api/notifications/dispatch-alert — fan-out SMS/email to all active users (Admin SDK).
+ * Body: { alert: { id, ts, key, val, severity, pond, resolved?, thresholdSummary? } }
+ */
+notificationsRouter.post('/dispatch-alert', verifyToken, postDispatchAlert);
+
+app.use('/api/notifications', notificationsRouter);
+console.log('[HTTP] Mounted POST /api/notifications/sms, POST /api/notifications/dispatch-alert');
 
 /**
  * PATCH /api/users/me — let any authenticated user update their own profile.

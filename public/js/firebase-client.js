@@ -16,6 +16,8 @@ import {
   getDocs,
   query,
   where,
+  orderBy,
+  limit,
   onSnapshot,
   serverTimestamp,
 } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
@@ -99,6 +101,8 @@ export const fbCollection = collection;
 export const fbGetDocs = getDocs;
 export const fbQuery = query;
 export const fbWhere = where;
+export const fbOrderBy = orderBy;
+export const fbLimit = limit;
 export const fbOnSnapshot = onSnapshot;
 export const fbServerTimestamp = serverTimestamp;
 

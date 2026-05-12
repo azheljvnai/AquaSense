@@ -10,6 +10,46 @@
 import { getBadgeForSpecies, getActiveThresholds, getActiveSpecies, getActivePondId } from '../pond-config.js';
 import { getActivePond } from '../pond-context.js';
 import { handleAlert } from './notifications.js';
+import {
+  fbAuth,
+  fbFirestore,
+  fbCollection,
+  fbAddDoc,
+  fbServerTimestamp,
+  fbQuery,
+  fbOrderBy,
+  fbLimit,
+  fbGetDocs,
+  fbUpdateDoc,
+  fbDoc,
+  fbWhere,
+  fbOnSnapshot,
+} from '../firebase-client.js';
+
+/** Human-readable optimal range for notification emails (mirrors server email template). */
+function thresholdSummaryForKey(key) {
+  try {
+    const t = getActiveThresholds();
+    if (!t) return '';
+    if (key === 'ph') {
+      const pb = t.ph;
+      if (pb) return `${pb.optimalMin}–${pb.optimalMax}`;
+    }
+    if (key === 'do') {
+      const db = t.do;
+      if (db) return `≥ ${db.optimalMin} mg/L`;
+    }
+    if (key === 'turb') {
+      const tb = t.turb;
+      if (tb) return `≤ ${tb.optimalMax} NTU`;
+    }
+    if (key === 'temp') {
+      const tb = t.temp;
+      if (tb) return `${tb.optimalMin}–${tb.optimalMax}°C`;
+    }
+  } catch { /* ignore */ }
+  return '';
+}
 
 // ─── Alert History Storage ────────────────────────────────────────────────────
 
@@ -73,6 +113,171 @@ function pruneAlerts(alerts) {
   let pruned = alerts.filter(a => a.ts >= cutoff);
   if (pruned.length > MAX_ALERTS) pruned = pruned.slice(-MAX_ALERTS);
   return pruned;
+}
+
+/**
+ * Persist a single alert to Firestore.
+ * Non-blocking - errors are logged but do not prevent localStorage caching.
+ * @param {Object} alert - The alert object to persist
+ * @returns {Promise<void>}
+ */
+async function persistAlertToFirestore(alert) {
+  try {
+    if (!fbAuth().currentUser) {
+      console.warn('[persistAlertToFirestore] Skipped Firestore write: no signed-in user (rules require auth).');
+      return;
+    }
+    const alertData = {
+      id: alert.id,
+      ts: alert.ts,
+      key: alert.key,
+      val: alert.val,
+      severity: alert.severity,
+      badge: alert.badge,
+      label: alert.label,
+      description: alert.description,
+      pond: alert.pond,
+      resolved: alert.resolved,
+      createdAt: fbServerTimestamp(),
+    };
+    
+    await fbAddDoc(fbCollection(fbFirestore(), 'alerts'), alertData);
+  } catch (err) {
+    // Non-blocking - localStorage still works
+    console.error('[persistAlertToFirestore] Failed to persist alert to Firestore:', err);
+  }
+}
+
+/**
+ * Load alerts from Firestore on page load.
+ * Merges with localStorage alerts (Firestore is source of truth).
+ * Applies same pruning logic (7 days, 200 max).
+ * @returns {Promise<Array>} - Array of alerts from Firestore
+ */
+async function loadAlertsFromFirestore() {
+  try {
+    const alertsRef = fbCollection(fbFirestore(), 'alerts');
+    const q = fbQuery(alertsRef, fbOrderBy('ts', 'desc'));
+    const querySnapshot = await fbGetDocs(q);
+    
+    const firestoreAlerts = [];
+    querySnapshot.docs.forEach((doc) => {
+      firestoreAlerts.push(firestoreDataToAlert(doc.data(), doc.id));
+    });
+    
+    // Merge with localStorage alerts (Firestore is source of truth)
+    const localAlerts = loadAlerts();
+    
+    // Create a map of Firestore alert IDs for deduplication
+    const firestoreIds = new Set(firestoreAlerts.map(a => a.id));
+    
+    // Add localStorage alerts that are not in Firestore
+    const uniqueLocalAlerts = localAlerts.filter(a => !firestoreIds.has(a.id));
+    
+    // Combine and prune
+    const mergedAlerts = [...firestoreAlerts, ...uniqueLocalAlerts];
+    const prunedAlerts = pruneAlerts(mergedAlerts);
+    
+    // Save merged alerts back to localStorage
+    saveAlerts(prunedAlerts);
+    
+    return prunedAlerts;
+  } catch (err) {
+    console.error('[loadAlertsFromFirestore] Failed to load alerts from Firestore:', err);
+    // Fall back to localStorage on error
+    return loadAlerts();
+  }
+}
+
+function firestoreDataToAlert(data, docId) {
+  let ts = Number(data.ts) || 0;
+  if (ts > 0 && ts < 1e12) ts *= 1000;
+  const badge = typeof data.badge === 'string' ? data.badge : '';
+  const severity =
+    typeof data.severity === 'string'
+      ? data.severity
+      : (badge === 'danger' ? 'critical' : badge === 'warn' ? 'warning' : 'info');
+  return {
+    id: data.id || docId,
+    ts,
+    key: typeof data.key === 'string' ? data.key : '',
+    val: typeof data.val === 'number' && Number.isFinite(data.val) ? data.val : Number(data.val),
+    severity,
+    badge,
+    label: typeof data.label === 'string' ? data.label : '',
+    description: typeof data.description === 'string' ? data.description : '',
+    pond: typeof data.pond === 'string' ? data.pond : '',
+    resolved: typeof data.resolved === 'boolean' ? data.resolved : false,
+  };
+}
+
+let _alertsRealtimeUnsub = null;
+
+/**
+ * Merge remote alert writes into localStorage so other logged-in sessions see updates.
+ */
+function subscribeAlertsRealtime() {
+  if (_alertsRealtimeUnsub) {
+    try {
+      _alertsRealtimeUnsub();
+    } catch { /* ignore */ }
+    _alertsRealtimeUnsub = null;
+  }
+  try {
+    const alertsRef = fbCollection(fbFirestore(), 'alerts');
+    const q = fbQuery(alertsRef, fbOrderBy('ts', 'desc'), fbLimit(250));
+    _alertsRealtimeUnsub = fbOnSnapshot(
+      q,
+      (snapshot) => {
+        const byId = new Map();
+        for (const a of loadAlerts()) {
+          byId.set(a.id, a);
+        }
+        snapshot.docChanges().forEach((change) => {
+          if (change.type === 'removed') return;
+          const normalized = firestoreDataToAlert(change.doc.data(), change.doc.id);
+          if (!normalized.id || !Number.isFinite(normalized.ts)) return;
+          byId.set(normalized.id, normalized);
+        });
+        const merged = pruneAlerts([...byId.values()].sort((a, b) => b.ts - a.ts));
+        saveAlerts(merged);
+        renderAlertList();
+        window.dispatchEvent(new Event('alerts-updated'));
+      },
+      (err) => {
+        console.error('[subscribeAlertsRealtime]', err);
+      }
+    );
+  } catch (err) {
+    console.error('[subscribeAlertsRealtime] setup failed:', err);
+  }
+}
+
+/**
+ * Update an alert's resolved status in Firestore.
+ * Non-blocking - errors are logged but do not prevent localStorage updates.
+ * @param {string} alertId - The alert ID to update
+ * @returns {Promise<void>}
+ */
+async function updateAlertResolvedInFirestore(alertId) {
+  try {
+    // Query Firestore to find the document with matching alert ID
+    const alertsRef = fbCollection(fbFirestore(), 'alerts');
+    const q = fbQuery(alertsRef, fbWhere('id', '==', alertId));
+    const querySnapshot = await fbGetDocs(q);
+    
+    if (querySnapshot.empty) {
+      console.warn(`[updateAlertResolvedInFirestore] Alert ${alertId} not found in Firestore`);
+      return;
+    }
+    
+    // Update the first matching document (should only be one)
+    const docRef = fbDoc(fbFirestore(), 'alerts', querySnapshot.docs[0].id);
+    await fbUpdateDoc(docRef, { resolved: true });
+  } catch (err) {
+    // Non-blocking - localStorage still works
+    console.error('[updateAlertResolvedInFirestore] Failed to update alert in Firestore:', err);
+  }
 }
 
 // ─── Alert Evaluation ─────────────────────────────────────────────────────────
@@ -139,27 +344,29 @@ function evaluateSensor(key, val, pondName) {
     description,
     pond:       pondName,
     resolved:   false,
+    thresholdSummary: thresholdSummaryForKey(key),
   };
 }
 
 // ─── Deduplication — suppress repeat alerts within a cooldown window ──────────
-// Keyed by `${pondId}:${sensorKey}` so switching ponds never inherits stale cooldowns.
+// Keyed by `${pondId}:${sensorKey}:${severity}` so switching ponds never inherits stale cooldowns,
+// and warning vs critical are independent (escalation still notifies).
 
-const COOLDOWN_MS = 5 * 60 * 1000; // 5 minutes per sensor key per pond
+const COOLDOWN_MS = 15 * 60 * 1000; // match server dispatch-alert.js
 const _lastAlertTs = {};
 
-function cooldownKey(key) {
+function cooldownKey(key, severity) {
   const pondId = getActivePondId() || 'default';
-  return `${pondId}:${key}`;
+  return `${pondId}:${key}:${severity}`;
 }
 
-function shouldSuppress(key) {
-  const last = _lastAlertTs[cooldownKey(key)] || 0;
+function shouldSuppress(key, severity) {
+  const last = _lastAlertTs[cooldownKey(key, severity)] || 0;
   return Date.now() - last < COOLDOWN_MS;
 }
 
-function markAlerted(key) {
-  _lastAlertTs[cooldownKey(key)] = Date.now();
+function markAlerted(key, severity) {
+  _lastAlertTs[cooldownKey(key, severity)] = Date.now();
 }
 
 /** Clear cooldowns for all keys on the current pond so the first reading after a switch is always evaluated. */
@@ -173,6 +380,17 @@ function resetCooldownsForPond(pondId) {
 // ─── Main init ────────────────────────────────────────────────────────────────
 
 export function init() {
+  // Load alerts from Firestore on page load
+  loadAlertsFromFirestore().then(() => {
+    renderAlertList();
+    window.dispatchEvent(new Event('alerts-updated'));
+    subscribeAlertsRealtime();
+  }).catch(err => {
+    console.error('[init] Failed to load alerts from Firestore:', err);
+    // Fall back to localStorage rendering
+    renderAlertList();
+  });
+
   // ── Notification preference toggles ────────────────────────────────────────
   const email = document.getElementById('alert-email');
   const sms   = document.getElementById('alert-sms');
@@ -376,11 +594,20 @@ export function init() {
 
     // Resolve button handlers — mark resolved and immediately remove from view
     container.querySelectorAll('.btn-resolve').forEach(btn => {
-      btn.addEventListener('click', () => {
+      btn.addEventListener('click', async () => {
         const id = btn.dataset.id;
         const all = loadAlerts();
         const idx = all.findIndex(a => a.id === id);
-        if (idx !== -1) { all[idx].resolved = true; saveAlerts(all); }
+        if (idx !== -1) {
+          // Update localStorage
+          all[idx].resolved = true;
+          saveAlerts(all);
+          
+          // Update Firestore (non-blocking)
+          updateAlertResolvedInFirestore(id).catch(err => {
+            console.error('[btn-resolve] Failed to update Firestore:', err);
+          });
+        }
         renderAlertList();
         window.dispatchEvent(new Event('alerts-updated'));
       });
@@ -398,23 +625,33 @@ export function init() {
 
   // ── React to new sensor readings ───────────────────────────────────────────
   window.addEventListener('sensor-data-updated', (e) => {
+    // Determine pond name for dual setup support:
+    // Try new setup first (configuration-based): getActiveSpecies() || 'Unknown'
+    // Fall back to legacy setup (pond management): getActivePond()?.name
+    // Legacy setup takes precedence when both are present
+    let pondName = getActiveSpecies() || 'Unknown';
+    
     const activePond = getActivePond();
-    if (!activePond?.name) return; // no real pond selected yet — skip
+    if (activePond?.name) {
+      pondName = activePond.name;
+    }
+    
+    // Skip if no valid pond identifier
+    if (!pondName || pondName === 'Unknown') {
+      return;
+    }
 
     const { ph, doV, turb, temp } = e.detail || {};
-    const pondName = activePond.name;
     const readings = { ph, do: doV, turb, temp };
     const newAlerts = [];
 
     for (const [key, val] of Object.entries(readings)) {
       if (val == null || !Number.isFinite(val)) continue;
-      if (shouldSuppress(key)) continue;
       const alert = evaluateSensor(key, val, pondName);
-      if (alert) {
-        markAlerted(key);
-        newAlerts.push(alert);
-        handleAlert(alert).catch(() => {/* notification errors are non-fatal */});
-      }
+      if (!alert) continue;
+      if (shouldSuppress(key, alert.severity)) continue;
+      markAlerted(key, alert.severity);
+      newAlerts.push(alert);
     }
 
     if (newAlerts.length) {
@@ -423,6 +660,17 @@ export function init() {
       saveAlerts(all);
       renderAlertList();
       window.dispatchEvent(new Event('alerts-updated'));
+
+      (async () => {
+        for (const alert of newAlerts) {
+          await persistAlertToFirestore(alert);
+          try {
+            await handleAlert(alert);
+          } catch {
+            /* notification errors are non-fatal */
+          }
+        }
+      })().catch(() => {/* ignore */});
     }
   });
 
@@ -456,7 +704,7 @@ function clearAllAlerts() {
 /**
  * Mark all unresolved alerts as resolved
  */
-function markAllAlertsAsResolved() {
+async function markAllAlertsAsResolved() {
   try {
     const allAlerts = loadAlerts();
     const unresolvedAlerts = allAlerts.filter(alert => !alert.resolved);
@@ -466,8 +714,22 @@ function markAllAlertsAsResolved() {
       return;
     }
 
+    // Update localStorage
     for (const a of allAlerts) a.resolved = true;
     saveAlerts(allAlerts);
+    
+    // Update Firestore for all unresolved alerts (non-blocking)
+    const firestoreUpdates = unresolvedAlerts.map(alert => 
+      updateAlertResolvedInFirestore(alert.id).catch(err => {
+        console.error(`[markAllAlertsAsResolved] Failed to update alert ${alert.id}:`, err);
+      })
+    );
+    
+    // Wait for all Firestore updates to complete (but don't block UI)
+    Promise.all(firestoreUpdates).catch(err => {
+      console.error('[markAllAlertsAsResolved] Some Firestore updates failed:', err);
+    });
+    
     renderAlertList();
     window.dispatchEvent(new Event('alerts-updated'));
     showToast(`Successfully marked ${unresolvedAlerts.length} alerts as resolved`, 'success');
