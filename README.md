@@ -14,7 +14,8 @@ Aquaculture monitoring dashboard (CrayFarm) with real-time water quality metrics
   2. When you click **Connect**, it initializes the Firebase client with that URL and subscribes to the same paths as the original app.
 - **Firebase** (unchanged): The frontend still talks directly to Firebase Realtime Database using the same paths and logic as the original `dashboard.html`:
   - ` /devices/<deviceId>/sensors` — ph, do, turb, temp
-  - ` /devices/<deviceId>/feeding` — schedule1, schedule2, manualFeed
+  - ` /devices/<deviceId>/feeding` — `schedules/times/{0..n}`, `manualFeed`
+  - ` /devices/<deviceId>/feedLog` — feed event log (manual + scheduled)
 
 No existing API endpoints or Firebase logic were changed; only the URL (and optional device id) are supplied via the backend or manual input.
 
@@ -44,7 +45,8 @@ AquaSense/
 │   ├── js/
 │   │   ├── app.js       # Entry: nav, clock, config, Firebase wiring, feature inits
 │   │   ├── config.js    # Fetches /api/config
-│   │   ├── firebase.js  # Firebase connect, triggerFeed, saveSchedules (same API usage)
+│   │   ├── firebase.js  # Firebase connect, sensor stream, history fetch
+│   │   ├── features/feeding.js  # Unified feeding schedules, manual feed, feed log
 │   │   ├── charts.js    # Chart helpers (dashboard, historical, feeding)
 │   │   ├── utils.js     # log, getBadge, thresholds, sparklines
 │   │   └── features/
@@ -140,7 +142,7 @@ The app will load `frontend/index.html`. If `FIREBASE_DATABASE_URL` is set in `.
    - Recent Alerts and Activity Log.
    - Feeding Control: schedules and **Manual Feed** / **Save Schedules** (same behavior as original).
 5. **Navigation**: Use the sidebar to open Water Quality, Historical Data, Feeding, Alerts, Farm & Profile, Reports, Configuration. No “ML & Analytics”; Reports has Daily/Weekly/Monthly Water Quality Report and Feeding Report tabs.
-6. **Firebase**: Ensure your Realtime Database has the expected structure under `/devices/device001/` (or your `DEVICE_ID`): e.g. `sensors` (ph, do, turb, temp) and `feeding` (schedule1, schedule2, manualFeed). The app does not create these; it only reads/writes the same paths as before.
+6. **Firebase**: Ensure your Realtime Database has the expected structure under `/devices/device001/` (or your `DEVICE_ID`): e.g. `sensors` (ph, do, turb, temp), `feeding/schedules/times` (HH:MM strings at indices 0, 1, …), `feeding/manualFeed`, and `feedLog`. Legacy `schedule1`/`schedule2` keys are migrated automatically on first load.
 
 ### Notes about `dashboard.html` (legacy)
 

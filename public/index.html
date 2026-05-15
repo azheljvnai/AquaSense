@@ -229,17 +229,19 @@
           </div>
           <div class="scheds">
             <div class="sched">
-              <label>Schedule 1</label>
-              <input type="time" id="sched1" value="08:00" />
+              <label for="dash-sched-0">Schedule 1</label>
+              <input type="time" id="dash-sched-0" value="08:00" />
             </div>
             <div class="sched">
-              <label>Schedule 2</label>
-              <input type="time" id="sched2" value="18:00" />
+              <label for="dash-sched-1">Schedule 2</label>
+              <input type="time" id="dash-sched-1" value="18:00" />
             </div>
           </div>
+          <p id="dashboard-feed-next" class="dashboard-feed-next muted text-sm" style="display:none"></p>
+          <a href="#" id="dashboard-feed-extra" class="dashboard-feed-extra muted text-sm" style="display:none"></a>
           <div class="btn-row">
-            <button class="btn btn-feed" id="feed-btn" onclick="triggerFeed()" disabled>▶ Manual Feed</button>
-            <button class="btn btn-save" onclick="saveSchedules()">Save Schedules</button>
+            <button class="btn btn-feed" id="feed-btn" disabled>▶ Manual Feed</button>
+            <button class="btn btn-save" id="dash-save-schedules">Save Schedules</button>
           </div>
           <div class="feed-note">
             <div class="dot off" id="feed-dot"></div>

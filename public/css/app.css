@@ -819,6 +819,15 @@ body.theme-dark .um-modal-inner > #cd-error { background: var(--bg); }
 .chart-card       { grid-area: chart;  display: flex; flex-direction: column; }
 .dash-alerts-card { grid-area: alerts; align-self: stretch; }
 .feed-panel       { grid-area: feed;   max-width: none; }
+.dashboard-feed-next { margin: 0 0 4px; }
+.dashboard-feed-extra {
+  display: block;
+  margin: 0 0 10px;
+  color: var(--blue);
+  text-decoration: none;
+  cursor: pointer;
+}
+.dashboard-feed-extra:hover { text-decoration: underline; }
 
 .chart-card canvas { width: 100% !important; height: 180px !important; max-height: 180px; flex: none; }
 

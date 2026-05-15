@@ -18,7 +18,8 @@ import {
   fbReauthenticate,
   fbUpdatePassword,
 } from './firebase-client.js';
-import { connect, triggerFeed, saveSchedules, initRoleTracking, fetchHistoryFromRTDB } from './firebase.js';
+import { connect, initRoleTracking, fetchHistoryFromRTDB } from './firebase.js';
+import { init as initFeeding, triggerManualFeed, setFirebaseConnected } from './features/feeding.js';
 import { log } from './utils.js';
 import { getBadge, spkData, spkCol, drawSpark, recordSensorReading, mergeRtdbEntries } from './utils.js';
 import { getBadgeForSpecies, recordPondSensorReading } from './pond-config.js';
@@ -28,7 +29,6 @@ import { pushChart } from './charts.js';
 import { init as initDashboard } from './features/dashboard.js';
 import { init as initWaterQuality } from './features/water-quality.js';
 import { init as initHistoricalData } from './features/historical-data.js';
-import { init as initFeeding } from './features/feeding.js';
 import { init as initAlerts } from './features/alerts.js';
 import { init as initFarmProfile } from './features/farm-profile.js';
 import { init as initReports } from './features/reports.js';
@@ -149,20 +149,19 @@ function applyRoleGuards(role) {
     );
   });
 
-  // Feed button — all roles can trigger manual feed
-  const feedBtn = document.getElementById('feed-btn');
-  const feedNote = document.getElementById('feed-note-txt');
-  if (feedBtn) {
-    feedBtn.disabled = false;
-    if (feedNote) feedNote.textContent = 'Firebase connected — button locks until ESP32 confirms';
+  // Dashboard schedule quick-edit — owner/admin only
+  const dashSaveBtn = document.getElementById('dash-save-schedules');
+  if (dashSaveBtn) {
+    dashSaveBtn.disabled = !perms.canEditSchedules;
+    if (!perms.canEditSchedules) dashSaveBtn.title = 'Owner/Admin required to save schedules';
   }
-
-  // Schedule save button — owner/admin only
-  const saveSchedBtn = document.getElementById('btn-save-schedules');
-  if (saveSchedBtn) {
-    saveSchedBtn.disabled = !perms.canEditSchedules;
-    if (!perms.canEditSchedules) saveSchedBtn.title = 'Owner/Admin required to save schedules';
-  }
+  ['dash-sched-0', 'dash-sched-1'].forEach((id) => {
+    const inp = document.getElementById(id);
+    if (inp) {
+      inp.disabled = !perms.canEditSchedules;
+      if (!perms.canEditSchedules) inp.title = 'Owner/Admin required to edit schedules';
+    }
+  });
 
   // Configuration save — owner/admin only
   const cfgSaveBtn = document.getElementById('cfg-save');
@@ -254,14 +253,6 @@ function setStatus(lbl, online) {
   if (d) d.className = 'dot' + (online ? '' : ' off');
 }
 
-function enableFeedBtn(on) {
-  const btn = document.getElementById('feed-btn');
-  const dot = document.getElementById('feed-dot');
-  const note = document.getElementById('feed-note-txt');
-  if (btn) btn.disabled = !on;
-  if (dot) dot.className = 'dot' + (on ? '' : ' off');
-  if (note) note.textContent = on ? 'Firebase connected — button locks until ESP32 confirms' : 'Connect to Firebase to enable feed button';
-}
 
 /** Used by firebase when sensor data arrives. */
 export function updateCard(key, val) {
@@ -493,13 +484,11 @@ function connectFirebase() {
       window.dispatchEvent(new CustomEvent('sensor-reading-recorded'));
       window.dispatchEvent(new CustomEvent('sensor-data-updated', { detail: { ph, doV, turb, temp, ts } }));
     },
-    enableFeedBtn,
   });
 }
 
 window.connectFirebase = connectFirebase;
-window.triggerFeed = () => triggerFeed(deviceId);
-window.saveSchedules = () => saveSchedules(deviceId);
+window.triggerFeed = () => triggerManualFeed();
 window.fetchHistoryFromRTDB = (fromMs, toMs) => fetchHistoryFromRTDB(deviceId, fromMs, toMs);
 
 async function hydrateHistoryFromRTDB() {
@@ -873,7 +862,7 @@ function init() {
     initDashboard();
     initWaterQuality();
     initHistoricalData();
-    initFeeding();
+    initFeeding(deviceId);
     initAlerts();
     initFarmProfile();
     initReports();
@@ -935,7 +924,7 @@ function init() {
         hydratedHistoryForUid = '';
         renderSidebarUser(null);
         showAuthScreen(true);
-        enableFeedBtn(false);
+        setFirebaseConnected(false);
         return;
       }
 

@@ -17,6 +17,7 @@ import {
   fbSet,
   fbGet,
 } from '../firebase-client.js';
+import { log } from '../utils.js';
 
 // ── Module-level state ────────────────────────────────────────────────────────
 let _deviceId          = null;   // active device ID
@@ -27,19 +28,26 @@ let _feedChart         = null;   // Chart.js instance
 let _manualFeedTimeout = null;   // 10-second timeout handle
 let _editingIndex      = null;   // schedule index being edited (null = new)
 let _dispensing        = false;  // true while waiting for ESP32 to reset manualFeed
+let _firebaseConnected = false;  // RTDB connect state (dashboard feed-btn gate)
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
-export function init() {
-  // Initialise chart
+export function init(deviceId = 'device001') {
   const canvasEl = document.getElementById('feed-chart');
   if (canvasEl) _feedChart = initFeedingChart(canvasEl);
 
-  // Wire manual feed button
-  const manualBtn = document.getElementById('feed-manual-btn');
-  if (manualBtn) manualBtn.addEventListener('click', _triggerManualFeed);
+  document.getElementById('feed-manual-btn')?.addEventListener('click', triggerManualFeed);
+  document.getElementById('feed-btn')?.addEventListener('click', triggerManualFeed);
+  document.getElementById('dash-save-schedules')?.addEventListener('click', _saveDashboardSchedules);
 
-  // Wire schedule form buttons
+  const extraEl = document.getElementById('dashboard-feed-extra');
+  if (extraEl) {
+    extraEl.addEventListener('click', (e) => {
+      e.preventDefault();
+      if (typeof window.navigateTo === 'function') window.navigateTo('feeding');
+    });
+  }
+
   document.getElementById('feed-add-schedule-btn')?.addEventListener('click', () => {
     _editingIndex = null;
     const input = document.getElementById('feed-schedule-input');
@@ -53,19 +61,24 @@ export function init() {
     _showScheduleError('');
   });
 
-  // Hide "no pond" message and show feeding content
   const noPondEl = document.getElementById('feed-no-pond');
   if (noPondEl) noPondEl.style.display = 'none';
   const contentEl = document.getElementById('feed-content');
   if (contentEl) contentEl.style.display = '';
 
-  // Initialize with device001 directly
-  _deviceId = 'device001';
-  _subscribe('device001');
+  _deviceId = deviceId || 'device001';
+  if (_listeners.length) _teardown();
+  _subscribe(_deviceId);
+  _migrateLegacySchedules(_deviceId);
 
-  // Listen for configuration changes to display config name
   window.addEventListener('config-changed', _updateConfigDisplay);
-  _updateConfigDisplay(); // Initial update
+  _updateConfigDisplay();
+}
+
+/** Called from firebase connect/disconnect to gate the dashboard feed button. */
+export function setFirebaseConnected(connected) {
+  _firebaseConnected = connected;
+  if (!_dispensing) _applyFeedButtonConnectedState();
 }
 
 // ── Subscribe / Teardown ──────────────────────────────────────────────────────
@@ -78,6 +91,7 @@ function _subscribe(deviceId) {
   const unsubSchedules = fbOnValue(timesRef, (snap) => {
     _schedules = _parseSchedules(snap);
     _renderScheduleList();
+    _hydrateDashboardInputs();
     _updateMetricCards();
   }, (err) => console.error('[feeding] schedules listener error', err));
   _listeners.push(unsubSchedules);
@@ -261,6 +275,11 @@ function _startEditSchedule(index) {
   document.getElementById('feed-schedule-form').style.display = '';
 }
 
+async function _saveScheduleAtIndex(index, timeVal) {
+  const db = fbDatabase();
+  await fbSet(fbRef(db, `/devices/${_deviceId}/feeding/schedules/times/${index}`), timeVal);
+}
+
 async function _saveSchedule() {
   const perms = window._rbacPerms || { canEditSchedules: false };
   if (!perms.canEditSchedules) {
@@ -274,21 +293,130 @@ async function _saveSchedule() {
     return;
   }
 
-  const db = fbDatabase();
-
-  // Determine the index slot to write to
   const index = _editingIndex !== null
     ? _editingIndex
     : _nextScheduleIndex(_schedules.map((s) => s.index));
 
   try {
-    // Write the time string to /feeding/schedules/times/<index>
-    await fbSet(fbRef(db, `/devices/${_deviceId}/feeding/schedules/times/${index}`), timeVal);
+    await _saveScheduleAtIndex(index, timeVal);
     document.getElementById('feed-schedule-form').style.display = 'none';
     _editingIndex = null;
     _showScheduleError('');
   } catch (err) {
     _showScheduleError('Save failed: ' + (err?.message || String(err)));
+  }
+}
+
+async function _saveDashboardSchedules() {
+  const perms = window._rbacPerms || { canEditSchedules: false };
+  if (!perms.canEditSchedules) {
+    log('Permission denied: Owner/Admin required to change schedules.', 'warn');
+    return;
+  }
+  if (!_deviceId) return;
+
+  const t0 = document.getElementById('dash-sched-0')?.value.trim() || '';
+  const t1 = document.getElementById('dash-sched-1')?.value.trim() || '';
+  const timeRe = /^\d{2}:\d{2}$/;
+
+  if (t0 && !timeRe.test(t0)) {
+    log('Schedule 1: enter a valid time (HH:MM).', 'warn');
+    return;
+  }
+  if (t1 && !timeRe.test(t1)) {
+    log('Schedule 2: enter a valid time (HH:MM).', 'warn');
+    return;
+  }
+
+  const byIndex = {};
+  _schedules.forEach((s) => { byIndex[s.index] = s.time; });
+
+  if (t0) byIndex[0] = t0;
+  else delete byIndex[0];
+  if (t1) byIndex[1] = t1;
+  else delete byIndex[1];
+
+  const sorted = Object.entries(byIndex)
+    .map(([idx, time]) => ({ index: parseInt(idx, 10), time }))
+    .sort((a, b) => a.time.localeCompare(b.time));
+
+  const newTimes = {};
+  sorted.forEach((s, i) => { newTimes[i] = s.time; });
+
+  try {
+    const db = fbDatabase();
+    await fbSet(
+      fbRef(db, `/devices/${_deviceId}/feeding/schedules/times`),
+      sorted.length ? newTimes : null,
+    );
+    log(sorted.length ? `Schedules saved (${sorted.length} active) ✓` : 'Schedules cleared ✓', 'feed');
+  } catch (err) {
+    log('Save error: ' + (err?.message || String(err)), 'err');
+  }
+}
+
+function _hydrateDashboardInputs() {
+  const active = document.activeElement;
+  const inputs = [0, 1].map((i) => document.getElementById(`dash-sched-${i}`));
+  if (inputs.some((inp) => inp && inp === active)) return;
+
+  const byIndex = {};
+  _schedules.forEach((s) => { byIndex[s.index] = s.time; });
+
+  inputs.forEach((inp, i) => {
+    if (inp) inp.value = byIndex[i] || '';
+  });
+
+  _updateDashboardExtras();
+}
+
+function _updateDashboardExtras() {
+  const extraEl = document.getElementById('dashboard-feed-extra');
+  const nextEl  = document.getElementById('dashboard-feed-next');
+  const more    = Math.max(0, _schedules.length - 2);
+
+  if (extraEl) {
+    if (more > 0) {
+      extraEl.style.display = '';
+      extraEl.textContent = `+${more} more — manage in Feeding`;
+    } else {
+      extraEl.style.display = 'none';
+      extraEl.textContent = '';
+    }
+  }
+
+  if (nextEl) {
+    const nextMs = _nextScheduleTime(_schedules);
+    nextEl.textContent = nextMs ? `Next feed ${_fmtCountdown(nextMs)}` : '';
+    nextEl.style.display = nextMs ? '' : 'none';
+  }
+}
+
+async function _migrateLegacySchedules(deviceId) {
+  try {
+    const db = fbDatabase();
+    const feedingRef = fbRef(db, `/devices/${deviceId}/feeding`);
+    const snap = await fbGet(feedingRef);
+    const f = snap.val();
+    if (!f) return;
+
+    const timesSnap = await fbGet(fbRef(db, `/devices/${deviceId}/feeding/schedules/times`));
+    const hasTimes = timesSnap.exists() && timesSnap.val() != null
+      && Object.keys(timesSnap.val()).length > 0;
+
+    if (hasTimes) return;
+
+    const legacy = [f.schedule1, f.schedule2].filter((t) => typeof t === 'string' && /^\d{2}:\d{2}$/.test(t));
+    if (legacy.length === 0) return;
+
+    const newTimes = {};
+    legacy.forEach((t, i) => { newTimes[i] = t; });
+    await fbSet(fbRef(db, `/devices/${deviceId}/feeding/schedules/times`), newTimes);
+    await fbSet(fbRef(db, `/devices/${deviceId}/feeding/schedule1`), null);
+    await fbSet(fbRef(db, `/devices/${deviceId}/feeding/schedule2`), null);
+    log('Migrated legacy feeding schedules to unified format ✓', 'feed');
+  } catch (err) {
+    console.warn('[feeding] legacy schedule migration skipped', err);
   }
 }
 
@@ -485,53 +613,100 @@ async function _writeFeedLog(deviceId, reason) {
   await fbSet(fbRef(db, `/devices/${deviceId}/feedLog/${key}`), { reason, timestamp: ts });
 }
 
-async function _triggerManualFeed() {
+export async function triggerManualFeed() {
   const perms = window._rbacPerms || { canTriggerFeed: true };
   if (!perms.canTriggerFeed) {
-    console.warn('[feeding] Permission denied: canTriggerFeed required');
+    log('Permission denied: cannot trigger feeding.', 'warn');
     return;
   }
   if (!_deviceId) return;
 
-  const btn      = document.getElementById('feed-manual-btn');
+  const tabBtn   = document.getElementById('feed-manual-btn');
+  const dashBtn  = document.getElementById('feed-btn');
   const statusEl = document.getElementById('feed-manual-status');
+  const feedNote = document.getElementById('feed-note-txt');
+
+  const setDispensing = () => {
+    if (tabBtn)  { tabBtn.disabled = true; tabBtn.textContent = '⟳ Dispensing…'; }
+    if (dashBtn) {
+      dashBtn.disabled = true;
+      dashBtn.classList.add('firing');
+      dashBtn.textContent = '⟳ DISPENSING...';
+    }
+    if (statusEl) statusEl.textContent = '';
+    if (feedNote) feedNote.textContent = 'Waiting for ESP32 to confirm...';
+    _dispensing = true;
+  };
+
+  const resetButtons = (timeoutMsg) => {
+    if (tabBtn)  { tabBtn.disabled = false; tabBtn.textContent = '▶ Manual Feed'; }
+    if (dashBtn) {
+      dashBtn.classList.remove('firing');
+      dashBtn.textContent = '▶ Manual Feed';
+    }
+    _dispensing = false;
+    _applyFeedButtonConnectedState();
+    if (statusEl && timeoutMsg) statusEl.textContent = timeoutMsg;
+    if (feedNote && timeoutMsg) feedNote.textContent = timeoutMsg;
+    else if (feedNote && _firebaseConnected) feedNote.textContent = 'Firebase connected — button locks until ESP32 confirms';
+  };
 
   try {
-    // Log first, then set the flag so the ESP32 picks it up
+    setDispensing();
     await _writeFeedLog(_deviceId, 'Manual');
     const db = fbDatabase();
     await fbSet(fbRef(db, `/devices/${_deviceId}/feeding/manualFeed`), true);
+    log('Feed command sent → manualFeed = true ✓', 'feed');
 
-    if (btn)      { btn.disabled = true; btn.textContent = '⟳ Dispensing…'; }
-    if (statusEl) statusEl.textContent = '';
-    _dispensing = true;
-
-    // 10-second timeout guard in case ESP32 is offline
+    if (_manualFeedTimeout) clearTimeout(_manualFeedTimeout);
     _manualFeedTimeout = setTimeout(() => {
       _manualFeedTimeout = null;
-      _dispensing        = false;
-      if (btn)      { btn.disabled = false; btn.textContent = '▶ Manual Feed'; }
-      if (statusEl) statusEl.textContent = 'Timeout — ESP32 may be offline';
+      resetButtons('Timeout — ESP32 may be offline');
+      log('Feed timeout — button unlocked (ESP32 may be offline)', 'warn');
     }, 10000);
   } catch (err) {
-    if (btn)      { btn.disabled = false; btn.textContent = '▶ Manual Feed'; }
-    if (statusEl) statusEl.textContent = 'Error: ' + (err?.message || String(err));
+    resetButtons('Error: ' + (err?.message || String(err)));
+    log('Feed error: ' + (err?.message || String(err)), 'err');
+  }
+}
+
+function _applyFeedButtonConnectedState() {
+  const dashBtn = document.getElementById('feed-btn');
+  const dot     = document.getElementById('feed-dot');
+  const note    = document.getElementById('feed-note-txt');
+  const tabBtn  = document.getElementById('feed-manual-btn');
+
+  if (dashBtn && !_dispensing) dashBtn.disabled = !_firebaseConnected;
+  if (tabBtn && !_dispensing) tabBtn.disabled = false;
+  if (dot) dot.className = 'dot' + (_firebaseConnected ? '' : ' off');
+  if (note && !_dispensing) {
+    note.textContent = _firebaseConnected
+      ? 'Firebase connected — button locks until ESP32 confirms'
+      : 'Connect to Firebase to enable feed button';
   }
 }
 
 function _syncFeedButton(manualFeedVal) {
-  const btn      = document.getElementById('feed-manual-btn');
+  const tabBtn   = document.getElementById('feed-manual-btn');
+  const dashBtn  = document.getElementById('feed-btn');
   const statusEl = document.getElementById('feed-manual-status');
+  const feedNote = document.getElementById('feed-note-txt');
 
   if (!manualFeedVal) {
-    // ESP32 reset the flag — clear timeout and re-enable
     if (_manualFeedTimeout) {
       clearTimeout(_manualFeedTimeout);
       _manualFeedTimeout = null;
     }
-    if (btn)                    { btn.disabled = false; btn.textContent = '▶ Manual Feed'; }
-    if (statusEl && _dispensing) statusEl.textContent = 'Feed complete ✓';
+    if (tabBtn)  { tabBtn.disabled = false; tabBtn.textContent = '▶ Manual Feed'; }
+    if (dashBtn) {
+      dashBtn.classList.remove('firing');
+      dashBtn.textContent = '▶ Manual Feed';
+    }
     _dispensing = false;
+    _applyFeedButtonConnectedState();
+    if (statusEl) statusEl.textContent = 'Feed complete ✓';
+    if (feedNote && _firebaseConnected) feedNote.textContent = 'ESP32 confirmed feed complete ✓';
+    log('ESP32 confirmed feed complete ✓', 'feed');
   }
 }
 
