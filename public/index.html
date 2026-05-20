@@ -601,225 +601,104 @@
       </div>
     </section>
 
-    <!-- Account: profile + password (stacked sections) -->
+    <!-- Account: profile + password -->
     <section id="page-account-profile" class="page-section">
       <div class="acct-account-shell" id="acct-account-top">
         <header class="acct-page-hero">
           <h1 class="page-title acct-profile-title">Account &amp; security</h1>
-          <p class="acct-profile-lead">Manage your profile and password in one place. Each section below is independent.</p>
+          <p class="acct-profile-lead">View your profile details and update your password.</p>
         </header>
 
-        <section class="acct-section acct-section--profile" aria-labelledby="acct-profile-heading">
-          <div class="acct-section-head">
-            <div class="acct-section-head-text">
-              <h2 id="acct-profile-heading" class="acct-section-title">Profile</h2>
-              <p class="acct-section-desc">Your display name, role, and how we reach you.</p>
-            </div>
-            <button class="btn btn-primary" id="btn-edit-profile" type="button">
-              <svg class="icon icon-15"><use href="#icon-edit"/></svg>
-              Edit profile
-            </button>
-          </div>
-          <div class="card acct-profile-panel">
-            <div class="acct-profile-panel-inner">
-              <aside class="acct-profile-aside">
+        <section class="acct-section acct-section--profile" aria-labelledby="fp-display-name">
+          <div class="card acct-profile-card">
+            <div class="acct-profile-card-header">
+              <div class="acct-profile-card-identity">
                 <div class="acct-profile-avatar" id="fp-avatar-letter">U</div>
-                <div class="acct-profile-identity-text">
-                  <div class="acct-profile-display-name" id="fp-display-name">—</div>
+                <div class="acct-profile-card-meta">
+                  <h2 class="acct-profile-display-name" id="fp-display-name">—</h2>
+                  <p class="acct-profile-card-email" id="user-email">—</p>
                   <span class="um-role-badge" id="fp-role-badge">farmer</span>
                 </div>
-              </aside>
-              <div class="acct-profile-body">
-                <h3 class="acct-profile-section-title">Contact &amp; status</h3>
-                <ul class="acct-profile-list">
-                  <li class="acct-profile-row">
-                    <span class="acct-profile-row-icon" aria-hidden="true">
-                      <svg class="icon icon-18"><use href="#icon-mail"/></svg>
-                    </span>
-                    <div class="acct-profile-row-main">
-                      <span class="acct-profile-row-label">Email</span>
-                      <span class="acct-profile-row-value" id="user-email">—</span>
-                    </div>
-                  </li>
-                  <li class="acct-profile-row">
-                    <span class="acct-profile-row-icon" aria-hidden="true">
-                      <svg class="icon icon-18"><use href="#icon-message"/></svg>
-                    </span>
-                    <div class="acct-profile-row-main">
-                      <span class="acct-profile-row-label">Phone</span>
-                      <span class="acct-profile-row-value" id="user-phone">—</span>
-                    </div>
-                  </li>
-                  <li class="acct-profile-row">
-                    <span class="acct-profile-row-icon" aria-hidden="true">
-                      <svg class="icon icon-18"><use href="#icon-shield"/></svg>
-                    </span>
-                    <div class="acct-profile-row-main">
-                      <span class="acct-profile-row-label">Account status</span>
-                      <span class="acct-profile-row-value"><span class="badge-pill status-normal">Active</span></span>
-                    </div>
-                  </li>
-                  <li class="acct-profile-row">
-                    <span class="acct-profile-row-icon" aria-hidden="true">
-                      <svg class="icon icon-18"><use href="#icon-clock"/></svg>
-                    </span>
-                    <div class="acct-profile-row-main">
-                      <span class="acct-profile-row-label">Member since</span>
-                      <span class="acct-profile-row-value" id="fp-member-since">—</span>
-                    </div>
-                  </li>
-                </ul>
               </div>
+              <button class="btn btn-primary" id="btn-edit-profile" type="button">
+                <svg class="icon icon-15"><use href="#icon-edit"/></svg>
+                Edit profile
+              </button>
             </div>
-          </div>
 
-          <div class="acct-profile-below">
-            <div class="card acct-profile-subcard">
-              <h3 class="acct-profile-section-title">Sign-in &amp; identifiers</h3>
-              <ul class="acct-profile-list">
-                <li class="acct-profile-row">
-                  <span class="acct-profile-row-icon" aria-hidden="true">
-                    <svg class="icon icon-18"><use href="#icon-check"/></svg>
-                  </span>
-                  <div class="acct-profile-row-main">
-                    <span class="acct-profile-row-label">Email verification</span>
-                    <span class="acct-profile-row-value" id="fp-email-verified">—</span>
-                  </div>
-                </li>
-                <li class="acct-profile-row">
-                  <span class="acct-profile-row-icon" aria-hidden="true">
-                    <svg class="icon icon-18"><use href="#icon-clock"/></svg>
-                  </span>
-                  <div class="acct-profile-row-main">
-                    <span class="acct-profile-row-label">Last sign-in</span>
-                    <span class="acct-profile-row-value" id="fp-last-signin">—</span>
-                  </div>
-                </li>
-                <li class="acct-profile-row acct-profile-row--uid">
-                  <span class="acct-profile-row-icon" aria-hidden="true">
-                    <svg class="icon icon-18"><use href="#icon-document"/></svg>
-                  </span>
-                  <div class="acct-profile-row-main">
-                    <span class="acct-profile-row-label">User ID</span>
-                    <div class="acct-profile-row-value acct-profile-uid-row">
-                      <code class="acct-profile-uid" id="fp-user-id" title="">—</code>
-                      <button type="button" class="btn btn-sm btn-outline" id="btn-copy-user-id">Copy</button>
-                    </div>
-                  </div>
-                </li>
-                <li class="acct-profile-row">
-                  <span class="acct-profile-row-icon" aria-hidden="true">
-                    <svg class="icon icon-18"><use href="#icon-building"/></svg>
-                  </span>
-                  <div class="acct-profile-row-main">
-                    <span class="acct-profile-row-label">Farm / organization ID</span>
-                    <span class="acct-profile-row-value"><code class="acct-profile-mono" id="fp-farm-id">—</code></span>
-                  </div>
-                </li>
-              </ul>
-            </div>
-            <div class="card acct-profile-subcard acct-profile-subcard--access">
-              <h3 class="acct-profile-section-title">Your access</h3>
-              <p class="acct-role-desc" id="fp-role-desc">—</p>
-              <div class="acct-profile-callout" role="note">
-                <span class="acct-profile-callout-icon" aria-hidden="true">
-                  <svg class="icon icon-18"><use href="#icon-bell"/></svg>
-                </span>
-                <div class="acct-profile-callout-text">
-                  <strong>SMS alerts</strong> use the phone number saved in your profile. Add or update it with <strong>Edit profile</strong>, then enable SMS on the Alerts page.
-                </div>
+            <div class="acct-profile-card-divider" aria-hidden="true"></div>
+
+            <dl class="acct-profile-details">
+              <div class="acct-profile-detail">
+                <dt>Phone</dt>
+                <dd id="user-phone">—</dd>
               </div>
-            </div>
+              <div class="acct-profile-detail">
+                <dt>Account status</dt>
+                <dd><span class="badge-pill status-normal">Active</span></dd>
+              </div>
+              <div class="acct-profile-detail">
+                <dt>Member since</dt>
+                <dd id="fp-member-since">—</dd>
+              </div>
+              <div class="acct-profile-detail">
+                <dt>Email verification</dt>
+                <dd id="fp-email-verified">—</dd>
+              </div>
+              <div class="acct-profile-detail">
+                <dt>Last sign-in</dt>
+                <dd id="fp-last-signin">—</dd>
+              </div>
+            </dl>
           </div>
         </section>
 
-        <div class="acct-section-spacer" aria-hidden="true"></div>
-
         <section class="acct-section acct-section--password" id="acct-password-section" aria-labelledby="acct-pw-heading">
-          <div class="acct-section-head">
-            <div class="acct-section-head-text">
-              <h2 id="acct-pw-heading" class="acct-section-title">Password</h2>
-              <p class="acct-section-desc">Confirm your current password, then set a new one. Requirements update as you type.</p>
+          <div class="card acct-pw-form-card">
+            <div class="acct-pw-form-header">
+              <div class="acct-pw-form-icon">
+                <svg class="icon icon-20" style="color:white"><use href="#icon-key"/></svg>
+              </div>
+              <div>
+                <h2 id="acct-pw-heading" class="acct-pw-form-title">Change password</h2>
+                <p class="acct-pw-hint">Enter your current password, then choose a new one. Each requirement is checked as you type.</p>
+              </div>
             </div>
-          </div>
-          <div class="acct-security-stack">
-            <div class="card acct-pw-form-card">
-              <div class="acct-pw-form-header">
-                <div class="acct-pw-form-icon">
-                  <svg class="icon icon-20" style="color:white"><use href="#icon-key"/></svg>
-                </div>
-                <div>
-                  <div class="acct-pw-form-title">Update password</div>
-                  <p class="acct-pw-hint">Use a strong password you do not reuse elsewhere.</p>
-                </div>
-              </div>
 
-              <div class="acct-pw-fields">
-                <div class="um-field">
-                  <label for="acct-pw-current">Current Password</label>
-                  <input id="acct-pw-current" type="password" autocomplete="current-password" placeholder="••••••••" />
-                </div>
-                <div class="um-field">
-                  <label for="acct-pw-new">New Password</label>
-                  <input id="acct-pw-new" type="password" autocomplete="new-password" placeholder="Min 8 chars, mixed case + number" />
-                </div>
-                <div class="um-field">
-                  <label for="acct-pw-confirm">Confirm New Password</label>
-                  <input id="acct-pw-confirm" type="password" autocomplete="new-password" placeholder="Repeat new password" />
-                </div>
+            <div class="acct-pw-fields">
+              <div class="um-field">
+                <label for="acct-pw-current">Current password</label>
+                <input id="acct-pw-current" type="password" autocomplete="current-password" placeholder="••••••••" />
               </div>
+              <div class="um-field">
+                <label for="acct-pw-new">New password</label>
+                <input id="acct-pw-new" type="password" autocomplete="new-password" placeholder="Create a new password" />
+              </div>
+              <div class="um-field">
+                <label for="acct-pw-confirm">Confirm new password</label>
+                <input id="acct-pw-confirm" type="password" autocomplete="new-password" placeholder="Re-enter new password" />
+              </div>
+            </div>
 
-              <ul class="acct-pw-rules" id="acct-pw-rules">
-                <li id="rule-length">At least 8 characters</li>
-                <li id="rule-upper">Uppercase letter</li>
-                <li id="rule-lower">Lowercase letter</li>
-                <li id="rule-number">Number</li>
+            <div class="acct-pw-requirements" aria-live="polite">
+              <p class="acct-pw-requirements-label">Password requirements</p>
+              <ul class="acct-pw-checklist" id="acct-pw-rules">
+                <li id="rule-length" class="acct-pw-check"><span class="acct-pw-check-mark" aria-hidden="true"></span><span class="acct-pw-check-text">At least 8 characters</span></li>
+                <li id="rule-upper" class="acct-pw-check"><span class="acct-pw-check-mark" aria-hidden="true"></span><span class="acct-pw-check-text">One uppercase letter</span></li>
+                <li id="rule-lower" class="acct-pw-check"><span class="acct-pw-check-mark" aria-hidden="true"></span><span class="acct-pw-check-text">One lowercase letter</span></li>
+                <li id="rule-number" class="acct-pw-check"><span class="acct-pw-check-mark" aria-hidden="true"></span><span class="acct-pw-check-text">One number</span></li>
+                <li id="rule-match" class="acct-pw-check"><span class="acct-pw-check-mark" aria-hidden="true"></span><span class="acct-pw-check-text">Passwords match</span></li>
               </ul>
-
-              <div id="acct-pw-error" class="acct-error" style="display:none;"></div>
-              <div id="acct-pw-success" class="acct-success" style="display:none;">Password updated successfully.</div>
-
-              <div class="acct-pw-actions">
-                <button type="button" class="btn btn-primary" id="acct-pw-save">
-                  <svg class="icon icon-16"><use href="#icon-check"/></svg>
-                  Update Password
-                </button>
-              </div>
             </div>
 
-            <div class="acct-pw-side-col">
-              <div class="card acct-pw-tips-card">
-                <div class="panel-title">
-                  <svg class="icon icon-16"><use href="#icon-shield"/></svg>
-                  Password tips
-                </div>
-                <ul class="acct-pw-tip-list">
-                  <li>
-                    <div class="acct-pw-tip-icon" style="background:var(--blue-light);color:var(--blue)"><svg class="icon icon-14"><use href="#icon-check"/></svg></div>
-                    <div>Use at least 8 characters with a mix of uppercase, lowercase, and numbers.</div>
-                  </li>
-                  <li>
-                    <div class="acct-pw-tip-icon" style="background:var(--green-light);color:var(--green-dark)"><svg class="icon icon-14"><use href="#icon-check"/></svg></div>
-                    <div>Avoid reusing passwords from other accounts or services.</div>
-                  </li>
-                  <li>
-                    <div class="acct-pw-tip-icon" style="background:var(--yellow-light);color:var(--yellow-dark)"><svg class="icon icon-14"><use href="#icon-warning"/></svg></div>
-                    <div>Never share your password with anyone, including administrators.</div>
-                  </li>
-                  <li>
-                    <div class="acct-pw-tip-icon" style="background:var(--red-light);color:var(--red-dark)"><svg class="icon icon-14"><use href="#icon-warning"/></svg></div>
-                    <div>If you suspect your account is compromised, change your password immediately.</div>
-                  </li>
-                </ul>
-              </div>
+            <div id="acct-pw-error" class="acct-error" style="display:none;"></div>
+            <div id="acct-pw-success" class="acct-success" style="display:none;">Password updated successfully.</div>
 
-              <div class="card acct-pw-session-card">
-                <div class="panel-title">
-                  <svg class="icon icon-16"><use href="#icon-info"/></svg>
-                  After changing
-                </div>
-                <p style="font-size:0.82rem;color:var(--text-muted);line-height:1.6;">You will remain signed in on this device. Other active sessions may require you to sign in again with your new password.</p>
-              </div>
+            <div class="acct-pw-actions">
+              <button type="button" class="btn btn-primary" id="acct-pw-save">
+                <svg class="icon icon-16"><use href="#icon-check"/></svg>
+                Update password
+              </button>
             </div>
           </div>
         </section>
@@ -835,19 +714,9 @@
             <h3 class="card-title" style="margin:0;">Water Quality & Feeding Reports</h3>
             <p class="reports-sub">Generate reports by period: daily, weekly, monthly, or custom range.</p>
           </div>
-          <div class="reports-actions">
-            <div class="report-pond-filter">
-              <label for="report-pond-select" class="report-pond-label">
-                <svg class="icon icon-14"><use href="#icon-droplet"/></svg> Pond
-              </label>
-              <select id="report-pond-select" class="report-pond-select">
-                <option value="all">All Ponds</option>
-              </select>
-            </div>
-          </div>
         </div>
         <div id="report-active-pond-bar" class="report-active-pond-bar" style="display:none">
-          Showing data for: <strong id="report-active-pond-name">—</strong>
+          Active pond: <strong id="report-active-pond-name">—</strong>
           <span id="report-active-pond-species" class="species-chip" style="margin-left:6px"></span>
         </div>
       </div>
@@ -996,9 +865,8 @@
                 <input id="custom-to" type="date" />
               </div>
               <div class="field custom-report-actions">
-                <label>&nbsp;</label>
                 <button type="button" class="btn btn-primary" id="btn-custom-generate">Generate CSV</button>
-                <button type="button" class="btn btn-outline" id="btn-custom-generate-pdf" style="margin-left:8px">Print / PDF</button>
+                <button type="button" class="btn btn-outline" id="btn-custom-generate-pdf">Print / PDF</button>
               </div>
             </div>
           </div>

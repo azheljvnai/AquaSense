@@ -1,6 +1,5 @@
 /**
  * Profile feature: load the signed-in user from Firestore for the Account & security page.
- * Pond and team lists were removed from the profile UI; farm data is managed elsewhere.
  */
 import { fbFirestore, fbDoc, fbGetDoc } from '../firebase-client.js';
 
@@ -12,23 +11,9 @@ const ROLE_LABEL = {
   viewer: 'Farmer',
 };
 
-const ROLE_DESC = {
-  admin: 'You can manage users, ponds, configurations, reports, and other administrative settings across the farm.',
-  owner: 'You can run day-to-day operations: ponds, feeding schedules, reports, configurations, and alerts for your team.',
-  farmer: 'You can monitor sensors, trigger manual feeds, view feeding logs, and work with alerts for assigned ponds.',
-  manager: 'You can run day-to-day operations: ponds, feeding schedules, reports, configurations, and alerts for your team.',
-  viewer: 'You can monitor sensors, trigger manual feeds, view feeding logs, and work with alerts for assigned ponds.',
-};
-
 function avatarLetter(nameOrEmail) {
   const s = String(nameOrEmail || '').trim();
   return (s[0] || 'U').toUpperCase();
-}
-
-function formatUid(uid) {
-  if (!uid) return '—';
-  if (uid.length <= 14) return uid;
-  return `${uid.slice(0, 6)}…${uid.slice(-4)}`;
 }
 
 function fmtDate(d) {
@@ -41,9 +26,6 @@ function fmtDateTime(d) {
   return d.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
 }
 
-let lastAuthUser = null;
-let copyBound = false;
-
 export function init() {
   const els = {
     userPhone: document.getElementById('user-phone'),
@@ -54,29 +36,11 @@ export function init() {
     fpMemberSince: document.getElementById('fp-member-since'),
     fpEmailVerified: document.getElementById('fp-email-verified'),
     fpLastSignin: document.getElementById('fp-last-signin'),
-    fpUserId: document.getElementById('fp-user-id'),
-    fpFarmId: document.getElementById('fp-farm-id'),
-    fpRoleDesc: document.getElementById('fp-role-desc'),
   };
 
   if (!els.userEmail) return;
 
-  if (!copyBound) {
-    copyBound = true;
-    document.getElementById('btn-copy-user-id')?.addEventListener('click', async () => {
-      const uid = lastAuthUser?.uid;
-      if (!uid) return;
-      try {
-        await navigator.clipboard.writeText(uid);
-        if (typeof window.showToast === 'function') window.showToast('User ID copied', 'success');
-      } catch {
-        if (typeof window.showToast === 'function') window.showToast('Could not copy ID', 'error');
-      }
-    });
-  }
-
   async function loadForUser(user) {
-    lastAuthUser = user || null;
     const fs = fbFirestore();
     const userSnap = await fbGetDoc(fbDoc(fs, 'users', user.uid));
     const profile = userSnap.exists() ? userSnap.data() : {};
@@ -121,23 +85,7 @@ export function init() {
     }
     if (els.fpLastSignin) els.fpLastSignin.textContent = fmtDateTime(lastDt);
 
-    const uid = user.uid || '';
-    if (els.fpUserId) {
-      els.fpUserId.textContent = formatUid(uid);
-      els.fpUserId.title = uid || '';
-    }
-
-    const farmId = String(profile.farmId || '').trim();
-    if (els.fpFarmId) {
-      els.fpFarmId.textContent = farmId || '—';
-      els.fpFarmId.title = farmId || '';
-    }
-
-    if (els.fpRoleDesc) {
-      els.fpRoleDesc.textContent = ROLE_DESC[normRole] || ROLE_DESC.farmer;
-    }
-
-    return { profile, farmId };
+    return { profile, farmId: String(profile.farmId || '').trim() };
   }
 
   window._farmProfileOnUser = async (user) => {

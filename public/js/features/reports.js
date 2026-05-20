@@ -40,14 +40,10 @@ export function init() {
     });
   });
 
-  // ── Pond filter ────────────────────────────────────────────────────────────
+  // ── Active pond (reports follow dashboard pond selection) ─────────────────
 
-  /** Returns the currently selected pond for reports (null = All Ponds). */
   function getReportPond() {
-    const sel = document.getElementById('report-pond-select');
-    if (!sel || sel.value === 'all') return null;
-    const ponds = getPondList();
-    return ponds.find(p => p.id === sel.value) || null;
+    return getActivePond() || null;
   }
 
   function updateReportPondBar() {
@@ -56,7 +52,12 @@ export function init() {
     const nameEl = document.getElementById('report-active-pond-name');
     const specEl = document.getElementById('report-active-pond-species');
     if (!bar) return;
-    if (!pond) { bar.style.display = 'none'; return; }
+    if (!pond) {
+      bar.style.display = '';
+      if (nameEl) nameEl.textContent = 'No pond selected';
+      if (specEl) specEl.style.display = 'none';
+      return;
+    }
     bar.style.display = '';
     if (nameEl) nameEl.textContent = pond.name || pond.id;
     if (specEl) {
@@ -66,45 +67,9 @@ export function init() {
     }
   }
 
-  function populateReportPondSelect(ponds) {
-    const sel = document.getElementById('report-pond-select');
-    if (!sel) return;
-    const current = sel.value;
-    sel.innerHTML = '<option value="all">All Ponds</option>';
-    for (const p of ponds) {
-      const opt = document.createElement('option');
-      opt.value = p.id;
-      opt.textContent = p.name || p.id;
-      sel.appendChild(opt);
-    }
-    // Restore selection or default to active pond
-    const activePond = getActivePond();
-    if (current && sel.querySelector(`option[value="${current}"]`)) {
-      sel.value = current;
-    } else if (activePond && sel.querySelector(`option[value="${activePond.id}"]`)) {
-      sel.value = activePond.id;
-    }
-    updateReportPondBar();
-  }
-
-  // Populate on load
-  populateReportPondSelect(getPondList());
-
-  // Update when pond list changes
-  window.addEventListener('pond-list-updated', (e) => {
-    populateReportPondSelect(e.detail.ponds || []);
-  });
-
-  // Sync to active pond when it changes globally
-  onActivePondChange((pond) => {
-    const sel = document.getElementById('report-pond-select');
-    if (sel && pond && sel.querySelector(`option[value="${pond.id}"]`)) {
-      sel.value = pond.id;
-    }
-    updateReportPondBar();
-  });
-
-  document.getElementById('report-pond-select')?.addEventListener('change', updateReportPondBar);
+  updateReportPondBar();
+  onActivePondChange(() => updateReportPondBar());
+  window.addEventListener('pond-list-updated', () => updateReportPondBar());
 
   // ── helpers ────────────────────────────────────────────────────────────────
   function pad(n) { return String(n).padStart(2, '0'); }
@@ -163,6 +128,50 @@ export function init() {
     a.href = url; a.download = filename;
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 2500);
+  }
+
+  function rowsToCsvString(rows) {
+    return rows
+      .map(r => r.map(c => `"${String(c ?? '').replaceAll('"', '""')}"`).join(','))
+      .join('\n');
+  }
+
+  function escapeXml(s) {
+    return String(s ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  /** Excel-compatible SpreadsheetML (.xls) — opens in Excel/LibreOffice. */
+  function rowsToExcelBlob(rows) {
+    const rowXml = rows.map((row) => {
+      const cells = row.map((cell) => {
+        const v = String(cell ?? '');
+        const num = /^-?\d+(\.\d+)?$/.test(v);
+        const type = num ? 'Number' : 'String';
+        return `<Cell><Data ss:Type="${type}">${escapeXml(v)}</Data></Cell>`;
+      }).join('');
+      return `<Row>${cells}</Row>`;
+    }).join('');
+    const xml = `<?xml version="1.0"?>
+<?mso-application progid="Excel.Sheet"?>
+<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
+ xmlns:o="urn:schemas-microsoft-com:office:office"
+ xmlns:x="urn:schemas-microsoft-com:office:excel"
+ xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">
+<Worksheet ss:Name="Report"><Table>${rowXml}</Table></Worksheet>
+</Workbook>`;
+    return new Blob([xml], { type: 'application/vnd.ms-excel' });
+  }
+
+  function downloadReportFile(filename, rows, format) {
+    if (format === 'xlsx') {
+      downloadBlob(filename.replace(/\.xlsx$/i, '.xls'), rowsToExcelBlob(rows));
+      return;
+    }
+    downloadBlob(filename, new Blob(['\uFEFF' + rowsToCsvString(rows)], { type: 'text/csv;charset=utf-8' }));
   }
 
   // ── Per-pond config loader ─────────────────────────────────────────────────
@@ -263,7 +272,7 @@ export function init() {
     return rows;
   }
 
-  async function buildCsv({ period, type, customFrom, customTo }) {
+  async function buildReportRows({ period, type, customFrom, customTo }) {
     const range    = getDateRange(period, customFrom, customTo);
     // Ensure we pull persisted telemetry from RTDB (data recorded while browser was closed).
     if (typeof window.fetchHistoryFromRTDB === 'function') {
@@ -276,13 +285,12 @@ export function init() {
     }
     const readings = getHistoryRange(range.from.getTime(), range.to.getTime());
     const snap     = getLiveSnapshot();
-    const pond     = getReportPond();
-    const allPonds = getPondList();
+    const pond = getReportPond();
 
-    // Determine which ponds to report on
-    const targetPonds = pond ? [pond] : allPonds;
+    // Reports use the active pond from the dashboard
+    const targetPonds = pond ? [pond] : [];
 
-    const pondLabel    = pond ? (pond.name || pond.id) : 'All Ponds';
+    const pondLabel    = pond ? (pond.name || pond.id) : 'No pond selected';
     const typeLabel    = type === 'combined' ? 'Combined (Water Quality + Feeding)' : type === 'water-quality' ? 'Water Quality' : 'Feeding';
 
     const header = [
@@ -323,9 +331,11 @@ export function init() {
       }
     }
 
-    return [...header, ...body]
-      .map(r => r.map(c => `"${String(c??'').replaceAll('"','""')}"`).join(','))
-      .join('\n');
+    return [...header, ...body];
+  }
+
+  async function buildCsv(opts) {
+    return rowsToCsvString(await buildReportRows(opts));
   }
 
   // ── Printable report builder ───────────────────────────────────────────────
@@ -390,7 +400,7 @@ export function init() {
     const allPonds = getPondList();
 
     const targetPonds  = pond ? [pond] : allPonds;
-    const pondLabel    = pond ? (pond.name || pond.id) : 'All Ponds';
+    const pondLabel    = pond ? (pond.name || pond.id) : 'No pond selected';
     const periodLabel  = { daily:'Daily', weekly:'Weekly', monthly:'Monthly', custom:'Custom' }[period] ?? period;
     const typeLabel    = { 'water-quality':'Water Quality', feeding:'Feeding', combined:'Combined' }[type] ?? type;
     const title        = `${periodLabel} ${typeLabel} Report`;
@@ -492,7 +502,7 @@ export function init() {
         </div>
         <div class="rpt-history-body">
           <div class="rpt-history-name">${h.title}</div>
-          <div class="rpt-history-meta">${h.period} · ${h.dateRange} · ${h.pondLabel || 'All Ponds'} · ${h.generatedAt}</div>
+          <div class="rpt-history-meta">${h.period} · ${h.dateRange} · ${h.pondLabel || '—'} · ${h.generatedAt}</div>
         </div>
         <span class="badge-pill" style="font-size:0.65rem;${fmtBadge}">${h.format.toUpperCase()}</span>
         <div class="rpt-history-actions">
@@ -513,9 +523,9 @@ export function init() {
           if (h.format === 'pdf') {
             await openPrintableReport({ period: h.period, type: h.type, customFrom: h.customFrom, customTo: h.customTo });
           } else {
-            const csv = await buildCsv({ period: h.period, type: h.type, customFrom: h.customFrom, customTo: h.customTo });
-            const ext = h.format === 'xlsx' ? 'xlsx' : 'csv';
-            downloadBlob(`${h.type}_${h.period}_${getNowStamp()}.${ext}`, new Blob(['\uFEFF'+csv], { type:'text/csv;charset=utf-8' }));
+            const rows = await buildReportRows({ period: h.period, type: h.type, customFrom: h.customFrom, customTo: h.customTo });
+            const ext = h.format === 'xlsx' ? 'xls' : 'csv';
+            downloadReportFile(`${h.type}_${h.period}_${getNowStamp()}.${ext}`, rows, h.format);
           }
         } finally { btn.disabled = false; }
       });
@@ -526,7 +536,7 @@ export function init() {
     const periodLabel = { daily:'Daily', weekly:'Weekly', monthly:'Monthly', custom:'Custom' }[period] ?? period;
     const typeLabel   = { 'water-quality':'Water Quality', feeding:'Feeding', combined:'Combined' }[type] ?? type;
     const pond = getReportPond();
-    const pondLabel = pond ? (pond.name || pond.id) : 'All Ponds';
+    const pondLabel = pond ? (pond.name || pond.id) : 'No pond selected';
     addToHistory({
       title: `${periodLabel} ${typeLabel} Report`,
       period, type, format,
@@ -553,9 +563,9 @@ export function init() {
       recordHistory({ period, type, format: 'pdf', range });
       return;
     }
-    const csv = await buildCsv({ period, type });
-    const ext = format === 'xlsx' ? 'xlsx' : 'csv';
-    downloadBlob(`${type}_${period}_${stamp}.${ext}`, new Blob(['\uFEFF'+csv], { type:'text/csv;charset=utf-8' }));
+    const rows = await buildReportRows({ period, type });
+    const ext = format === 'xlsx' ? 'xls' : 'csv';
+    downloadReportFile(`${type}_${period}_${stamp}.${ext}`, rows, format);
     recordHistory({ period, type, format, range });
   }
 
@@ -587,8 +597,8 @@ export function init() {
     const btn = document.getElementById('btn-custom-generate');
     btn.disabled = true;
     try {
-      const csv = await buildCsv({ period:'custom', type, customFrom: from, customTo: to });
-      downloadBlob(`${type}_custom_${getNowStamp()}.csv`, new Blob(['\uFEFF'+csv], { type:'text/csv;charset=utf-8' }));
+      const rows = await buildReportRows({ period:'custom', type, customFrom: from, customTo: to });
+      downloadReportFile(`${type}_custom_${getNowStamp()}.csv`, rows, 'csv');
       recordHistory({ period:'custom', type, format:'csv', range, customFrom: from, customTo: to });
     } finally { btn.disabled = false; }
   });

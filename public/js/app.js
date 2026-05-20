@@ -776,7 +776,7 @@ function setupAccountMenu() {
     const okEl  = document.getElementById('acct-pw-success');
     if (errEl) errEl.style.display = 'none';
     if (okEl)  okEl.style.display  = 'none';
-    updatePasswordRules('');
+    syncPasswordRules();
   }
 
   const PW_RULES = [
@@ -786,15 +786,32 @@ function setupAccountMenu() {
     { id: 'rule-number', test: (p) => /\d/.test(p) },
   ];
 
-  function updatePasswordRules(pw) {
-    PW_RULES.forEach(({ id, test }) => {
-      document.getElementById(id)?.classList.toggle('rule-ok', test(pw));
-    });
+  function setRuleState(el, state) {
+    if (!el) return;
+    el.classList.remove('rule-ok', 'rule-fail');
+    if (state === 'ok') el.classList.add('rule-ok');
+    else if (state === 'fail') el.classList.add('rule-fail');
   }
 
-  document.getElementById('acct-pw-new')?.addEventListener('input', (e) => {
-    updatePasswordRules(e.target.value);
-  });
+  function syncPasswordRules() {
+    const pw = document.getElementById('acct-pw-new')?.value || '';
+    const confirm = document.getElementById('acct-pw-confirm')?.value || '';
+    const touched = pw.length > 0;
+
+    PW_RULES.forEach(({ id, test }) => {
+      const el = document.getElementById(id);
+      if (!touched) setRuleState(el, 'pending');
+      else setRuleState(el, test(pw) ? 'ok' : 'fail');
+    });
+
+    const matchEl = document.getElementById('rule-match');
+    if (!confirm.length && !pw.length) setRuleState(matchEl, 'pending');
+    else if (pw === confirm && pw.length > 0) setRuleState(matchEl, 'ok');
+    else setRuleState(matchEl, 'fail');
+  }
+
+  document.getElementById('acct-pw-new')?.addEventListener('input', syncPasswordRules);
+  document.getElementById('acct-pw-confirm')?.addEventListener('input', syncPasswordRules);
 
   document.getElementById('acct-pw-save')?.addEventListener('click', async () => {
     const errEl  = document.getElementById('acct-pw-error');

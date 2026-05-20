@@ -277,6 +277,47 @@ app.patch('/api/users/me', verifyToken, async (req, res) => {
 });
 
 /**
+ * GET /api/users — list users that have a valid Firebase Auth account.
+ * Orphan Firestore-only rows (Auth deleted) are omitted from the response.
+ * Requires: admin or owner role.
+ */
+app.get('/api/users', verifyToken, requireRole('admin', 'owner'), async (req, res) => {
+  if (!admin.apps.length) {
+    return res.status(503).json({ error: 'Admin SDK not initialised.' });
+  }
+  try {
+    const snap = await admin.firestore().collection('users').get();
+    const users = [];
+    for (const doc of snap.docs) {
+      const data = doc.data() || {};
+      try {
+        await admin.auth().getUser(doc.id);
+        users.push({
+          id: doc.id,
+          email: data.email || '',
+          displayName: data.displayName || '',
+          phone: data.phone || '',
+          role: data.role || 'farmer',
+          status: data.status || 'active',
+          farmId: data.farmId || '',
+          createdAt: data.createdAt || null,
+        });
+      } catch (e) {
+        if (e.code === 'auth/user-not-found') {
+          try { await doc.ref.delete(); } catch { /* ignore */ }
+          continue;
+        }
+        throw e;
+      }
+    }
+    return res.status(200).json(users);
+  } catch (e) {
+    console.error('[GET /api/users]', e.message);
+    return res.status(400).json({ error: e.message });
+  }
+});
+
+/**
  * POST /api/users — create a Firebase Auth account + Firestore user record.
  * Requires: admin or owner role.
  * Owners cannot create admin accounts.
@@ -373,7 +414,11 @@ app.delete('/api/users/:uid', verifyToken, requireRole('admin'), async (req, res
     return res.status(503).json({ error: 'Admin SDK not initialised.' });
   }
   try {
-    await admin.auth().deleteUser(req.params.uid);
+    try {
+      await admin.auth().deleteUser(req.params.uid);
+    } catch (e) {
+      if (e.code !== 'auth/user-not-found') throw e;
+    }
     await admin.firestore().collection('users').doc(req.params.uid).delete();
     return res.status(200).json({ success: true });
   } catch (e) {

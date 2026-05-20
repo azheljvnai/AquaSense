@@ -9,8 +9,6 @@ import {
   fbFirestore,
   fbDoc,
   fbSetDoc,
-  fbGetDocs,
-  fbCollection,
   fbServerTimestamp,
   fbGetIdToken,
 } from '../firebase-client.js';
@@ -45,21 +43,33 @@ export function init() {
   });
 }
 
+function normalizeUserRecord(id, data) {
+  const row = { id, ...data };
+  if (row.role === 'manager') row.role = 'owner';
+  if (row.role === 'viewer') row.role = 'farmer';
+  return row;
+}
+
 export async function loadUsers() {
   try {
-    const snap = await fbGetDocs(fbCollection(fbFirestore(), 'users'));
-    allUsers = snap.docs
-      .map((d) => {
-        const data = d.data();
-        if (data.role === 'manager') data.role = 'owner';
-        if (data.role === 'viewer')  data.role = 'farmer';
-        return { id: d.id, ...data };
-      })
-      .filter((u) => !deletedIds.has(u.id)); // exclude any locally-deleted users
+    const token = await fbGetIdToken();
+    const resp = await fetch('/api/users', {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.error || 'Failed to load users.');
+
+    allUsers = (Array.isArray(data) ? data : [])
+      .map((u) => normalizeUserRecord(u.id, u))
+      .filter((u) => u.email && !deletedIds.has(u.id));
     updateStats();
     renderTable();
   } catch (e) {
     console.error('[UserMgmt] Failed to load users:', e);
+    const tbody = document.getElementById('um-tbody');
+    if (tbody) {
+      tbody.innerHTML = `<tr><td colspan="5" class="um-empty">Could not load users.</td></tr>`;
+    }
   }
 }
 
@@ -376,15 +386,14 @@ function confirmDelete(user) {
     <div class="um-modal-inner">
       <div class="um-modal-head">
         <div>
-          <div class="um-modal-title">Delete User</div>
-          <div class="um-modal-sub">This permanently removes the account and cannot be undone.</div>
+          <div class="um-modal-title">Delete user</div>
         </div>
         <button class="um-modal-close" id="cd-close" type="button" aria-label="Close">
           <svg class="icon icon-16"><use href="#icon-x"/></svg>
         </button>
       </div>
       <p class="um-confirm-text">
-        Permanently delete <strong>${esc(name)}</strong>? Their Firebase Auth account and all records will be removed.
+        Are you sure you want to delete <strong>${esc(name)}</strong>?
       </p>
       <div id="cd-error" class="um-error"></div>
       <div class="um-modal-footer">
