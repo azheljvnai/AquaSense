@@ -8,6 +8,10 @@
     "build": "echo No build step required. public/ is the frontend.",
     "dev": "npm --prefix backend run dev",
     "install:backend": "npm --prefix backend install",
+    "seed:rtdb-day:dry": "npm --prefix backend run seed:rtdb-day:dry",
+    "seed:rtdb-day": "npm --prefix backend run seed:rtdb-day",
+    "cleanup:history:inspect": "npm --prefix backend run cleanup:history:inspect",
+    "cleanup:history:epoch": "npm --prefix backend run cleanup:history:epoch",
     "test": "vitest --run"
   },
   "dependencies": {

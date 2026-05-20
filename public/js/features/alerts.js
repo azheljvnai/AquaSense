@@ -160,6 +160,9 @@ async function persistAlertToFirestore(alert) {
  * @returns {Promise<Array>} - Array of alerts from Firestore
  */
 async function loadAlertsFromFirestore() {
+  if (!fbAuth().currentUser) {
+    return loadAlerts();
+  }
   try {
     const alertsRef = fbCollection(fbFirestore(), 'alerts');
     const q = fbQuery(alertsRef, fbOrderBy('ts', 'desc'));
@@ -232,6 +235,9 @@ function unsubscribeAlertsRealtime() {
  */
 function subscribeAlertsRealtime() {
   unsubscribeAlertsRealtime();
+  if (!fbAuth().currentUser) {
+    return;
+  }
   try {
     const alertsRef = fbCollection(fbFirestore(), 'alerts');
     const q = fbQuery(alertsRef, fbOrderBy('ts', 'desc'), fbLimit(250));
@@ -406,19 +412,36 @@ function resetCooldownsForPond(pondId) {
   }
 }
 
+// ─── Auth-gated Firestore sync (called from app.js after sign-in) ─────────────
+
+/**
+ * Load alerts from Firestore and subscribe to realtime updates.
+ * Called by app.js after authentication is confirmed.
+ */
+export async function loadAlertsAfterAuth() {
+  if (!fbAuth().currentUser) {
+    return;
+  }
+  try {
+    await loadAlertsFromFirestore();
+    rerenderAlertsTab();
+    window.dispatchEvent(new Event('alerts-updated'));
+    subscribeAlertsRealtime();
+  } catch (err) {
+    console.error('[loadAlertsAfterAuth] Failed to load alerts:', err);
+    rerenderAlertsTab();
+  }
+}
+
+/** Tear down Firestore listener on sign-out. */
+export function unloadAlertsOnSignOut() {
+  unsubscribeAlertsRealtime();
+}
+
 // ─── Main init ────────────────────────────────────────────────────────────────
 
 export function init() {
-  // Load alerts from Firestore on page load
-  loadAlertsFromFirestore().then(() => {
-    renderAlertList();
-    window.dispatchEvent(new Event('alerts-updated'));
-    subscribeAlertsRealtime();
-  }).catch(err => {
-    console.error('[init] Failed to load alerts from Firestore:', err);
-    // Fall back to localStorage rendering
-    renderAlertList();
-  });
+  // Firestore load/subscribe deferred until loadAlertsAfterAuth() (app.js)
 
   // ── Notification preference toggles ────────────────────────────────────────
   const email = document.getElementById('alert-email');

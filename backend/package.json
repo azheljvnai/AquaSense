@@ -9,6 +9,10 @@
     "dev": "node --watch server.js",
     "cleanup:history:dry": "node scripts/cleanup-rtdb-history.js --dry-run",
     "cleanup:history": "node scripts/cleanup-rtdb-history.js",
+    "cleanup:history:inspect": "node scripts/cleanup-rtdb-history.js --inspect",
+    "cleanup:history:epoch": "node scripts/cleanup-rtdb-history.js --delete-keys 1970-01-01_08-00-31,1970-01-01_08-01-01",
+    "seed:rtdb-day:dry": "node scripts/seed-rtdb-day.js --gap --dry-run",
+    "seed:rtdb-day": "node scripts/seed-rtdb-day.js --gap",
     "cleanup:presets": "node scripts/cleanup-duplicate-presets.js",
     "update:crayfish": "node scripts/update-crayfish-preset.js"
   },

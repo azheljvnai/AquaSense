@@ -29,7 +29,7 @@ import { pushChart } from './charts.js';
 import { init as initDashboard } from './features/dashboard.js';
 import { init as initWaterQuality } from './features/water-quality.js';
 import { init as initHistoricalData } from './features/historical-data.js';
-import { init as initAlerts } from './features/alerts.js';
+import { init as initAlerts, loadAlertsAfterAuth, unloadAlertsOnSignOut } from './features/alerts.js';
 import { init as initFarmProfile } from './features/farm-profile.js';
 import { init as initReports } from './features/reports.js';
 import { init as initConfiguration } from './features/configuration.js';
@@ -925,6 +925,7 @@ function init() {
         renderSidebarUser(null);
         showAuthScreen(true);
         setFirebaseConnected(false);
+        unloadAlertsOnSignOut();
         return;
       }
 
@@ -954,6 +955,10 @@ function init() {
       // Load configurations now that we have a valid auth token
       loadConfigurationsAfterAuth().catch(err => {
         console.error('[Config Management] Failed to load configurations after auth:', err);
+      });
+
+      loadAlertsAfterAuth().catch(err => {
+        console.error('[Alerts] Failed to load alerts after auth:', err);
       });
 
       // Set current user context for user management and load users list
