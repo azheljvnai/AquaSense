@@ -177,14 +177,9 @@ describe('Configuration UI Cleanup — Bug Condition Exploration', () => {
   });
 
   /**
-   * Property 1 — Test 3: "Active preset: [Species Name]" label should display
-   *
-   * isBugCondition: activePresetLabel.text == "No active config" AND activeConfig != null
-   *
-   * On UNFIXED code: Label shows "No active config" when Crayfish is active → FAILS
-   * On FIXED code:   Label shows "Active preset: Crayfish" → PASSES
+   * Property 1 — Test 3: Active configuration name should display when configuration is active
    */
-  it('Test 3: "Active preset: Crayfish" label should display when configuration is active', async () => {
+  it('Test 3: Active configuration name should display when configuration is active', async () => {
     const configMgmt = await import('../public/js/features/config-management.js');
     const configFeature = await import('../public/js/features/configuration.js');
 
@@ -199,12 +194,9 @@ describe('Configuration UI Cleanup — Bug Condition Exploration', () => {
       configFeature.init();
       await new Promise(r => setTimeout(r, 100));
 
-      const label = document.getElementById('cfg-active-preset-label');
-      expect(label).not.toBeNull();
-
-      // On UNFIXED code: label.textContent === "No active config" → FAILS
-      // On FIXED code:   label.textContent === "Active preset: Crayfish" → PASSES
-      expect(label.textContent).toBe('Active preset: Crayfish');
+      const nameEl = document.querySelector('.config-active-name');
+      expect(nameEl).not.toBeNull();
+      expect(nameEl.textContent.trim()).toBe('Crayfish');
     } finally {
       globalThis.document = origDocument;
       globalThis.window = origWindow;
@@ -212,14 +204,9 @@ describe('Configuration UI Cleanup — Bug Condition Exploration', () => {
   });
 
   /**
-   * Property 1 — Test 4: Threshold input fields should populate with active configuration values
-   *
-   * isBugCondition: thresholdInputs.values != activeConfig.thresholds
-   *
-   * On UNFIXED code: Input fields are empty or show default values → FAILS
-   * On FIXED code:   Input fields show Crayfish preset values → PASSES
+   * Property 1 — Test 4: Threshold showcase should display active configuration values
    */
-  it('Test 4: Threshold input fields should populate with active configuration values', async () => {
+  it('Test 4: Threshold showcase should display active configuration values', async () => {
     const configMgmt = await import('../public/js/features/config-management.js');
     const configFeature = await import('../public/js/features/configuration.js');
 
@@ -234,34 +221,14 @@ describe('Configuration UI Cleanup — Bug Condition Exploration', () => {
       configFeature.init();
       await new Promise(r => setTimeout(r, 100));
 
-      // Check pH inputs
-      const phMin = document.getElementById('cfg-th-ph-min');
-      const phMax = document.getElementById('cfg-th-ph-max');
-      expect(phMin).not.toBeNull();
-      expect(phMax).not.toBeNull();
-
-      // On UNFIXED code: values are empty or incorrect → FAILS
-      // On FIXED code:   values match Crayfish preset (6.5, 8.5) → PASSES
-      expect(phMin.value).toBe('6.5');
-      expect(phMax.value).toBe('8.5');
-
-      // Check DO input
-      const doMin = document.getElementById('cfg-th-do-min');
-      expect(doMin).not.toBeNull();
-      expect(doMin.value).toBe('5');
-
-      // Check Turbidity input
-      const turbMax = document.getElementById('cfg-th-turb-max');
-      expect(turbMax).not.toBeNull();
-      expect(turbMax.value).toBe('20');
-
-      // Check Temperature inputs
-      const tempMin = document.getElementById('cfg-temp-min');
-      const tempMax = document.getElementById('cfg-temp-max');
-      expect(tempMin).not.toBeNull();
-      expect(tempMax).not.toBeNull();
-      expect(tempMin.value).toBe('18');
-      expect(tempMax.value).toBe('24');
+      const card = document.querySelector('.config-details-card');
+      expect(card).not.toBeNull();
+      expect(card.textContent).toContain('6.5');
+      expect(card.textContent).toContain('8.5');
+      expect(card.textContent).toContain('5');
+      expect(card.textContent).toContain('20');
+      expect(card.textContent).toContain('18');
+      expect(card.textContent).toContain('24');
     } finally {
       globalThis.document = origDocument;
       globalThis.window = origWindow;

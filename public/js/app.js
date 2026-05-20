@@ -36,6 +36,7 @@ import { init as initConfiguration } from './features/configuration.js';
 import { init as initConfigManagement, loadConfigurationsAfterAuth } from './features/config-management.js';
 import { init as initUserManagement, loadUsers, setCurrentUser } from './features/user-management.js';
 import { init as initNotifications, handleAlert } from './features/notifications.js';
+import { initRouter, pageFromPath, pathFromPage } from './router.js';
 
 let deviceId = 'device001';
 let connectStarted = false;
@@ -43,6 +44,18 @@ let firebaseDatabaseUrl = '';
 let currentUser = null;
 let currentProfile = null;
 let hydratedHistoryForUid = '';
+
+const PAGE_TITLES = {
+  dashboard: 'Dashboard',
+  'water-quality': 'Water Quality',
+  'historical-data': 'Historical Data',
+  feeding: 'Feeding',
+  alerts: 'Alerts',
+  reports: 'Reports',
+  configuration: 'Configuration',
+  'user-management': 'User Management',
+  'account-profile': 'Account & security',
+};
 
 const STORAGE_FB_URL = 'aquasense.fbUrl.v1';
 const STORAGE_AUTO_CONNECT = 'aquasense.autoConnect.v1';
@@ -295,29 +308,83 @@ export function updateCard(key, val) {
   }
 }
 
+function isPageAllowed(page) {
+  const perms = window._rbacPerms;
+  if (!perms) return true;
+  return perms.pages[page] !== false;
+}
+
+/**
+ * Activate a page section, update nav highlight, URL, and document title.
+ * @param {string} page - Internal page id (data-page value or account-profile)
+ * @param {{ replace?: boolean, skipHistory?: boolean, titleText?: string, scrollTarget?: string }} [options]
+ */
+function activatePage(page, options = {}) {
+  let { replace = false, skipHistory = false, titleText, scrollTarget } = options;
+
+  let targetPage = page;
+  const rbacRedirect = !isPageAllowed(page);
+  if (rbacRedirect) {
+    targetPage = 'dashboard';
+    replace = true;
+  }
+
+  const sectionId = targetPage === 'account-profile' ? 'page-account-profile' : 'page-' + targetPage;
+
+  document.querySelectorAll('.sidebar-nav a').forEach((x) => x.classList.remove('active'));
+  const navLink = document.querySelector(`.sidebar-nav a[data-page="${targetPage}"]`);
+  if (navLink) navLink.classList.add('active');
+
+  document.querySelectorAll('.page-section').forEach((s) => s.classList.remove('active'));
+  const el = document.getElementById(sectionId);
+  if (el) el.classList.add('active');
+
+  const title =
+    titleText ??
+    navLink?.querySelector('span:not(.nav-icon)')?.textContent?.trim() ??
+    PAGE_TITLES[targetPage] ??
+    '';
+  const titleEl = document.getElementById('topbar-page-title');
+  if (titleEl) titleEl.textContent = title;
+  document.title = title ? `${title} — CrayFarm` : 'CrayFarm';
+
+  if (!skipHistory || rbacRedirect) {
+    const path = pathFromPage(targetPage);
+    const state = { page: targetPage };
+    if (replace || rbacRedirect) {
+      history.replaceState(state, '', path);
+    } else {
+      history.pushState(state, '', path);
+    }
+  }
+
+  window.dispatchEvent(new CustomEvent('page-activated', { detail: { page: targetPage } }));
+
+  if (targetPage === 'user-management') loadUsers();
+
+  document.body.classList.remove('sidebar-open');
+
+  if (targetPage === 'account-profile' && scrollTarget) {
+    const map = { profile: 'acct-account-top', security: 'acct-password-section' };
+    const anchorId = map[scrollTarget];
+    setTimeout(() => {
+      document.getElementById(anchorId)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 80);
+  }
+}
+
+/** Sync visible page from the current URL (used on load and after RBAC). */
+function syncPageFromUrl({ replace = false } = {}) {
+  const page = pageFromPath(window.location.pathname) ?? 'dashboard';
+  activatePage(page, { replace, skipHistory: true });
+}
+
 function setupNavigation() {
   document.querySelectorAll('.sidebar-nav a[data-page]').forEach((a) => {
     a.addEventListener('click', (e) => {
       e.preventDefault();
       const page = a.getAttribute('data-page');
-      document.querySelectorAll('.sidebar-nav a').forEach((x) => x.classList.remove('active'));
-      a.classList.add('active');
-      document.querySelectorAll('.page-section').forEach((s) => s.classList.remove('active'));
-      const el = document.getElementById('page-' + page);
-      if (el) el.classList.add('active');
-
-      // Notify feature modules that a page became visible so they can resize/redraw.
-      window.dispatchEvent(new CustomEvent('page-activated', { detail: { page } }));
-
-      // Reload users when navigating to user management
-      if (page === 'user-management') loadUsers();
-
-      // Update topbar page title
-      const titleEl = document.getElementById('topbar-page-title');
-      if (titleEl) titleEl.textContent = a.querySelector('span:not(.nav-icon)')?.textContent?.trim() || '';
-
-      // Close mobile nav after navigation
-      document.body.classList.remove('sidebar-open');
+      if (page) activatePage(page);
     });
   });
 }
@@ -559,32 +626,9 @@ function setupAccountMenu() {
   window.addEventListener('resize', closeDropdown);
   window.addEventListener('scroll', closeDropdown, true);
 
-  // ── Navigate to a page (reuses the existing nav system) ──────────────────
-  function navigateTo(pageId, titleText, scrollTarget) {
-    closeDropdown();
-    document.querySelectorAll('.sidebar-nav a').forEach((x) => x.classList.remove('active'));
-    document.querySelectorAll('.page-section').forEach((s) => s.classList.remove('active'));
-    const el = document.getElementById(pageId);
-    if (el) el.classList.add('active');
-    // Keep nav highlight consistent when account menu opens account pages
-    const navPage = pageId.replace(/^page-/, '');
-    const navLink = document.querySelector(`.sidebar-nav a[data-page="${navPage}"]`);
-    if (navLink) navLink.classList.add('active');
-    const titleEl = document.getElementById('topbar-page-title');
-    if (titleEl) titleEl.textContent = titleText;
-    document.body.classList.remove('sidebar-open');
-    window.dispatchEvent(new CustomEvent('page-activated', { detail: { page: navPage } }));
-    if (pageId === 'page-account-profile' && scrollTarget) {
-      const map = { profile: 'acct-account-top', security: 'acct-password-section' };
-      const anchorId = map[scrollTarget];
-      setTimeout(() => {
-        document.getElementById(anchorId)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      }, 80);
-    }
-  }
-
   function openAccountPage(scrollTarget) {
-    navigateTo('page-account-profile', 'Account & security', scrollTarget);
+    closeDropdown();
+    activatePage('account-profile', { titleText: 'Account & security', scrollTarget });
     populateProfilePage();
     resetPasswordPage();
   }
@@ -818,6 +862,8 @@ function init() {
   }
 
   setupNavigation();
+  initRouter((page) => activatePage(page, { skipHistory: true }));
+  syncPageFromUrl({ replace: true });
   setupHamburger();
   setupClock();
   setupAccountMenu();
@@ -829,11 +875,8 @@ function init() {
   // Expose pond context globally so pond-management and other modules can update it
   window._pondContext = { setPondList, setActivePond, getActivePond };
 
-  // Expose navigateTo for dashboard "Configure Now" button
-  window.navigateTo = (page) => {
-    const navLink = document.querySelector(`.sidebar-nav a[data-page="${page}"]`);
-    if (navLink) navLink.click();
-  };
+  // Expose navigateTo for dashboard "Configure Now" button and other features
+  window.navigateTo = (page) => activatePage(page);
 
   // pond-management loads via window._pondMgmtOnUser after auth confirms
 
@@ -936,6 +979,7 @@ function init() {
         currentProfile.role = normalizeRole(currentProfile.role);
         renderSidebarUser(currentProfile);
         applyRoleGuards(currentProfile.role);
+        syncPageFromUrl({ replace: true });
       } catch (e) {
         log('Profile load failed: ' + (e?.message || String(e)), 'err');
       }

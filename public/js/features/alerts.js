@@ -25,6 +25,7 @@ import {
   fbWhere,
   fbOnSnapshot,
   fbWriteBatch,
+  fbGetIdToken,
 } from '../firebase-client.js';
 import { alertPondFilterButton, alertEmptyListRow, escapeHtml } from '../ui/templates.js';
 
@@ -419,10 +420,12 @@ function resetCooldownsForPond(pondId) {
  * Called by app.js after authentication is confirmed.
  */
 export async function loadAlertsAfterAuth() {
-  if (!fbAuth().currentUser) {
+  const user = fbAuth().currentUser;
+  if (!user) {
     return;
   }
   try {
+    await fbGetIdToken();
     await loadAlertsFromFirestore();
     rerenderAlertsTab();
     window.dispatchEvent(new Event('alerts-updated'));

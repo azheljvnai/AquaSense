@@ -12,6 +12,7 @@
     "seed:rtdb-day": "npm --prefix backend run seed:rtdb-day",
     "cleanup:history:inspect": "npm --prefix backend run cleanup:history:inspect",
     "cleanup:history:epoch": "npm --prefix backend run cleanup:history:epoch",
+    "deploy:firestore": "firebase deploy --only firestore:rules,firestore:indexes",
     "test": "vitest --run"
   },
   "dependencies": {

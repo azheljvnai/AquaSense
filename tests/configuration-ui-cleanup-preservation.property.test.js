@@ -369,8 +369,7 @@ describe('Configuration UI Cleanup — Preservation Properties', () => {
       // Find "Deactivate" button
       const buttons = Array.from(document.querySelectorAll('button'));
       const deactivateButton = buttons.find(btn => btn.textContent.includes('Deactivate'));
-      
-      // Verify Deactivate button exists for active configuration
+
       expect(deactivateButton).not.toBeNull();
       expect(deactivateButton.textContent).toContain('Deactivate');
     } finally {
@@ -415,33 +414,28 @@ describe('Configuration UI Cleanup — Preservation Properties', () => {
       const grid = thresholdCard.querySelector('.config-thresholds-grid');
       expect(grid).not.toBeNull();
 
-      // Verify all threshold items exist
       const items = grid.querySelectorAll('.threshold-item');
       expect(items.length).toBe(4);
 
-      // Verify pH threshold
-      const phItem = Array.from(items).find(item => 
+      const phItem = Array.from(items).find(item =>
         item.querySelector('.threshold-label')?.textContent === 'pH Range'
       );
       expect(phItem).not.toBeNull();
       expect(phItem.querySelector('.threshold-value').textContent).toBe('6.5 - 8.5');
 
-      // Verify Temperature threshold
-      const tempItem = Array.from(items).find(item => 
+      const tempItem = Array.from(items).find(item =>
         item.querySelector('.threshold-label')?.textContent === 'Temperature (°C)'
       );
       expect(tempItem).not.toBeNull();
       expect(tempItem.querySelector('.threshold-value').textContent).toBe('18 - 24');
 
-      // Verify DO threshold
-      const doItem = Array.from(items).find(item => 
+      const doItem = Array.from(items).find(item =>
         item.querySelector('.threshold-label')?.textContent === 'Dissolved O₂ (mg/L)'
       );
       expect(doItem).not.toBeNull();
       expect(doItem.querySelector('.threshold-value').textContent).toBe('≥ 5');
 
-      // Verify Turbidity threshold
-      const turbItem = Array.from(items).find(item => 
+      const turbItem = Array.from(items).find(item =>
         item.querySelector('.threshold-label')?.textContent === 'Turbidity (NTU)'
       );
       expect(turbItem).not.toBeNull();
@@ -500,33 +494,29 @@ describe('Configuration UI Cleanup — Preservation Properties', () => {
           const grid = thresholdCard.querySelector('.config-thresholds-grid');
           const items = grid.querySelectorAll('.threshold-item');
 
-          // Verify pH
-          const phItem = Array.from(items).find(item => 
+          const phItem = Array.from(items).find(item =>
             item.querySelector('.threshold-label')?.textContent === 'pH Range'
           );
-          const phValue = phItem.querySelector('.threshold-value').textContent;
-          expect(phValue).toBe(`${config.thresholds.ph.optimalMin} - ${config.thresholds.ph.optimalMax}`);
+          expect(phItem.querySelector('.threshold-value').textContent)
+            .toBe(`${config.thresholds.ph.optimalMin} - ${config.thresholds.ph.optimalMax}`);
 
-          // Verify Temperature
-          const tempItem = Array.from(items).find(item => 
+          const tempItem = Array.from(items).find(item =>
             item.querySelector('.threshold-label')?.textContent === 'Temperature (°C)'
           );
-          const tempValue = tempItem.querySelector('.threshold-value').textContent;
-          expect(tempValue).toBe(`${config.thresholds.temp.optimalMin} - ${config.thresholds.temp.optimalMax}`);
+          expect(tempItem.querySelector('.threshold-value').textContent)
+            .toBe(`${config.thresholds.temp.optimalMin} - ${config.thresholds.temp.optimalMax}`);
 
-          // Verify DO
-          const doItem = Array.from(items).find(item => 
+          const doItem = Array.from(items).find(item =>
             item.querySelector('.threshold-label')?.textContent === 'Dissolved O₂ (mg/L)'
           );
-          const doValue = doItem.querySelector('.threshold-value').textContent;
-          expect(doValue).toBe(`≥ ${config.thresholds.do.optimalMin}`);
+          expect(doItem.querySelector('.threshold-value').textContent)
+            .toBe(`≥ ${config.thresholds.do.optimalMin}`);
 
-          // Verify Turbidity
-          const turbItem = Array.from(items).find(item => 
+          const turbItem = Array.from(items).find(item =>
             item.querySelector('.threshold-label')?.textContent === 'Turbidity (NTU)'
           );
-          const turbValue = turbItem.querySelector('.threshold-value').textContent;
-          expect(turbValue).toBe(`≤ ${config.thresholds.turb.optimalMax}`);
+          expect(turbItem.querySelector('.threshold-value').textContent)
+            .toBe(`≤ ${config.thresholds.turb.optimalMax}`);
         }),
         { numRuns: 20 }
       );
@@ -575,7 +565,6 @@ describe('Configuration UI Cleanup — Preservation Properties', () => {
       expect(noticeSub).not.toBeNull();
       expect(noticeSub.textContent).toContain('Select a configuration');
 
-      // Verify threshold card is NOT displayed
       const thresholdCard = document.querySelector('.config-details-card');
       expect(thresholdCard).toBeNull();
     } finally {
