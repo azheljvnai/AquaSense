@@ -194,11 +194,11 @@ function initPrefsUI(user) {
   // Show config warning and disable email toggle if EmailJS is not configured
   // NOTE: Do NOT return early — SMS prefs must still be saveable even without EmailJS
   if (!_emailjsPublicKey) {
-    if (warning) warning.style.display = '';
+    if (warning) warning.classList.remove('is-hidden');
     if (toggle)  { toggle.disabled = true; toggle.checked = false; }
     // Do NOT disable saveBtn — SMS notifications can still be saved
   } else {
-    if (warning) warning.style.display = 'none';
+    if (warning) warning.classList.add('is-hidden');
   }
 
   if (!user?.uid) return;
@@ -216,7 +216,7 @@ function initPrefsUI(user) {
   async function syncSmsUiState() {
     const phone = await getUserPhone(user.uid).catch(() => '');
     const hasPhone = !!String(phone || '').trim();
-    if (smsWarning) smsWarning.style.display = hasPhone ? 'none' : '';
+    if (smsWarning) smsWarning.classList.toggle('is-hidden', hasPhone);
     if (smsToggle) smsToggle.disabled = !hasPhone;
     if (smsToggle && !hasPhone) smsToggle.checked = false;
     return hasPhone;

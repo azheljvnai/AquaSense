@@ -76,9 +76,9 @@ export function init(deviceId = 'device001') {
   }
 
   const noPondEl = document.getElementById('feed-no-pond');
-  if (noPondEl) noPondEl.style.display = 'none';
+  if (noPondEl) noPondEl.classList.add('is-hidden');
   const contentEl = document.getElementById('feed-content');
-  if (contentEl) contentEl.style.display = '';
+  if (contentEl) contentEl.classList.remove('is-hidden');
 
   _deviceId = deviceId || 'device001';
   if (_listeners.length) _teardown();
@@ -173,9 +173,8 @@ function _teardown() {
     if (el) el.textContent = '—';
   });
   const manualBtn = document.getElementById('feed-manual-btn');
-  if (manualBtn) { manualBtn.disabled = false; manualBtn.textContent = '▶ Manual Feed'; }
-  const manualStatus = document.getElementById('feed-manual-status');
-  if (manualStatus) manualStatus.textContent = '';
+  if (manualBtn) manualBtn.textContent = '▶ Manual Feed';
+  _applyFeedButtonConnectedState();
   _closeScheduleForm();
 }
 
@@ -323,7 +322,7 @@ function _renderScheduleList() {
 
   // Show/hide Add button
   const addBtn = document.getElementById('feed-add-schedule-btn');
-  if (addBtn) addBtn.style.display = perms.canEditSchedules ? '' : 'none';
+  if (addBtn) addBtn.classList.toggle('is-hidden', !perms.canEditSchedules);
 
   if (_schedules.length === 0) {
     ul.innerHTML = '<li class="empty-state empty-state--tight text-sm muted">No schedules configured for this device.</li>';
@@ -387,12 +386,12 @@ function _isFormDirty() {
 }
 
 function _openScheduleForm() {
-  document.getElementById('feed-schedule-form').style.display = '';
+  document.getElementById('feed-schedule-form')?.classList.remove('is-hidden');
   _formSnapshot = _captureFormSnapshot();
 }
 
 function _closeScheduleForm() {
-  document.getElementById('feed-schedule-form').style.display = 'none';
+  document.getElementById('feed-schedule-form')?.classList.add('is-hidden');
   _editingIndex = null;
   _formSnapshot = null;
   _clearScheduleFieldError();
@@ -919,13 +918,13 @@ export async function triggerManualFeed() {
       dashBtn.classList.add('firing');
       dashBtn.textContent = '⟳ DISPENSING...';
     }
-    if (statusEl) statusEl.textContent = '';
+    if (statusEl) statusEl.textContent = 'Waiting for ESP32 to confirm...';
     if (feedNote) feedNote.textContent = 'Waiting for ESP32 to confirm...';
     _dispensing = true;
   };
 
   const resetButtons = (timeoutMsg) => {
-    if (tabBtn)  { tabBtn.disabled = false; tabBtn.textContent = '▶ Manual Feed'; }
+    if (tabBtn)  { tabBtn.textContent = '▶ Manual Feed'; }
     if (dashBtn) {
       dashBtn.classList.remove('firing');
       dashBtn.textContent = '▶ Manual Feed';
@@ -961,14 +960,20 @@ function _applyFeedButtonConnectedState() {
   const dot     = document.getElementById('feed-dot');
   const note    = document.getElementById('feed-note-txt');
   const tabBtn  = document.getElementById('feed-manual-btn');
+  const tabDot  = document.getElementById('feed-manual-dot');
+  const tabNote = document.getElementById('feed-manual-status');
 
   if (dashBtn && !_dispensing) dashBtn.disabled = !_firebaseConnected;
-  if (tabBtn && !_dispensing) tabBtn.disabled = false;
+  if (tabBtn && !_dispensing) tabBtn.disabled = !_firebaseConnected;
   if (dot) dot.className = 'dot' + (_firebaseConnected ? '' : ' off');
+  if (tabDot) tabDot.className = 'dot' + (_firebaseConnected ? '' : ' off');
+  const connectedMsg = 'Firebase connected — button locks until ESP32 confirms';
+  const offlineMsg = 'Connect to Firebase to enable feed button';
   if (note && !_dispensing) {
-    note.textContent = _firebaseConnected
-      ? 'Firebase connected — button locks until ESP32 confirms'
-      : 'Connect to Firebase to enable feed button';
+    note.textContent = _firebaseConnected ? connectedMsg : offlineMsg;
+  }
+  if (tabNote && !_dispensing) {
+    tabNote.textContent = _firebaseConnected ? connectedMsg : offlineMsg;
   }
 }
 
@@ -983,7 +988,7 @@ function _syncFeedButton(manualFeedVal) {
       clearTimeout(_manualFeedTimeout);
       _manualFeedTimeout = null;
     }
-    if (tabBtn)  { tabBtn.disabled = false; tabBtn.textContent = '▶ Manual Feed'; }
+    if (tabBtn)  { tabBtn.textContent = '▶ Manual Feed'; }
     if (dashBtn) {
       dashBtn.classList.remove('firing');
       dashBtn.textContent = '▶ Manual Feed';

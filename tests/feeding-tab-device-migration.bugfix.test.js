@@ -126,9 +126,9 @@ describe('Feeding Tab Device Migration — Bug Condition Exploration', () => {
     const noPondElement = document.getElementById('feed-no-pond');
     expect(noPondElement).not.toBeNull();
 
-    // On UNFIXED code: noPondElement.style.display !== 'none' (message is visible) → FAILS
-    // On FIXED code:   noPondElement.style.display === 'none' (message is hidden) → PASSES
-    expect(noPondElement.style.display).toBe('none');
+    // On UNFIXED code: no-pond message is visible → FAILS
+    // On FIXED code:   no-pond message is hidden via is-hidden → PASSES
+    expect(noPondElement.classList.contains('is-hidden')).toBe(true);
   });
 
   /**
@@ -151,9 +151,9 @@ describe('Feeding Tab Device Migration — Bug Condition Exploration', () => {
     const contentElement = document.getElementById('feed-content');
     expect(contentElement).not.toBeNull();
 
-    // On UNFIXED code: contentElement.style.display === 'none' (content is hidden) → FAILS
-    // On FIXED code:   contentElement.style.display !== 'none' (content is visible) → PASSES
-    expect(contentElement.style.display).not.toBe('none');
+    // On UNFIXED code: content is hidden → FAILS
+    // On FIXED code:   content is visible → PASSES
+    expect(contentElement.classList.contains('is-hidden')).toBe(false);
   });
 
   /**
@@ -255,10 +255,11 @@ describe('Feeding Tab Device Migration — Bug Condition Exploration', () => {
    * On FIXED code:   Button is visible and enabled → PASSES
    */
   it('Test 6: Manual feed button should be enabled and functional', async () => {
-    const { init } = await import('../public/js/features/feeding.js');
+    const { init, setFirebaseConnected } = await import('../public/js/features/feeding.js');
 
     // Initialize feeding module
     init();
+    setFirebaseConnected(true);
 
     // Allow async operations to complete
     await new Promise(r => setTimeout(r, 50));
@@ -267,11 +268,11 @@ describe('Feeding Tab Device Migration — Bug Condition Exploration', () => {
     expect(manualFeedButton).not.toBeNull();
 
     // On UNFIXED code: Button is hidden (parent content is hidden) → FAILS
-    // On FIXED code:   Button is visible and enabled → PASSES
+    // On FIXED code:   Button is visible and enabled when Firebase is connected → PASSES
     expect(manualFeedButton.disabled).toBe(false);
 
     // Check that the button's parent content is visible
     const contentElement = document.getElementById('feed-content');
-    expect(contentElement.style.display).not.toBe('none');
+    expect(contentElement.classList.contains('is-hidden')).toBe(false);
   });
 });

@@ -74,7 +74,7 @@ const PAGE_TITLES = {
   reports: 'Reports',
   configuration: 'Configuration',
   'user-management': 'User Management',
-  'account-profile': 'Account & security',
+  'account-profile': 'Account',
 };
 
 const STORAGE_FB_URL = 'aquasense.fbUrl.v1';
@@ -260,7 +260,6 @@ function renderSidebarUser(profile) {
   if (name) name.textContent = displayName;
   if (email) email.textContent = profile?.email || (currentUser?.email || '—');
   if (avatarBtn) avatarBtn.textContent = (displayName[0] || 'U').toUpperCase();
-  if (typeof window._syncAccountPopover === 'function') window._syncAccountPopover();
 }
 
 function badgeClassFromKey(key) {
@@ -385,11 +384,9 @@ function activatePage(page, options = {}) {
 
   document.body.classList.remove('sidebar-open');
 
-  if (targetPage === 'account-profile' && scrollTarget) {
-    const map = { profile: 'acct-account-top', security: 'acct-password-section' };
-    const anchorId = map[scrollTarget];
+  if (targetPage === 'account-profile' && scrollTarget === 'password') {
     setTimeout(() => {
-      document.getElementById(anchorId)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      document.getElementById('acct-password-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }, 80);
   }
 }
@@ -604,62 +601,22 @@ async function hydrateHistoryFromRTDB() {
 
 function setupAccountMenu() {
   const avatarBtn = document.getElementById('account-avatar-btn');
-  const dropdown  = document.getElementById('account-dropdown');
-  if (!avatarBtn || !dropdown) return;
+  if (!avatarBtn) return;
 
-  // ── Popover toggle ────────────────────────────────────────────────────────
-  const openDropdown = () => {
-    const rect = avatarBtn.getBoundingClientRect();
-    // Reveal off-screen first so we can measure height
-    dropdown.style.visibility = 'hidden';
-    dropdown.hidden = false;
-    const popH = dropdown.offsetHeight;
-    const popW = dropdown.offsetWidth;
-    dropdown.style.visibility = '';
-    // Prefer above the avatar; fall back to below if not enough room
-    const spaceAbove = rect.top - 8;
-    const top = spaceAbove >= popH ? rect.top - popH - 8 : rect.bottom + 8;
-    // Align to avatar while keeping popover fully within viewport
-    const left = Math.min(Math.max(8, rect.left), window.innerWidth - popW - 8);
-    dropdown.style.left = left + 'px';
-    dropdown.style.top  = top + 'px';
-    avatarBtn.setAttribute('aria-expanded', 'true');
-    dropdown.querySelector('.account-popover-item')?.focus();
-  };
-  const closeDropdown = () => {
-    dropdown.hidden = true;
-    avatarBtn.setAttribute('aria-expanded', 'false');
-  };
+  function openAccountPage(scrollTarget) {
+    activatePage('account-profile', { scrollTarget });
+    populateProfilePage();
+  }
 
   avatarBtn.addEventListener('click', (e) => {
     e.stopPropagation();
-    dropdown.hidden ? openDropdown() : closeDropdown();
+    openAccountPage();
   });
   avatarBtn.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); dropdown.hidden ? openDropdown() : closeDropdown(); }
-    if (e.key === 'ArrowDown') { e.preventDefault(); openDropdown(); }
-  });
-  document.addEventListener('click', (e) => {
-    if (!dropdown.hidden && !dropdown.contains(e.target) && e.target !== avatarBtn) closeDropdown();
-  });
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') closeDropdown();
-  });
-  window.addEventListener('resize', closeDropdown);
-  window.addEventListener('scroll', closeDropdown, true);
-
-  function openAccountPage(scrollTarget) {
-    closeDropdown();
-    activatePage('account-profile', { titleText: 'Account & security', scrollTarget });
-    populateProfilePage();
-    resetPasswordPage();
-  }
-
-  document.getElementById('acct-account-page-btn')?.addEventListener('click', () => {
-    openAccountPage('profile');
-  });
-  document.getElementById('acct-password-shortcut-btn')?.addEventListener('click', () => {
-    openAccountPage('security');
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      openAccountPage();
+    }
   });
 
   // ── Edit Profile (inline on the profile page) ─────────────────────────────
@@ -678,11 +635,6 @@ function setupAccountMenu() {
     const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
     set('fp-avatar-letter', avatarLetter(name));
     set('fp-display-name', name);
-
-    // Sync popover header too
-    set('acct-pop-avatar', avatarLetter(name));
-    set('acct-pop-name', name);
-    set('acct-pop-email', p.email || currentUser?.email || '—');
 
     const badge = document.getElementById('fp-role-badge');
     if (badge) {
@@ -787,7 +739,7 @@ function setupAccountMenu() {
     });
   }
 
-  // ── Password page ─────────────────────────────────────────────────────────
+  // ── Password form ─────────────────────────────────────────────────────────
   function resetPasswordPage() {
     ['acct-pw-current','acct-pw-new','acct-pw-confirm'].forEach(id => {
       const el = document.getElementById(id);
@@ -798,6 +750,7 @@ function setupAccountMenu() {
     if (errEl) errEl.style.display = 'none';
     if (okEl)  okEl.style.display  = 'none';
     syncPasswordRules();
+    syncPasswordSubmitState();
   }
 
   function syncPasswordRules() {
@@ -807,8 +760,25 @@ function setupAccountMenu() {
     });
   }
 
-  document.getElementById('acct-pw-new')?.addEventListener('input', syncPasswordRules);
-  document.getElementById('acct-pw-confirm')?.addEventListener('input', syncPasswordRules);
+  function syncPasswordSubmitState() {
+    const saveBtn = document.getElementById('acct-pw-save');
+    if (!saveBtn || saveBtn.textContent === 'Updating…') return;
+    const current = document.getElementById('acct-pw-current')?.value || '';
+    const newPw   = document.getElementById('acct-pw-new')?.value || '';
+    const confirm = document.getElementById('acct-pw-confirm')?.value || '';
+    const filled = current.length > 0 && newPw.length > 0 && confirm.length > 0;
+    saveBtn.disabled = !filled;
+  }
+
+  function onPasswordFieldInput() {
+    syncPasswordRules();
+    syncPasswordSubmitState();
+  }
+
+  ['acct-pw-current', 'acct-pw-new', 'acct-pw-confirm'].forEach((id) => {
+    document.getElementById(id)?.addEventListener('input', onPasswordFieldInput);
+  });
+  syncPasswordSubmitState();
 
   document.getElementById('acct-pw-save')?.addEventListener('click', async () => {
     const errEl  = document.getElementById('acct-pw-error');
@@ -853,20 +823,10 @@ function setupAccountMenu() {
       else if (code === 'auth/too-many-requests') msg = 'Too many attempts. Try again later.';
       if (errEl) { errEl.textContent = msg; errEl.style.display = 'block'; }
     } finally {
-      saveBtn.disabled = false;
-      saveBtn.textContent = 'Update Password';
+      saveBtn.textContent = 'Update password';
+      syncPasswordSubmitState();
     }
   });
-
-  // ── Sync popover header on auth ───────────────────────────────────────────
-  window._syncAccountPopover = () => {
-    const p = currentProfile || {};
-    const name = p.displayName || currentUser?.email?.split('@')[0] || 'User';
-    const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
-    set('acct-pop-avatar', (name[0] || 'U').toUpperCase());
-    set('acct-pop-name', name);
-    set('acct-pop-email', p.email || currentUser?.email || '—');
-  };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

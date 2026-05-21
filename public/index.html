@@ -132,7 +132,7 @@
       </a>
     </nav>
     <div class="sidebar-user">
-      <button class="sidebar-user-avatar" id="account-avatar-btn" type="button" aria-haspopup="true" aria-expanded="false" aria-label="Account menu">F</button>
+      <button class="sidebar-user-avatar" id="account-avatar-btn" type="button" aria-label="Open account">F</button>
       <div class="sidebar-user-info">
         <div class="sidebar-user-name" id="sb-user-name">—</div>
         <div class="sidebar-user-email" id="sb-user-email">—</div>
@@ -214,13 +214,11 @@
             <div class="chart-legend-item"><div class="chart-legend-dot chart-legend-dot--temp"></div>Temperature</div>
           </div>
         </div>
-        <div class="card dash-alerts-card">
+        <div class="card dash-recent-alerts-card">
           <div class="panel-title"><svg class="icon icon-16"><use href="#icon-warning"/></svg> Recent Alerts</div>
           <div class="recent-alerts" id="recent-alerts">
             <div class="flex-center-soft text-sm">Loading alerts…</div>
           </div>
-          <div class="panel-title panel-title--spaced">Activity Log</div>
-          <ul id="loglist"></ul>
         </div>
         <div class="feed-panel card">
           <div class="panel-title">
@@ -247,6 +245,10 @@
             <div class="dot off" id="feed-dot"></div>
             <span id="feed-note-txt">Connect to Firebase to enable feed button</span>
           </div>
+        </div>
+        <div class="card dash-activity-card">
+          <div class="panel-title"><svg class="icon icon-16"><use href="#icon-clock"/></svg> Activity Log</div>
+          <ul id="loglist"></ul>
         </div>
       </div>
     </section>
@@ -396,54 +398,61 @@
 
     <!-- Feeding -->
     <section id="page-feeding" class="page-section">
-      <h1 class="page-title">Feeding</h1>
-      <div class="feed-config-line">
-        <strong>Configuration:</strong> <span id="feed-config-name">—</span>
+      <div class="page-title-row">
+        <h1 class="page-title">Feeding</h1>
+        <div class="active-pond-badge feed-config-badge" id="feed-config-badge">
+          <svg class="icon icon-14"><use href="#icon-settings"/></svg>
+          <span id="feed-config-name">—</span>
+        </div>
       </div>
 
       <!-- No-pond placeholder -->
-      <div id="feed-no-pond" style="display:none" class="empty-state">
-        No pond selected. Choose a pond from the topbar to view feeding data.
+      <div id="feed-no-pond" class="empty-state is-hidden">
+        <svg class="icon icon-24 muted"><use href="#icon-droplet"/></svg>
+        <p>No pond selected. Choose a pond from the topbar to view feeding data.</p>
       </div>
 
       <!-- Main content -->
       <div id="feed-content">
-        <!-- Metric Cards -->
-        <div class="feed-metrics">
-          <div class="metric-card">
-            <div class="value" id="feed-metric-today">—</div>
-            <div class="label">Feeds Today</div>
+        <!-- Summary metrics (matches Alerts tab pattern) -->
+        <div class="alert-summary feed-summary">
+          <div class="card">
+            <div class="icon-wrap icon-wrap--feed-today"><svg class="icon icon-24"><use href="#icon-fish"/></svg></div>
+            <div class="muted text-sm">Feeds Today</div>
+            <div class="count" id="feed-metric-today">—</div>
           </div>
-          <div class="metric-card">
-            <div class="value" id="feed-metric-last">—</div>
-            <div class="label">Last Fed</div>
+          <div class="card">
+            <div class="icon-wrap icon-wrap--feed-last"><svg class="icon icon-24"><use href="#icon-clock"/></svg></div>
+            <div class="muted text-sm">Last Fed</div>
+            <div class="count" id="feed-metric-last">—</div>
           </div>
-          <div class="metric-card">
-            <div class="value" id="feed-metric-active">—</div>
-            <div class="label">Schedules Active</div>
+          <div class="card">
+            <div class="icon-wrap icon-wrap--feed-active"><svg class="icon icon-24"><use href="#icon-check"/></svg></div>
+            <div class="muted text-sm">Schedules Active</div>
+            <div class="count" id="feed-metric-active">—</div>
           </div>
-          <div class="metric-card">
-            <div class="value" id="feed-metric-next">—</div>
-            <div class="label">Next Feed</div>
+          <div class="card">
+            <div class="icon-wrap icon-wrap--feed-next"><svg class="icon icon-24"><use href="#icon-feeding"/></svg></div>
+            <div class="muted text-sm">Next Feed</div>
+            <div class="count feed-metric-next" id="feed-metric-next">—</div>
           </div>
         </div>
 
-        <!-- Schedule + Chart row -->
-        <div class="layout-two-col">
-
-          <!-- Schedule List card -->
-          <div class="card">
+        <div class="feed-layout">
+          <div class="card feed-card-schedule">
             <div class="card-header">
-              <h3 class="card-title">Today's Feeding Schedule</h3>
-              <button id="feed-add-schedule-btn" class="btn btn-primary" style="display:none">
+              <h3 class="card-title">
+                <svg class="icon icon-16"><use href="#icon-clock"/></svg>
+                Today's Feeding Schedule
+              </h3>
+              <button id="feed-add-schedule-btn" class="btn btn-primary btn-sm is-hidden" type="button">
                 <svg class="icon icon-16"><use href="#icon-plus"/></svg> Add Schedule
               </button>
             </div>
-            <!-- Inline add/edit form -->
-            <div id="feed-schedule-form" style="display:none;margin-bottom:12px;">
-              <div class="feed-field-block">
-                <label class="feed-field-label" for="feed-schedule-input">Time</label>
-                <input id="feed-schedule-input" type="time" class="input-field" required aria-describedby="feed-schedule-error" />
+            <div id="feed-schedule-form" class="feed-schedule-form is-hidden">
+              <div class="sched">
+                <label for="feed-schedule-input">Time</label>
+                <input id="feed-schedule-input" type="time" required aria-describedby="feed-schedule-error" />
               </div>
               <div class="feed-field-block--days">
                 <label class="feed-field-label feed-field-label--days" for="feed-day-0">Repeat on</label>
@@ -479,37 +488,44 @@
                 </div>
               </div>
               <div class="feed-actions-row">
-                <button id="feed-schedule-confirm" class="btn btn-primary btn-sm">Save</button>
-                <button id="feed-schedule-cancel" class="btn btn-outline btn-sm">Cancel</button>
+                <button id="feed-schedule-confirm" class="btn btn-primary btn-sm" type="button">Save</button>
+                <button id="feed-schedule-cancel" class="btn btn-outline btn-sm" type="button">Cancel</button>
               </div>
               <div id="feed-schedule-error" class="feed-schedule-error"></div>
             </div>
             <ul id="feed-schedule-list" class="feed-schedule-list"></ul>
           </div>
 
-          <!-- Weekly Chart card -->
-          <div class="card">
-            <h3 class="card-title">Weekly Feed Activity</h3>
+          <div class="card feed-card-chart">
+            <h3 class="card-title">
+              <svg class="icon icon-16"><use href="#icon-activity"/></svg>
+              Weekly Feed Activity
+            </h3>
             <div class="feed-chart-wrap"><canvas id="feed-chart"></canvas></div>
           </div>
-        </div>
 
-        <!-- Manual Feed + Feed Log row -->
-        <div class="layout-feed-manual">
-
-          <!-- Manual Feed card -->
-          <div class="card feed-manual-card">
-            <h3 class="card-title">Manual Feed</h3>
-            <button id="feed-manual-btn" class="btn btn-primary btn-block">
-              ▶ Manual Feed
-            </button>
-            <div id="feed-manual-status" class="text-sm muted" style="margin-top:8px;"></div>
+          <div class="card feed-card-log">
+            <h3 class="card-title">
+              <svg class="icon icon-16"><use href="#icon-document"/></svg>
+              Feed Log
+            </h3>
+            <div id="feed-log-list" class="card-body--scroll feed-log-scroll"></div>
           </div>
 
-          <!-- Feed Log card -->
-          <div class="card">
-            <h3 class="card-title">Feed Log</h3>
-            <div id="feed-log-list" class="card-body--scroll"></div>
+          <div class="card feed-card-manual">
+            <h3 class="card-title">
+              <svg class="icon icon-16"><use href="#icon-feeding"/></svg>
+              Manual Feed
+            </h3>
+            <div class="feed-manual-body">
+              <button id="feed-manual-btn" class="btn btn-feed btn-block" type="button" disabled>
+                ▶ Manual Feed
+              </button>
+              <div class="feed-note">
+                <div class="dot off" id="feed-manual-dot"></div>
+                <span id="feed-manual-status">Connect to Firebase to enable feed button</span>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -526,10 +542,16 @@
         <div class="card"><div class="icon-wrap icon-wrap--resolved"><svg class="icon icon-24"><use href="#icon-check"/></svg></div><div class="muted text-sm">Resolved</div><div class="count" id="alert-resolved">0</div></div>
       </div>
       <div class="alert-layout">
-        <div class="card">
-          <div class="alert-card-head">
-            <h3 class="card-title">Recent Alerts &amp; Notifications</h3>
-            <div class="alert-bulk-actions">
+        <div class="card alert-main-card">
+          <div class="card-header">
+            <h3 class="card-title">
+              <svg class="icon icon-16"><use href="#icon-bell"/></svg>
+              Recent Alerts &amp; Notifications
+            </h3>
+          </div>
+
+          <div class="alert-prefs-bar">
+            <div class="alert-prefs-toggles">
               <div class="alert-email-toggle-row">
                 <span class="badge-pill badge-pill--email">
                   <svg class="icon icon-14 icon-mid icon-gap"><use href="#icon-mail"/></svg>
@@ -550,6 +572,8 @@
                   <span class="switch-ui" aria-hidden="true"></span>
                 </label>
               </div>
+            </div>
+            <div class="alert-bulk-actions">
               <button type="button" id="btn-mark-all-resolved" class="btn btn-outline btn-sm">
                 <svg class="icon icon-16 icon-mid"><use href="#icon-check"/></svg>
                 Mark all resolved
@@ -561,35 +585,37 @@
             </div>
           </div>
 
-          <div class="alert-toolbar">
-            <div class="alert-pond-filters" id="alert-pond-filters">
-              <button class="alert-pond-btn active" data-pond="all">All Ponds</button>
-            </div>
-          </div>
-
-          <!-- Email alerts toggle (recipient = logged-in user's email) -->
-          <div id="notif-config-warning" class="alert-inline-warning" style="display:none">
+          <div id="notif-config-warning" class="alert-inline-warning is-hidden">
             <svg class="icon icon-14 icon-mid icon-gap"><use href="#icon-warning"/></svg>
             EmailJS is not configured. Add <code>EMAILJS_PUBLIC_KEY</code>, <code>EMAILJS_SERVICE_ID</code>, and <code>EMAILJS_TEMPLATE_ID</code> to your <code>.env</code> file.
           </div>
-          <div id="notif-sms-warning" class="alert-inline-warning" style="display:none">
+          <div id="notif-sms-warning" class="alert-inline-warning is-hidden">
             <svg class="icon icon-14 icon-mid icon-gap"><use href="#icon-warning"/></svg>
             SMS alerts require a phone number. Add one under <strong>Account &amp; security</strong>, then return here to enable SMS alerts.
+          </div>
+
+          <div class="alert-toolbar">
+            <div class="alert-pond-filters" id="alert-pond-filters">
+              <button type="button" class="alert-pond-btn active" data-pond="all">All Ponds</button>
+            </div>
           </div>
 
           <div class="alert-list-scroll">
             <div class="alert-list" id="alert-list-dynamic">
               <div class="alert-row alert-empty-row">
-                <svg class="icon icon-20" style="margin-right:8px;opacity:0.4"><use href="#icon-check"/></svg>
+                <svg class="icon icon-20 alert-empty-icon"><use href="#icon-check"/></svg>
                 No alerts — all parameters within optimal range.
               </div>
             </div>
           </div>
         </div>
 
-        <div class="card">
-          <h3 class="card-title">Alert Thresholds</h3>
-          <div style="font-size:0.75rem;color:var(--text-muted);margin-bottom:8px;" id="alert-th-species">Default thresholds</div>
+        <div class="card alert-thresholds-card">
+          <h3 class="card-title">
+            <svg class="icon icon-16"><use href="#icon-shield"/></svg>
+            Alert Thresholds
+          </h3>
+          <p class="alert-th-species muted text-sm" id="alert-th-species">Default thresholds</p>
           <div class="thresholds-grid">
             <div class="item"><strong>pH Range</strong> <span id="alert-th-ph">—</span></div>
             <div class="item"><strong>Temperature</strong> <span id="alert-th-temp">—</span></div>
@@ -603,11 +629,6 @@
     <!-- Account: profile + password -->
     <section id="page-account-profile" class="page-section">
       <div class="acct-account-shell" id="acct-account-top">
-        <header class="acct-page-hero">
-          <h1 class="page-title acct-profile-title">Account &amp; security</h1>
-          <p class="acct-profile-lead">View your profile details and update your password.</p>
-        </header>
-
         <section class="acct-section acct-section--profile" aria-labelledby="fp-display-name">
           <div class="card acct-profile-card">
             <div class="acct-profile-card-header">
@@ -694,7 +715,7 @@
             <div id="acct-pw-success" class="acct-success" style="display:none;">Password updated successfully.</div>
 
             <div class="acct-pw-actions">
-              <button type="button" class="btn btn-primary" id="acct-pw-save">
+              <button type="button" class="btn btn-primary" id="acct-pw-save" disabled>
                 <svg class="icon icon-16"><use href="#icon-check"/></svg>
                 Update password
               </button>
@@ -707,16 +728,16 @@
     <!-- Reports (only Daily / Weekly / Monthly Water Quality + Feeding Report) -->
     <section id="page-reports" class="page-section">
       <h1 class="page-title">Reports</h1>
-      <div class="card reports-intro">
-        <div class="reports-header">
-          <div>
-            <h3 class="card-title" style="margin:0;">Water Quality & Feeding Reports</h3>
-            <p class="reports-sub">Generate reports by period: daily, weekly, monthly, or custom range.</p>
-          </div>
-        </div>
-      </div>
+      <p class="page-subtitle">Generate water quality and feeding reports by day, week, month, or custom range.</p>
 
-      <div class="report-tabs">
+      <div class="card report-tabs-card">
+        <div class="card-header">
+          <h3 class="card-title">
+            <svg class="icon icon-16"><use href="#icon-document"/></svg>
+            Water Quality &amp; Feeding Reports
+          </h3>
+        </div>
+        <div class="report-tabs">
         <div class="tabs" role="tablist">
           <button type="button" class="tab-btn active" data-report-tab="daily">Daily</button>
           <button type="button" class="tab-btn" data-report-tab="weekly">Weekly</button>
@@ -751,7 +772,7 @@
           </div>
           <div class="report-entry report-entry-combined" data-report-period="daily" data-report-type="combined">
             <div>
-              <div class="report-title">Daily Combined Report <span class="badge-pill" style="background:#ede9fe;color:#6d28d9;font-size:0.65rem;vertical-align:middle;margin-left:6px">Water + Feeding</span></div>
+              <div class="report-title">Daily Combined Report <span class="badge-pill badge-pill--combined">Water + Feeding</span></div>
               <div class="report-meta">Today · Water Quality & Feeding in one report</div>
             </div>
             <span class="badge-pill status-normal">ready</span>
@@ -789,7 +810,7 @@
           </div>
           <div class="report-entry report-entry-combined" data-report-period="weekly" data-report-type="combined">
             <div>
-              <div class="report-title">Weekly Combined Report <span class="badge-pill" style="background:#ede9fe;color:#6d28d9;font-size:0.65rem;vertical-align:middle;margin-left:6px">Water + Feeding</span></div>
+              <div class="report-title">Weekly Combined Report <span class="badge-pill badge-pill--combined">Water + Feeding</span></div>
               <div class="report-meta">Mon – Sun · Water Quality & Feeding in one report</div>
             </div>
             <span class="badge-pill status-normal">ready</span>
@@ -827,7 +848,7 @@
           </div>
           <div class="report-entry report-entry-combined" data-report-period="monthly" data-report-type="combined">
             <div>
-              <div class="report-title">Monthly Combined Report <span class="badge-pill" style="background:#ede9fe;color:#6d28d9;font-size:0.65rem;vertical-align:middle;margin-left:6px">Water + Feeding</span></div>
+              <div class="report-title">Monthly Combined Report <span class="badge-pill badge-pill--combined">Water + Feeding</span></div>
               <div class="report-meta">This month · Water Quality & Feeding in one report</div>
             </div>
             <span class="badge-pill status-normal">ready</span>
@@ -839,9 +860,8 @@
         </div>
 
         <div id="tab-custom" class="tab-content">
-          <div class="card custom-report-card">
-            <h3 class="card-title" style="margin-bottom:8px;">Custom Report</h3>
-            <p style="font-size:0.9rem;color:var(--text-muted);margin-bottom:16px;">Pick a report type and date range, then generate.</p>
+          <div class="custom-report-panel">
+            <p class="custom-report-desc muted">Pick a report type and date range, then generate.</p>
             <div class="custom-report-grid">
               <div class="field">
                 <label>Report Type</label>
@@ -866,16 +886,20 @@
             </div>
           </div>
         </div>
+        </div>
       </div>
 
       <!-- Report History -->
       <div class="card rpt-history-card">
-        <div class="rpt-history-header">
+        <div class="card-header rpt-history-header">
           <div>
-            <div class="card-title" style="margin:0"><svg class="icon icon-16"><use href="#icon-clock"/></svg> Report History</div>
-            <p style="font-size:0.78rem;color:var(--text-muted);margin-top:4px;margin-bottom:0">Reports generated this session and from previous sessions.</p>
+            <h3 class="card-title">
+              <svg class="icon icon-16"><use href="#icon-clock"/></svg>
+              Report History
+            </h3>
+            <p class="rpt-history-sub muted text-sm">Reports generated this session and from previous sessions.</p>
           </div>
-          <button type="button" class="btn btn-outline" id="btn-clear-report-history" style="font-size:0.78rem;padding:6px 12px;">Clear History</button>
+          <button type="button" class="btn btn-outline btn-sm" id="btn-clear-report-history">Clear History</button>
         </div>
         <div id="report-history-list" class="rpt-history-list">
           <div class="rpt-history-empty">No reports generated yet.</div>
@@ -1025,26 +1049,6 @@
 <script src="js/theme-manager.js"></script>
 <script src="js/theme-toggle.js"></script>
 <script type="module" src="js/app.js"></script>
-
-<!-- Account popover — lives on body so sidebar overflow:auto doesn't clip it -->
-<div id="account-dropdown" class="account-popover" role="menu" aria-label="Account options" hidden>
-  <div class="account-popover-user">
-    <div class="account-popover-avatar" id="acct-pop-avatar">F</div>
-    <div class="account-popover-info">
-      <div class="account-popover-name" id="acct-pop-name">—</div>
-      <div class="account-popover-email" id="acct-pop-email">—</div>
-    </div>
-  </div>
-  <div class="account-popover-divider"></div>
-  <button class="account-popover-item" id="acct-account-page-btn" role="menuitem">
-    <span class="account-popover-icon"><svg class="icon icon-15"><use href="#icon-edit"/></svg></span>
-    <span>Account &amp; security</span>
-  </button>
-  <button class="account-popover-item" id="acct-password-shortcut-btn" role="menuitem">
-    <span class="account-popover-icon"><svg class="icon icon-15"><use href="#icon-key"/></svg></span>
-    <span>Change password</span>
-  </button>
-</div>
 
 <script type="text/javascript" src="vendor/email.min.js"></script>
 </body>
