@@ -30,6 +30,7 @@ import { checkAndSeedPresets } from './scripts/seed-presets.js';
 import { sendUniSms } from './lib/unisms.js';
 import { getEmailJsServerEnv } from './lib/emailjs-env.js';
 import { postDispatchAlert } from './notifications/dispatch-alert.js';
+import { startRtdbAlertWatcher } from './notifications/rtdb-alert-watcher.js';
 
 // Initialise Firebase Admin SDK once
 function initAdmin() {
@@ -176,6 +177,9 @@ app.get('/api/config', (_req, res) => {
       firestoreEmulatorPort: parseInt(process.env.FIRESTORE_EMULATOR_PORT || '8080', 10) || 8080,
       authEmulatorPort: parseInt(process.env.FIREBASE_AUTH_EMULATOR_PORT || '9099', 10) || 9099,
     },
+    serverDispatchesAlerts: !!process.env.FIREBASE_DATABASE_URL &&
+      process.env.RTDB_ALERT_WATCHER !== '0' &&
+      String(process.env.RTDB_ALERT_WATCHER || '').toLowerCase() !== 'false',
     emailjsPublicKey: process.env.EMAILJS_PUBLIC_KEY || '',
     emailjsServiceId: process.env.EMAILJS_SERVICE_ID || '',
     emailjsTemplateId: process.env.EMAILJS_TEMPLATE_ID || '',
@@ -1074,4 +1078,6 @@ app.listen(PORT, async () => {
   } catch (e) {
     console.error('[Server] Failed to seed presets:', e.message);
   }
+
+  startRtdbAlertWatcher({ deviceId: process.env.DEVICE_ID || 'device001' });
 });

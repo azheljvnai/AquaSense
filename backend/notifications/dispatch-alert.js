@@ -180,22 +180,20 @@ export function validateDispatchAlertBody(alert) {
 }
 
 /**
- * Express handler: POST body `{ alert }`, Bearer auth already verified.
+ * Fan out email/SMS for one alert to all active users with enabled notification prefs.
+ * Used by POST /api/notifications/dispatch-alert and the RTDB alert watcher.
  */
-export async function postDispatchAlert(req, res) {
+export async function dispatchAlertToAllUsers(alert) {
   if (!admin.apps.length) {
-    return res.status(503).json({ error: 'Admin SDK not initialised.' });
+    throw new Error('Admin SDK not initialised.');
   }
 
-  const { alert } = req.body || {};
   const validationError = validateDispatchAlertBody(alert);
   if (validationError) {
-    return res.status(400).json({ error: validationError });
+    throw new Error(validationError);
   }
 
   const fs = admin.firestore();
-  const pondName = alert.pond || 'default';
-  const parameter = alert.key;
 
   let processed = 0;
   let smsSent = 0;
@@ -208,11 +206,11 @@ export async function postDispatchAlert(req, res) {
     activeSnap = await fs.collection('users').where('status', '==', 'active').get();
   } catch (e) {
     console.error('[dispatch-alert] active users query failed:', e);
-    return res.status(500).json({ error: 'Failed to query active users.' });
+    throw new Error('Failed to query active users.');
   }
 
   if (activeSnap.empty) {
-    return res.status(200).json({
+    return {
       ok: true,
       processed: 0,
       smsSent: 0,
@@ -220,7 +218,7 @@ export async function postDispatchAlert(req, res) {
       skipped: 0,
       errors: [],
       message: 'No active users.',
-    });
+    };
   }
 
   const emailJsEnv = getEmailJsServerEnv();
@@ -337,12 +335,38 @@ export async function postDispatchAlert(req, res) {
     }
   }
 
-  return res.status(200).json({
+  return {
     ok: true,
     processed,
     smsSent,
     emailSent,
     skipped,
     errors,
-  });
+  };
+}
+
+/**
+ * Express handler: POST body `{ alert }`, Bearer auth already verified.
+ */
+export async function postDispatchAlert(req, res) {
+  if (!admin.apps.length) {
+    return res.status(503).json({ error: 'Admin SDK not initialised.' });
+  }
+
+  const { alert } = req.body || {};
+  const validationError = validateDispatchAlertBody(alert);
+  if (validationError) {
+    return res.status(400).json({ error: validationError });
+  }
+
+  try {
+    const result = await dispatchAlertToAllUsers(alert);
+    return res.status(200).json(result);
+  } catch (e) {
+    const msg = e?.message || String(e);
+    if (msg.includes('Failed to query active users')) {
+      return res.status(500).json({ error: msg });
+    }
+    return res.status(400).json({ error: msg });
+  }
 }

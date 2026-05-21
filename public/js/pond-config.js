@@ -418,8 +418,7 @@ export async function recordPondSensorReading(ph, doVal, turb, temp) {
  * @deprecated Use getActiveConfigId() instead
  */
 export function getActivePondId() {
-  console.warn('getActivePondId() is deprecated. Use getActiveConfigId() instead.');
-  return null;
+  return getActiveConfigId();
 }
 
 /**

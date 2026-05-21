@@ -6,6 +6,7 @@ import { initializeApp, getApps } from 'https://www.gstatic.com/firebasejs/10.12
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut, getIdToken, updatePassword, reauthenticateWithCredential, EmailAuthProvider, connectAuthEmulator } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
 import {
   getFirestore,
+  initializeFirestore,
   connectFirestoreEmulator,
   doc,
   getDoc,
@@ -52,7 +53,13 @@ export function initFirebase(firebaseConfig) {
     const apps = getApps();
     app = apps.length ? apps[0] : initializeApp(appOptions);
     auth = getAuth(app);
-    fs = getFirestore(app);
+    try {
+      fs = initializeFirestore(app, { experimentalForceLongPolling: true });
+    } catch (e) {
+      const msg = String(e?.message || e);
+      if (!/already exists/i.test(msg)) throw e;
+      fs = getFirestore(app);
+    }
     rtdb = getDatabase(app);
 
     if (!_emulatorsConnected && truthyEmulatorFlag(useFirebaseEmulators)) {

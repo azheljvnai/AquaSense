@@ -7,7 +7,7 @@
  * - Renders live summary counters and a scrollable alert list
  * - Notification preferences (email/SMS/push) persisted to localStorage
  */
-import { getBadgeForSpecies, getActiveThresholds, getActiveSpecies, getActivePondId } from '../pond-config.js';
+import { getBadgeForSpecies, getActiveThresholds, getActiveSpecies, getActiveConfigId } from '../pond-config.js';
 import { getActivePond } from '../pond-context.js';
 import { handleAlert } from './notifications.js';
 import {
@@ -155,50 +155,6 @@ async function persistAlertToFirestore(alert) {
   }
 }
 
-/**
- * Load alerts from Firestore on page load.
- * Merges with localStorage alerts (Firestore is source of truth).
- * Applies same pruning logic (7 days, 200 max).
- * @returns {Promise<Array>} - Array of alerts from Firestore
- */
-async function loadAlertsFromFirestore() {
-  if (!fbAuth().currentUser) {
-    return loadAlerts();
-  }
-  try {
-    const alertsRef = fbCollection(fbFirestore(), 'alerts');
-    const q = fbQuery(alertsRef, fbOrderBy('ts', 'desc'));
-    const querySnapshot = await fbGetDocs(q);
-    
-    const firestoreAlerts = [];
-    querySnapshot.docs.forEach((doc) => {
-      firestoreAlerts.push(firestoreDataToAlert(doc.data(), doc.id));
-    });
-    
-    // Merge with localStorage alerts (Firestore is source of truth)
-    const localAlerts = loadAlerts();
-    
-    // Create a map of Firestore alert IDs for deduplication
-    const firestoreIds = new Set(firestoreAlerts.map(a => a.id));
-    
-    // Add localStorage alerts that are not in Firestore
-    const uniqueLocalAlerts = localAlerts.filter(a => !firestoreIds.has(a.id));
-    
-    // Combine and prune
-    const mergedAlerts = [...firestoreAlerts, ...uniqueLocalAlerts];
-    const prunedAlerts = pruneAlerts(mergedAlerts);
-    
-    // Save merged alerts back to localStorage
-    saveAlerts(prunedAlerts);
-    
-    return prunedAlerts;
-  } catch (err) {
-    console.error('[loadAlertsFromFirestore] Failed to load alerts from Firestore:', err);
-    // Fall back to localStorage on error
-    return loadAlerts();
-  }
-}
-
 function firestoreDataToAlert(data, docId) {
   let ts = Number(data.ts) || 0;
   if (ts > 0 && ts < 1e12) ts *= 1000;
@@ -222,6 +178,8 @@ function firestoreDataToAlert(data, docId) {
 }
 
 let _alertsRealtimeUnsub = null;
+/** UID for which a realtime listener is active (avoids re-subscribe on token refresh). */
+let _alertsSubscribedForUid = null;
 
 function unsubscribeAlertsRealtime() {
   if (_alertsRealtimeUnsub) {
@@ -230,43 +188,66 @@ function unsubscribeAlertsRealtime() {
     } catch { /* ignore */ }
     _alertsRealtimeUnsub = null;
   }
+  _alertsSubscribedForUid = null;
+}
+
+function mergeFirestoreSnapshotDocs(docs) {
+  const firestoreAlerts = docs.map((doc) => firestoreDataToAlert(doc.data(), doc.id));
+  const localAlerts = loadAlerts();
+  const firestoreIds = new Set(firestoreAlerts.map((a) => a.id));
+  const uniqueLocalAlerts = localAlerts.filter((a) => !firestoreIds.has(a.id));
+  return pruneAlerts([...firestoreAlerts, ...uniqueLocalAlerts]);
 }
 
 /**
- * Merge remote alert writes into localStorage so other logged-in sessions see updates.
+ * Single realtime listener for alerts (initial load + updates).
+ * Avoids overlapping getDocs + onSnapshot Listen streams that cause WebChannel 400/404 noise.
  */
 function subscribeAlertsRealtime() {
   unsubscribeAlertsRealtime();
-  if (!fbAuth().currentUser) {
+  const user = fbAuth().currentUser;
+  if (!user) {
     return;
   }
   try {
     const alertsRef = fbCollection(fbFirestore(), 'alerts');
     const q = fbQuery(alertsRef, fbOrderBy('ts', 'desc'), fbLimit(250));
+    let isFirstSnapshot = true;
+    _alertsSubscribedForUid = user.uid;
     _alertsRealtimeUnsub = fbOnSnapshot(
       q,
       (snapshot) => {
-        const byId = new Map();
-        for (const a of loadAlerts()) {
-          byId.set(a.id, a);
+        if (isFirstSnapshot) {
+          isFirstSnapshot = false;
+          saveAlerts(mergeFirestoreSnapshotDocs(snapshot.docs));
+        } else {
+          const byId = new Map();
+          for (const a of loadAlerts()) {
+            byId.set(a.id, a);
+          }
+          snapshot.docChanges().forEach((change) => {
+            if (change.type === 'removed') {
+              const data = change.doc.data();
+              byId.delete((typeof data?.id === 'string' && data.id) ? data.id : change.doc.id);
+              return;
+            }
+            const normalized = firestoreDataToAlert(change.doc.data(), change.doc.id);
+            if (!normalized.id || !Number.isFinite(normalized.ts)) return;
+            byId.set(normalized.id, normalized);
+          });
+          saveAlerts(pruneAlerts([...byId.values()].sort((a, b) => b.ts - a.ts)));
         }
-        snapshot.docChanges().forEach((change) => {
-          if (change.type === 'removed') return;
-          const normalized = firestoreDataToAlert(change.doc.data(), change.doc.id);
-          if (!normalized.id || !Number.isFinite(normalized.ts)) return;
-          byId.set(normalized.id, normalized);
-        });
-        const merged = pruneAlerts([...byId.values()].sort((a, b) => b.ts - a.ts));
-        saveAlerts(merged);
         rerenderAlertsTab();
         window.dispatchEvent(new Event('alerts-updated'));
       },
       (err) => {
         console.error('[subscribeAlertsRealtime]', err);
+        _alertsSubscribedForUid = null;
       }
     );
   } catch (err) {
     console.error('[subscribeAlertsRealtime] setup failed:', err);
+    _alertsSubscribedForUid = null;
   }
 }
 
@@ -393,8 +374,8 @@ const COOLDOWN_MS = 15 * 60 * 1000; // match server dispatch-alert.js
 const _lastAlertTs = {};
 
 function cooldownKey(key, severity) {
-  const pondId = getActivePondId() || 'default';
-  return `${pondId}:${key}:${severity}`;
+  const configId = getActiveConfigId() || 'default';
+  return `${configId}:${key}:${severity}`;
 }
 
 function shouldSuppress(key, severity) {
@@ -425,11 +406,11 @@ export async function loadAlertsAfterAuth() {
   if (!user) {
     return;
   }
+  if (_alertsSubscribedForUid === user.uid && _alertsRealtimeUnsub) {
+    return;
+  }
   try {
     await fbGetIdToken();
-    await loadAlertsFromFirestore();
-    rerenderAlertsTab();
-    window.dispatchEvent(new Event('alerts-updated'));
     subscribeAlertsRealtime();
   } catch (err) {
     console.error('[loadAlertsAfterAuth] Failed to load alerts:', err);
@@ -544,7 +525,8 @@ export function init() {
 
   renderThresholds();
   window.addEventListener('thresholds-changed',   renderThresholds);
-  window.addEventListener('pond-config-changed',  renderThresholds);
+  window.addEventListener('config-changed', renderThresholds);
+  window.addEventListener('pond-config-changed', renderThresholds);
 
   // ── Pond filter state ──────────────────────────────────────────────────────
   let _activePondFilter = 'all'; // 'all' or a pond name string
@@ -727,10 +709,12 @@ export function init() {
       (async () => {
         for (const alert of newAlerts) {
           await persistAlertToFirestore(alert);
-          try {
-            await handleAlert(alert);
-          } catch {
-            /* notification errors are non-fatal */
+          if (!window._serverDispatchesAlerts) {
+            try {
+              await handleAlert(alert);
+            } catch {
+              /* notification errors are non-fatal */
+            }
           }
         }
       })().catch(() => {/* ignore */});
@@ -738,11 +722,13 @@ export function init() {
   });
 
   // Re-render when pond/config changes (thresholds may reclassify existing state)
-  window.addEventListener('pond-config-changed', (e) => {
-    const pondId = e.detail?.pondId || getActivePondId() || 'default';
-    resetCooldownsForPond(pondId);
+  function onActiveConfigChanged(e) {
+    const configId = e.detail?.configId || e.detail?.pondId || getActiveConfigId() || 'default';
+    resetCooldownsForPond(configId);
     renderAlertList();
-  });
+  }
+  window.addEventListener('config-changed', onActiveConfigChanged);
+  window.addEventListener('pond-config-changed', onActiveConfigChanged);
   window.addEventListener('active-pond-changed', renderAlertList);
 }
 

@@ -520,6 +520,7 @@ async function loadConfigAndPrefill() {
     }
   }
   if (config.deviceId) deviceId = config.deviceId;
+  window._serverDispatchesAlerts = config.serverDispatchesAlerts === true;
 
   if (config.firebase && (config.firebase.apiKey || config.firebase.projectId || config.firebase.databaseURL)) {
     initFirebase(config.firebase);

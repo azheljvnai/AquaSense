@@ -5,9 +5,39 @@
  * Every generated report is saved to a localStorage-backed history list.
  */
 import { getHistoryRange, mergeRtdbEntries } from '../utils.js';
-import { getActivePond, getPondList, onActivePondChange } from '../pond-context.js';
-import { getPondConfigurations, SPECIES_PRESETS } from '../pond-config.js';
+import {
+  getActiveConfigId,
+  getActiveSpecies,
+  getActiveThresholds,
+  SPECIES_PRESETS,
+} from '../pond-config.js';
 import { showAppToast, showConfirmModal } from '../ui/modal-ui.js';
+
+function getReportConfig() {
+  const species = getActiveSpecies();
+  const thresholds = getActiveThresholds();
+  const preset = species && SPECIES_PRESETS[species]
+    ? SPECIES_PRESETS[species]
+    : SPECIES_PRESETS.crayfish;
+  if (species && thresholds) {
+    return { species, name: preset.name, thresholds };
+  }
+  return {
+    species: 'crayfish',
+    name: 'Crayfish (default)',
+    thresholds: SPECIES_PRESETS.crayfish.thresholds,
+  };
+}
+
+function getReportConfigLabel() {
+  if (!getActiveConfigId()) return 'Not Configured';
+  const cfg = getReportConfig();
+  if (cfg.name) return cfg.name;
+  if (cfg.species) {
+    return cfg.species.charAt(0).toUpperCase() + cfg.species.slice(1);
+  }
+  return 'Active configuration';
+}
 
 // ─── Report History store ────────────────────────────────────────────────────
 const HISTORY_KEY = 'aquasense.reportHistory.v1';
@@ -40,37 +70,6 @@ export function init() {
       document.getElementById('tab-' + tab)?.classList.add('active');
     });
   });
-
-  // ── Active pond (reports follow dashboard pond selection) ─────────────────
-
-  function getReportPond() {
-    return getActivePond() || null;
-  }
-
-  function updateReportPondBar() {
-    const pond   = getReportPond();
-    const bar    = document.getElementById('report-active-pond-bar');
-    const nameEl = document.getElementById('report-active-pond-name');
-    const specEl = document.getElementById('report-active-pond-species');
-    if (!bar) return;
-    if (!pond) {
-      bar.style.display = '';
-      if (nameEl) nameEl.textContent = 'No pond selected';
-      if (specEl) specEl.style.display = 'none';
-      return;
-    }
-    bar.style.display = '';
-    if (nameEl) nameEl.textContent = pond.name || pond.id;
-    if (specEl) {
-      const s = pond.species || '';
-      specEl.textContent = s ? s.charAt(0).toUpperCase() + s.slice(1) : '';
-      specEl.style.display = s ? '' : 'none';
-    }
-  }
-
-  updateReportPondBar();
-  onActivePondChange(() => updateReportPondBar());
-  window.addEventListener('pond-list-updated', () => updateReportPondBar());
 
   // ── helpers ────────────────────────────────────────────────────────────────
   function pad(n) { return String(n).padStart(2, '0'); }
@@ -175,31 +174,8 @@ export function init() {
     downloadBlob(filename, new Blob(['\uFEFF' + rowsToCsvString(rows)], { type: 'text/csv;charset=utf-8' }));
   }
 
-  // ── Per-pond config loader ─────────────────────────────────────────────────
-
   /**
-   * Fetch the active config for a pond and return its species + thresholds.
-   * Falls back to crayfish defaults if nothing is configured.
-   */
-  async function fetchPondConfig(pondId) {
-    try {
-      const configs = await getPondConfigurations(pondId);
-      const active  = configs.find(c => c.isActive) || configs[0] || null;
-      if (active) {
-        const species = active.species || 'crayfish';
-        const preset  = SPECIES_PRESETS[species] || SPECIES_PRESETS.crayfish;
-        return {
-          species,
-          name:       active.name || preset.name,
-          thresholds: active.thresholds ? { ...preset.thresholds, ...active.thresholds } : preset.thresholds,
-        };
-      }
-    } catch { /* offline / no config */ }
-    return { species: 'crayfish', name: 'Crayfish (default)', thresholds: SPECIES_PRESETS.crayfish.thresholds };
-  }
-
-  /**
-   * Evaluate a sensor value against a pond's thresholds and return a status label.
+   * Evaluate a sensor value against the active configuration thresholds.
    */
   function evalStatus(key, val, thresholds) {
     const t = thresholds;
@@ -286,51 +262,23 @@ export function init() {
     }
     const readings = getHistoryRange(range.from.getTime(), range.to.getTime());
     const snap     = getLiveSnapshot();
-    const pond = getReportPond();
-
-    // Reports use the active pond from the dashboard
-    const targetPonds = pond ? [pond] : [];
-
-    const pondLabel    = pond ? (pond.name || pond.id) : 'No pond selected';
+    const reportCfg = getReportConfig();
+    const configLabel = getReportConfigLabel();
+    const speciesLabel = reportCfg.species.charAt(0).toUpperCase() + reportCfg.species.slice(1);
     const typeLabel    = type === 'combined' ? 'Combined (Water Quality + Feeding)' : type === 'water-quality' ? 'Water Quality' : 'Feeding';
 
     const header = [
       ['report_type', typeLabel],
       ['period', period], ['date_range', range.label],
-      ['pond_filter', pondLabel],
+      ['configuration', configLabel],
+      ['species', speciesLabel],
       ['generated_at', new Date().toISOString()], ['firebase_status', snap.status], [],
     ];
 
     let body = [];
-
-    if (targetPonds.length === 0) {
-      // No ponds configured — fall back to untagged report
-      const pondCfg = { species: 'crayfish', thresholds: SPECIES_PRESETS.crayfish.thresholds };
-      if (type === 'water-quality') body = wqCsvRows(readings, snap, pondCfg);
-      else if (type === 'feeding')  body = feedingCsvRows(period, range);
-      else body = [...wqCsvRows(readings, snap, pondCfg), [], ...feedingCsvRows(period, range)];
-    } else {
-      // One section per pond, each with its own config
-      for (let i = 0; i < targetPonds.length; i++) {
-        const p       = targetPonds[i];
-        const pondCfg = await fetchPondConfig(p.id);
-        const speciesLabel = pondCfg.species.charAt(0).toUpperCase() + pondCfg.species.slice(1);
-
-        if (i > 0) body.push([], ['═══════════════════════════════════════']);
-        body.push(
-          [`=== POND: ${p.name || p.id} ===`],
-          ['pond_id', p.id],
-          ['pond_name', p.name || p.id],
-          ['species', speciesLabel],
-          ['config_name', pondCfg.name],
-          [],
-        );
-
-        if (type === 'water-quality') body.push(...wqCsvRows(readings, snap, pondCfg));
-        else if (type === 'feeding')  body.push(...feedingCsvRows(period, range));
-        else body.push(...wqCsvRows(readings, snap, pondCfg), [], ...feedingCsvRows(period, range));
-      }
-    }
+    if (type === 'water-quality') body = wqCsvRows(readings, snap, reportCfg);
+    else if (type === 'feeding')  body = feedingCsvRows(period, range);
+    else body = [...wqCsvRows(readings, snap, reportCfg), [], ...feedingCsvRows(period, range)];
 
     return [...header, ...body];
   }
@@ -397,11 +345,9 @@ export function init() {
     }
     const readings = getHistoryRange(range.from.getTime(), range.to.getTime());
     const snap     = getLiveSnapshot();
-    const pond     = getReportPond();
-    const allPonds = getPondList();
-
-    const targetPonds  = pond ? [pond] : allPonds;
-    const pondLabel    = pond ? (pond.name || pond.id) : 'No pond selected';
+    const reportCfg = getReportConfig();
+    const configLabel = getReportConfigLabel();
+    const speciesLabel = reportCfg.species.charAt(0).toUpperCase() + reportCfg.species.slice(1);
     const periodLabel  = { daily:'Daily', weekly:'Weekly', monthly:'Monthly', custom:'Custom' }[period] ?? period;
     const typeLabel    = { 'water-quality':'Water Quality', feeding:'Feeding', combined:'Combined' }[type] ?? type;
     const title        = `${periodLabel} ${typeLabel} Report`;
@@ -409,39 +355,19 @@ export function init() {
     const w = window.open('', '_blank');
     if (!w) { alert('Popup blocked. Allow popups to print/save as PDF.'); return; }
 
-    // Build per-pond sections
-    let body = '';
-    if (targetPonds.length === 0) {
-      const pondCfg = { species: 'crayfish', thresholds: SPECIES_PRESETS.crayfish.thresholds };
-      if (type === 'water-quality') body = wqSummaryHtml(readings, snap, pondCfg, { includeRaw: false });
-      else if (type === 'feeding')  body = feedingHtml(period, range);
-      else body = wqSummaryHtml(readings, snap, pondCfg, { includeRaw: false }) + feedingHtml(period, range);
-    } else {
-      const sections = await Promise.all(targetPonds.map(async (p) => {
-        const pondCfg     = await fetchPondConfig(p.id);
-        const speciesLabel = pondCfg.species.charAt(0).toUpperCase() + pondCfg.species.slice(1);
-        const pondHeader  = targetPonds.length > 1
-          ? `<div class="pond-section-header">
-               <span class="pond-section-name">${p.name || p.id}</span>
-               <span class="badge" style="background:#f0fdf4;color:#166534">${speciesLabel}</span>
-               <span class="badge" style="background:#f8fafc;color:#475569;font-weight:500">${pondCfg.name}</span>
-             </div>`
-          : `<div style="margin-bottom:8px;font-size:11px;color:#64748b">
-               Species: <strong>${speciesLabel}</strong> &nbsp;·&nbsp; Config: <strong>${pondCfg.name}</strong>
-             </div>`;
+    const configHeader = `<div style="margin-bottom:8px;font-size:11px;color:#64748b">
+      Configuration: <strong>${configLabel}</strong> &nbsp;·&nbsp; Species: <strong>${speciesLabel}</strong>
+    </div>`;
 
-        let content = '';
-        if (type === 'water-quality') content = wqSummaryHtml(readings, snap, pondCfg, { includeRaw: false });
-        else if (type === 'feeding')  content = feedingHtml(period, range);
-        else content = wqSummaryHtml(readings, snap, pondCfg, { includeRaw: false }) + feedingHtml(period, range);
+    let content = '';
+    if (type === 'water-quality') content = wqSummaryHtml(readings, snap, reportCfg, { includeRaw: false });
+    else if (type === 'feeding')  content = feedingHtml(period, range);
+    else content = wqSummaryHtml(readings, snap, reportCfg, { includeRaw: false }) + feedingHtml(period, range);
 
-        return `<div class="pond-section">${pondHeader}${content}</div>`;
-      }));
-      body = sections.join('');
-    }
+    const body = `${configHeader}${content}`;
 
     const combinedBadge = type === 'combined' ? '<span class="badge" style="background:#ede9fe;color:#6d28d9">Water + Feeding</span>' : '';
-    const pondBadge     = `<span class="badge" style="background:#e0f2fe;color:#0369a1">${pondLabel}</span>`;
+    const configBadge   = `<span class="badge" style="background:#e0f2fe;color:#0369a1">${configLabel}</span>`;
 
     w.document.open();
     w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${title}</title>
@@ -462,7 +388,7 @@ export function init() {
   .pond-section-name{font-size:14px;font-weight:700;color:#0f172a}
   @media print{body{padding:12px 14px}thead{display:table-header-group}.pond-section{page-break-inside:avoid}}
 </style></head><body>
-  <div><span class="badge">${periodLabel}</span><span class="badge" style="background:#f0fdf4;color:#166534">${typeLabel}</span>${combinedBadge}${pondBadge}</div>
+  <div><span class="badge">${periodLabel}</span><span class="badge" style="background:#f0fdf4;color:#166534">${typeLabel}</span>${combinedBadge}${configBadge}</div>
   <h1>${title}</h1>
   <div class="meta">Generated: ${new Date().toLocaleString()}</div>
   <div class="range">Period: ${range.label}</div>
@@ -536,14 +462,14 @@ export function init() {
   function recordHistory({ period, type, format, range, customFrom, customTo }) {
     const periodLabel = { daily:'Daily', weekly:'Weekly', monthly:'Monthly', custom:'Custom' }[period] ?? period;
     const typeLabel   = { 'water-quality':'Water Quality', feeding:'Feeding', combined:'Combined' }[type] ?? type;
-    const pond = getReportPond();
-    const pondLabel = pond ? (pond.name || pond.id) : 'No pond selected';
+    const configLabel = getReportConfigLabel();
     addToHistory({
       title: `${periodLabel} ${typeLabel} Report`,
       period, type, format,
       dateRange: range.label,
-      pondLabel,
-      pondId: pond?.id || 'all',
+      pondLabel: configLabel,
+      configLabel,
+      configId: getActiveConfigId() || '',
       generatedAt: new Date().toLocaleString(),
       customFrom: customFrom || '',
       customTo:   customTo   || '',
