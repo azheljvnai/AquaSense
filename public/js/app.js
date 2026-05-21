@@ -25,13 +25,22 @@ import {
   setFirebaseConnected,
   refreshFeedingScheduleUi,
 } from './features/feeding.js';
-import { log } from './utils.js';
 import {
   validatePassword,
   passwordsMatch,
   syncPasswordChecklistUI,
 } from './password-rules.js';
-import { getBadge, spkData, spkCol, drawSpark, recordSensorReading, mergeRtdbEntries } from './utils.js';
+import {
+  getBadge,
+  spkData,
+  spkCol,
+  drawSpark,
+  recordSensorReading,
+  mergeRtdbEntries,
+  log,
+  setActivityLogUser,
+  clearActivityLog,
+} from './utils.js';
 import { getBadgeForSpecies, recordPondSensorReading } from './pond-config.js';
 import { init as initPondManagement } from './features/pond-management.js';
 import { setPondList, setActivePond, getActivePond, onActivePondChange } from './pond-context.js';
@@ -989,6 +998,8 @@ function init() {
         showAuthScreen(true);
         setFirebaseConnected(false);
         unloadAlertsOnSignOut();
+        setActivityLogUser(null);
+        clearActivityLog();
         return;
       }
 
@@ -997,6 +1008,7 @@ function init() {
       try {
         currentProfile = await ensureUserProfile(user);
         currentProfile.role = normalizeRole(currentProfile.role);
+        setActivityLogUser(user.uid);
         renderSidebarUser(currentProfile);
         applyRoleGuards(currentProfile.role);
         syncPageFromUrl({ replace: true });

@@ -5,7 +5,7 @@ import { initDashboardChart } from '../charts.js';
 import { getActiveConfigId, getActiveSpecies, loadActiveConfiguration, onConfigChange } from '../pond-config.js';
 
 const ALERT_STORAGE_KEY = 'aquasense.alerts.v1';
-const RECENT_ALERTS_LIMIT = 5;
+const RECENT_ALERTS_LIMIT = 3;
 
 function normalizeAlerts(raw) {
   if (!Array.isArray(raw)) return [];

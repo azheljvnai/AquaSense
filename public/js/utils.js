@@ -246,13 +246,90 @@ export function drawSpark(id, data, color) {
   svg.innerHTML = `<polyline points="${pts}" fill="none" stroke="${color}" stroke-width="1.5" opacity="0.85"/>`;
 }
 
+const ACTIVITY_LOG_KEY_PREFIX = 'aquasense.activityLog.v1.';
+const ACTIVITY_LOG_MAX = 60;
+
+let _activityLogUid = null;
+
+function activityLogStorageKey(uid) {
+  return ACTIVITY_LOG_KEY_PREFIX + uid;
+}
+
+function normalizeActivityLogEntry(item) {
+  if (!item || typeof item !== 'object') return null;
+  const msg = typeof item.msg === 'string' ? item.msg : '';
+  if (!msg) return null;
+  const ts = Number(item.ts);
+  if (!Number.isFinite(ts)) return null;
+  const type = typeof item.type === 'string' ? item.type : '';
+  return { ts, msg, type };
+}
+
+function loadActivityLog(uid) {
+  try {
+    const raw = JSON.parse(localStorage.getItem(activityLogStorageKey(uid)) || '[]');
+    if (!Array.isArray(raw)) return [];
+    return raw.map(normalizeActivityLogEntry).filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
+function saveActivityLog(uid, entries) {
+  try {
+    localStorage.setItem(activityLogStorageKey(uid), JSON.stringify(entries));
+  } catch { /* quota — ignore */ }
+}
+
+function formatLogTime(ts) {
+  return new Date(ts).toTimeString().split(' ')[0];
+}
+
+function createLogListItem(msg, type, ts) {
+  const li = document.createElement('li');
+  li.className = 'l' + type;
+  li.innerHTML = `<span class="lt">${formatLogTime(ts)}</span><span class="lm">${msg}</span>`;
+  return li;
+}
+
+function renderActivityLog(entries) {
+  const ul = document.getElementById('loglist');
+  if (!ul) return;
+  ul.innerHTML = '';
+  for (const entry of entries) {
+    ul.appendChild(createLogListItem(entry.msg, entry.type, entry.ts));
+  }
+}
+
+/**
+ * Bind activity log to a signed-in user (reloads their persisted log into #loglist).
+ * Pass null on sign-out before clearActivityLog().
+ */
+export function setActivityLogUser(uid) {
+  _activityLogUid = uid || null;
+  if (!_activityLogUid) return;
+  renderActivityLog(loadActivityLog(_activityLogUid));
+}
+
+/** Clear the activity log DOM (does not delete persisted entries). */
+export function clearActivityLog() {
+  const ul = document.getElementById('loglist');
+  if (ul) ul.innerHTML = '';
+}
+
 export function log(msg, type = '') {
   const ul = document.getElementById('loglist');
   if (!ul) return;
-  const li = document.createElement('li');
-  li.className = 'l' + type;
-  const time = new Date().toTimeString().split(' ')[0];
-  li.innerHTML = `<span class="lt">${time}</span><span class="lm">${msg}</span>`;
-  ul.prepend(li);
-  while (ul.children.length > 60) ul.removeChild(ul.lastChild);
+
+  const ts = Date.now();
+  const entry = { ts, msg, type: type || '' };
+
+  if (_activityLogUid) {
+    const stored = loadActivityLog(_activityLogUid);
+    stored.unshift(entry);
+    saveActivityLog(_activityLogUid, stored.slice(0, ACTIVITY_LOG_MAX));
+  }
+
+  ul.prepend(createLogListItem(msg, type, ts));
+  while (ul.children.length > ACTIVITY_LOG_MAX) ul.removeChild(ul.lastChild);
 }
