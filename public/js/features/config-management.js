@@ -16,6 +16,7 @@ import {
   SPECIES_PRESETS,
 } from '../pond-config.js';
 import { flexModalHtml, escapeHtml } from '../ui/templates.js';
+import { showAppToast, showConfirmModal } from '../ui/modal-ui.js';
 
 let _configurations = [];
 let _activeConfigId = null;
@@ -194,35 +195,36 @@ async function activateConfig(configId) {
     await setActiveConfiguration(configId);
     _activeConfigId = configId;
     renderConfigurationSelector();
-    showToast('Configuration activated successfully', 'success');
+    showAppToast('Configuration activated successfully', 'success');
     
     // Notify dashboard and other components
     window.dispatchEvent(new CustomEvent('config-changed', {
       detail: { configId, species: getActiveSpecies() },
     }));
   } catch (e) {
-    showToast(`Failed to activate configuration: ${e.message}`, 'error');
+    showAppToast(`Failed to activate configuration: ${e.message}`, 'error');
   }
 }
 
 // ─── Deactivate Configuration ─────────────────────────────────────────────────
 
 async function deactivateConfig() {
-  if (!confirm('Are you sure you want to deactivate the current configuration?')) return;
-  
-  try {
-    await deactivateConfiguration();
-    _activeConfigId = null;
-    renderConfigurationSelector();
-    showToast('Configuration deactivated', 'success');
-    
-    // Notify dashboard and other components
-    window.dispatchEvent(new CustomEvent('config-changed', {
-      detail: { configId: null, species: null },
-    }));
-  } catch (e) {
-    showToast(`Failed to deactivate configuration: ${e.message}`, 'error');
-  }
+  showConfirmModal({
+    title: 'Deactivate configuration',
+    subtitle: 'Species thresholds will no longer apply until another configuration is activated.',
+    message: 'Deactivate the current active configuration?',
+    confirmLabel: 'Deactivate',
+    variant: 'warning',
+    onConfirm: async () => {
+      await deactivateConfiguration();
+      _activeConfigId = null;
+      renderConfigurationSelector();
+      showAppToast('Configuration deactivated', 'success');
+      window.dispatchEvent(new CustomEvent('config-changed', {
+        detail: { configId: null, species: null },
+      }));
+    },
+  });
 }
 
 // ─── Show Create Configuration Dialog ─────────────────────────────────────────
@@ -362,9 +364,9 @@ async function assignPreset(species) {
     await loadConfigurations();
     renderConfigurationSelector();
     closeDialog('preset-dialog');
-    showToast(`${preset.name} configuration created successfully`, 'success');
+    showAppToast(`${preset.name} configuration created successfully`, 'success');
   } catch (e) {
-    showToast(`Failed to create configuration: ${e.message}`, 'error');
+    showAppToast(`Failed to create configuration: ${e.message}`, 'error');
   }
 }
 
@@ -470,7 +472,7 @@ async function saveNewConfiguration() {
   const species = document.getElementById('config-species').value;
   
   if (!name) {
-    showToast('Please enter a configuration name', 'error');
+    showAppToast('Please enter a configuration name', 'error');
     return;
   }
   
@@ -483,17 +485,17 @@ async function saveNewConfiguration() {
   const turbMax = parseFloat(document.getElementById('config-turb-max').value);
   
   if (phMin >= phMax) {
-    showToast('pH Min must be less than pH Max', 'error');
+    showAppToast('pH Min must be less than pH Max', 'error');
     return;
   }
   
   if (tempMin >= tempMax) {
-    showToast('Temperature Min must be less than Temperature Max', 'error');
+    showAppToast('Temperature Min must be less than Temperature Max', 'error');
     return;
   }
   
   if (doMin < 0 || turbMax < 0) {
-    showToast('Threshold values cannot be negative', 'error');
+    showAppToast('Threshold values cannot be negative', 'error');
     return;
   }
   
@@ -509,9 +511,9 @@ async function saveNewConfiguration() {
     await loadConfigurations();
     renderConfigurationSelector();
     closeDialog('create-config-dialog');
-    showToast('Configuration created successfully', 'success');
+    showAppToast('Configuration created successfully', 'success');
   } catch (e) {
-    showToast(`Failed to create configuration: ${e.message}`, 'error');
+    showAppToast(`Failed to create configuration: ${e.message}`, 'error');
   }
 }
 
@@ -522,7 +524,7 @@ async function saveEditedConfiguration() {
   const name = document.getElementById('edit-config-name').value.trim();
   
   if (!name) {
-    showToast('Please enter a configuration name', 'error');
+    showAppToast('Please enter a configuration name', 'error');
     return;
   }
   
@@ -535,17 +537,17 @@ async function saveEditedConfiguration() {
   const turbMax = parseFloat(document.getElementById('edit-turb-max').value);
   
   if (phMin >= phMax) {
-    showToast('pH Min must be less than pH Max', 'error');
+    showAppToast('pH Min must be less than pH Max', 'error');
     return;
   }
   
   if (tempMin >= tempMax) {
-    showToast('Temperature Min must be less than Temperature Max', 'error');
+    showAppToast('Temperature Min must be less than Temperature Max', 'error');
     return;
   }
   
   if (doMin < 0 || turbMax < 0) {
-    showToast('Threshold values cannot be negative', 'error');
+    showAppToast('Threshold values cannot be negative', 'error');
     return;
   }
   
@@ -561,7 +563,7 @@ async function saveEditedConfiguration() {
     await loadConfigurations();
     renderConfigurationSelector();
     closeDialog('edit-config-dialog');
-    showToast('Configuration updated successfully', 'success');
+    showAppToast('Configuration updated successfully', 'success');
     
     // If this was the active config, reload it
     if (configId === _activeConfigId) {
@@ -569,7 +571,7 @@ async function saveEditedConfiguration() {
       window.dispatchEvent(new CustomEvent('config-changed'));
     }
   } catch (e) {
-    showToast(`Failed to update configuration: ${e.message}`, 'error');
+    showAppToast(`Failed to update configuration: ${e.message}`, 'error');
   }
 }
 
@@ -578,17 +580,21 @@ async function saveEditedConfiguration() {
 async function deleteConfig(configId) {
   const config = _configurations.find(c => c.id === configId);
   if (!config) return;
-  
-  if (!confirm(`Are you sure you want to delete "${config.name || config.species}"?`)) return;
-  
-  try {
-    await deleteConfiguration(configId);
-    await loadConfigurations();
-    renderConfigurationSelector();
-    showToast('Configuration deleted successfully', 'success');
-  } catch (e) {
-    showToast(`Failed to delete configuration: ${e.message}`, 'error');
-  }
+
+  const name = config.name || config.species;
+  showConfirmModal({
+    title: 'Delete configuration',
+    subtitle: 'This permanently removes the configuration preset.',
+    message: `Delete "${name}"? Pond assignments using this configuration may be affected.`,
+    confirmLabel: 'Delete',
+    destructive: true,
+    onConfirm: async () => {
+      await deleteConfiguration(configId);
+      await loadConfigurations();
+      renderConfigurationSelector();
+      showAppToast('Configuration deleted successfully', 'success');
+    },
+  });
 }
 
 // ─── Helper Functions ──────────────────────────────────────────────────────────
@@ -609,31 +615,6 @@ function populateThresholdFields(species) {
 function closeDialog(dialogId) {
   const dialog = document.getElementById(dialogId);
   if (dialog) dialog.style.display = 'none';
-}
-
-function showToast(message, type = 'info') {
-  // Simple toast notification
-  const toast = document.createElement('div');
-  toast.className = `toast toast-${type}`;
-  toast.textContent = message;
-  toast.style.cssText = `
-    position: fixed;
-    top: 20px;
-    right: 20px;
-    padding: 12px 20px;
-    background: ${type === 'success' ? '#28a745' : type === 'error' ? '#dc3545' : '#17a2b8'};
-    color: white;
-    border-radius: 4px;
-    z-index: 10000;
-    animation: slideIn 0.3s ease-out;
-  `;
-  
-  document.body.appendChild(toast);
-  
-  setTimeout(() => {
-    toast.style.animation = 'slideOut 0.3s ease-out';
-    setTimeout(() => toast.remove(), 300);
-  }, 3000);
 }
 
 // ─── Load Configurations ───────────────────────────────────────────────────────
@@ -661,7 +642,7 @@ async function loadConfigurations() {
     console.log('[Config Management] Active config ID:', _activeConfigId);
   } catch (e) {
     console.error('Failed to load configurations:', e);
-    showToast('Failed to load configurations: ' + e.message, 'error');
+    showAppToast('Failed to load configurations: ' + e.message, 'error');
     // Set empty array so UI can still render
     _configurations = [];
   }

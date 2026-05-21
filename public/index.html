@@ -408,7 +408,6 @@
 
       <!-- Main content -->
       <div id="feed-content">
-
         <!-- Metric Cards -->
         <div class="feed-metrics">
           <div class="metric-card">
@@ -444,7 +443,7 @@
             <div id="feed-schedule-form" style="display:none;margin-bottom:12px;">
               <div class="feed-field-block">
                 <label class="feed-field-label" for="feed-schedule-input">Time</label>
-                <input id="feed-schedule-input" type="time" class="input-field" />
+                <input id="feed-schedule-input" type="time" class="input-field" required aria-describedby="feed-schedule-error" />
               </div>
               <div class="feed-field-block--days">
                 <label class="feed-field-label feed-field-label--days" for="feed-day-0">Repeat on</label>

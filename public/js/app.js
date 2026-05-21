@@ -19,8 +19,18 @@ import {
   fbUpdatePassword,
 } from './firebase-client.js';
 import { connect, initRoleTracking, fetchHistoryFromRTDB } from './firebase.js';
-import { init as initFeeding, triggerManualFeed, setFirebaseConnected } from './features/feeding.js';
+import {
+  init as initFeeding,
+  triggerManualFeed,
+  setFirebaseConnected,
+  refreshFeedingScheduleUi,
+} from './features/feeding.js';
 import { log } from './utils.js';
+import {
+  validatePassword,
+  passwordsMatch,
+  syncPasswordChecklistUI,
+} from './password-rules.js';
 import { getBadge, spkData, spkCol, drawSpark, recordSensorReading, mergeRtdbEntries } from './utils.js';
 import { getBadgeForSpecies, recordPondSensorReading } from './pond-config.js';
 import { init as initPondManagement } from './features/pond-management.js';
@@ -37,6 +47,7 @@ import { init as initConfigManagement, loadConfigurationsAfterAuth } from './fea
 import { init as initUserManagement, loadUsers, setCurrentUser } from './features/user-management.js';
 import { init as initNotifications, handleAlert } from './features/notifications.js';
 import { initRouter, pageFromPath, pathFromPage } from './router.js';
+import { showAppToast, showConfirmModal, wireAppDialog } from './ui/modal-ui.js';
 
 let deviceId = 'device001';
 let connectStarted = false;
@@ -63,7 +74,7 @@ const STORAGE_AUTO_CONNECT = 'aquasense.autoConnect.v1';
 function showAuthScreen(on) {
   const auth = document.getElementById('auth-screen');
   const main = document.querySelector('.main-wrap');
-  if (auth) auth.style.display = on ? 'flex' : 'none';
+  if (auth) auth.style.display = on ? '' : 'none';
   if (main) main.style.display = on ? 'none' : '';
 }
 
@@ -202,6 +213,7 @@ function applyRoleGuards(role) {
 
   // Expose current permissions on window for feature modules
   window._rbacPerms = perms;
+  refreshFeedingScheduleUi();
 }
 
 async function ensureUserProfile(user) {
@@ -689,7 +701,7 @@ function setupAccountMenu() {
     const p = currentProfile || {};
     const esc = (s) => String(s || '').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');
     const dlg = document.createElement('dialog');
-    dlg.className = 'um-modal';
+    dlg.className = 'um-modal app-modal';
     dlg.innerHTML = `
       <div class="um-modal-inner">
         <div class="um-modal-head">
@@ -723,11 +735,9 @@ function setupAccountMenu() {
       </div>`;
     document.body.appendChild(dlg);
     dlg.showModal();
-
-    const close = () => { dlg.close(); setTimeout(() => dlg.remove(), 0); };
+    const { close } = wireAppDialog(dlg, { initialFocusSelector: '#ep-name' });
     dlg.querySelector('#ep-x')?.addEventListener('click', close);
     dlg.querySelector('#ep-cancel')?.addEventListener('click', close);
-    dlg.addEventListener('close', () => setTimeout(() => dlg.remove(), 0));
 
     dlg.querySelector('#ep-save')?.addEventListener('click', async () => {
       const errEl  = dlg.querySelector('#ep-error');
@@ -757,6 +767,7 @@ function setupAccountMenu() {
           await window._farmProfileOnUser(currentUser);
         }
         populateProfilePage();
+        showAppToast('Profile updated successfully.', 'success');
         close();
       } catch (e) {
         errEl.textContent = 'Save failed: ' + (e?.message || String(e));
@@ -779,35 +790,11 @@ function setupAccountMenu() {
     syncPasswordRules();
   }
 
-  const PW_RULES = [
-    { id: 'rule-length', test: (p) => p.length >= 8 },
-    { id: 'rule-upper',  test: (p) => /[A-Z]/.test(p) },
-    { id: 'rule-lower',  test: (p) => /[a-z]/.test(p) },
-    { id: 'rule-number', test: (p) => /\d/.test(p) },
-  ];
-
-  function setRuleState(el, state) {
-    if (!el) return;
-    el.classList.remove('rule-ok', 'rule-fail');
-    if (state === 'ok') el.classList.add('rule-ok');
-    else if (state === 'fail') el.classList.add('rule-fail');
-  }
-
   function syncPasswordRules() {
-    const pw = document.getElementById('acct-pw-new')?.value || '';
-    const confirm = document.getElementById('acct-pw-confirm')?.value || '';
-    const touched = pw.length > 0;
-
-    PW_RULES.forEach(({ id, test }) => {
-      const el = document.getElementById(id);
-      if (!touched) setRuleState(el, 'pending');
-      else setRuleState(el, test(pw) ? 'ok' : 'fail');
+    syncPasswordChecklistUI({
+      password: document.getElementById('acct-pw-new')?.value || '',
+      confirm: document.getElementById('acct-pw-confirm')?.value || '',
     });
-
-    const matchEl = document.getElementById('rule-match');
-    if (!confirm.length && !pw.length) setRuleState(matchEl, 'pending');
-    else if (pw === confirm && pw.length > 0) setRuleState(matchEl, 'ok');
-    else setRuleState(matchEl, 'fail');
   }
 
   document.getElementById('acct-pw-new')?.addEventListener('input', syncPasswordRules);
@@ -828,11 +815,15 @@ function setupAccountMenu() {
       if (errEl) { errEl.textContent = 'Enter your current password.'; errEl.style.display = 'block'; }
       return;
     }
-    if (!PW_RULES.every(({ test }) => test(newPw))) {
-      if (errEl) { errEl.textContent = 'New password does not meet all requirements.'; errEl.style.display = 'block'; }
+    const pwResult = validatePassword(newPw);
+    if (!pwResult.ok) {
+      if (errEl) {
+        errEl.textContent = 'New password does not meet all requirements: ' + pwResult.errors.join(', ');
+        errEl.style.display = 'block';
+      }
       return;
     }
-    if (newPw !== confirm) {
+    if (!passwordsMatch(newPw, confirm)) {
       if (errEl) { errEl.textContent = 'Passwords do not match.'; errEl.style.display = 'block'; }
       return;
     }
@@ -844,6 +835,7 @@ function setupAccountMenu() {
       await fbUpdatePassword(newPw);
       resetPasswordPage();
       if (okEl) okEl.style.display = 'block';
+      showAppToast('Password updated successfully.', 'success');
     } catch (e) {
       let msg = e?.message || 'Password update failed.';
       const code = e?.code || '';
@@ -908,12 +900,22 @@ function init() {
     }
   });
 
-  document.getElementById('btn-logout')?.addEventListener('click', async () => {
-    try {
-      await fbSignOut();
-    } catch (e) {
-      log('Logout failed: ' + (e?.message || String(e)), 'err');
-    }
+  document.getElementById('btn-logout')?.addEventListener('click', () => {
+    showConfirmModal({
+      title: 'Sign out',
+      subtitle: 'You will return to the login screen and must sign in again.',
+      message: 'Are you sure you want to sign out of CrayFarm?',
+      confirmLabel: 'Sign out',
+      variant: 'warning',
+      onConfirm: async () => {
+        try {
+          await fbSignOut();
+          showAppToast('Signed out successfully.', 'success');
+        } catch (e) {
+          throw new Error(e?.message || String(e));
+        }
+      },
+    });
   });
 
   // Load config first so Firebase is initialized before we wire up sign-in and features
@@ -983,6 +985,7 @@ function init() {
         currentProfile = null;
         hydratedHistoryForUid = '';
         renderSidebarUser(null);
+        document.body.classList.remove('sidebar-open');
         showAuthScreen(true);
         setFirebaseConnected(false);
         unloadAlertsOnSignOut();

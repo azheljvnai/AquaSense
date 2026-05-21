@@ -317,6 +317,21 @@ app.get('/api/users', verifyToken, requireRole('admin', 'owner'), async (req, re
   }
 });
 
+/** Password rules aligned with public/js/password-rules.js */
+function validatePassword(password) {
+  const pw = typeof password === 'string' ? password : '';
+  if (!pw) return { ok: false, error: 'Password is required.' };
+  const missing = [];
+  if (pw.length < 8) missing.push('at least 8 characters');
+  if (!/[A-Z]/.test(pw)) missing.push('one uppercase letter');
+  if (!/[a-z]/.test(pw)) missing.push('one lowercase letter');
+  if (!/\d/.test(pw)) missing.push('one number');
+  if (missing.length) {
+    return { ok: false, error: `Password must include ${missing.join(', ')}.` };
+  }
+  return { ok: true, error: null };
+}
+
 /**
  * POST /api/users — create a Firebase Auth account + Firestore user record.
  * Requires: admin or owner role.
@@ -330,6 +345,10 @@ app.post('/api/users', verifyToken, requireRole('admin', 'owner'), async (req, r
   const { email, password, displayName, phone, role, status, farmId } = req.body || {};
   if (!email || !password) {
     return res.status(400).json({ error: 'email and password are required.' });
+  }
+  const pwCheck = validatePassword(password);
+  if (!pwCheck.ok) {
+    return res.status(400).json({ error: pwCheck.error });
   }
 
   // Owners cannot create admin accounts
@@ -371,36 +390,119 @@ app.post('/api/users', verifyToken, requireRole('admin', 'owner'), async (req, r
 });
 
 /**
- * PATCH /api/users/:uid — enable or disable a Firebase Auth account.
- * Requires: admin or owner role. Owners cannot disable admin accounts.
- * Body: { disabled: true | false }
+ * PATCH /api/users/:uid — admin/owner user management.
+ * - Enable/disable: { disabled: true | false }
+ * - Profile edit: { displayName?, phone?, role?, farmId? }
+ * Requires: admin or owner role. Owners cannot modify admin accounts or assign admin role.
  */
 app.patch('/api/users/:uid', verifyToken, requireRole('admin', 'owner'), async (req, res) => {
   if (!admin.apps.length) {
     return res.status(503).json({ error: 'Admin SDK not initialised.' });
   }
-  const { disabled } = req.body || {};
-  if (typeof disabled !== 'boolean') {
-    return res.status(400).json({ error: '"disabled" (boolean) is required.' });
+
+  const uid = req.params.uid;
+  const { disabled, displayName, phone, role, farmId } = req.body || {};
+
+  const targetSnap = await admin.firestore().collection('users').doc(uid).get();
+  const targetData = targetSnap.exists ? targetSnap.data() : {};
+  const targetRoleRaw = targetData?.role || 'farmer';
+  const targetRole = targetRoleRaw === 'manager' ? 'owner' : targetRoleRaw === 'viewer' ? 'farmer' : targetRoleRaw;
+
+  if (req.auth.role === 'owner' && targetRole === 'admin') {
+    return res.status(403).json({ error: 'Owners cannot modify Admin accounts.' });
   }
 
-  // Owners cannot disable admin accounts
+  if (typeof disabled === 'boolean') {
+    try {
+      await admin.auth().updateUser(uid, { disabled });
+      await admin.firestore().collection('users').doc(uid).set(
+        { status: disabled ? 'inactive' : 'active', updatedAt: admin.firestore.FieldValue.serverTimestamp() },
+        { merge: true },
+      );
+      return res.status(200).json({ success: true });
+    } catch (e) {
+      console.error('[PATCH /api/users/:uid]', e.message);
+      return res.status(400).json({ error: e.message });
+    }
+  }
+
+  const hasProfilePatch =
+    displayName !== undefined ||
+    phone !== undefined ||
+    role !== undefined ||
+    farmId !== undefined;
+  if (!hasProfilePatch) {
+    return res.status(400).json({
+      error: 'Provide disabled (boolean) or profile fields: displayName, phone, role, farmId.',
+    });
+  }
+
+  if (req.auth.role === 'owner' && role === 'admin') {
+    return res.status(403).json({ error: 'Owners cannot assign the Admin role.' });
+  }
+
+  let normRole;
+  if (role !== undefined) {
+    normRole = role === 'manager' ? 'owner' : role === 'viewer' ? 'farmer' : role;
+    const validRoles = new Set(['admin', 'owner', 'farmer']);
+    if (!validRoles.has(normRole)) {
+      return res.status(400).json({ error: `Invalid role "${normRole}". Must be admin, owner, or farmer.` });
+    }
+  }
+
+  try {
+    const update = { updatedAt: admin.firestore.FieldValue.serverTimestamp() };
+    if (displayName !== undefined) {
+      const name = String(displayName || '').trim();
+      update.displayName = name;
+      await admin.auth().updateUser(uid, { displayName: name || targetData.email?.split('@')[0] || 'User' });
+    }
+    if (phone !== undefined) update.phone = String(phone || '');
+    if (role !== undefined) update.role = normRole;
+    if (farmId !== undefined) update.farmId = String(farmId || '');
+
+    await admin.firestore().collection('users').doc(uid).set(update, { merge: true });
+    return res.status(200).json({ success: true });
+  } catch (e) {
+    console.error('[PATCH /api/users/:uid]', e.message);
+    if (e.code === 'auth/user-not-found') {
+      return res.status(404).json({ error: 'User not found in Firebase Authentication.' });
+    }
+    return res.status(400).json({ error: e.message });
+  }
+});
+
+/**
+ * PATCH /api/users/:uid/password — reset a user's Firebase Auth password (admin/owner).
+ * Updates Firebase Authentication only; password is hashed by Firebase.
+ * Body: { password }
+ */
+app.patch('/api/users/:uid/password', verifyToken, requireRole('admin', 'owner'), async (req, res) => {
+  if (!admin.apps.length) {
+    return res.status(503).json({ error: 'Admin SDK not initialised.' });
+  }
+  const { password } = req.body || {};
+  const pwCheck = validatePassword(password);
+  if (!pwCheck.ok) {
+    return res.status(400).json({ error: pwCheck.error });
+  }
+
   if (req.auth.role === 'owner') {
     const targetSnap = await admin.firestore().collection('users').doc(req.params.uid).get();
     const targetRole = targetSnap.exists ? (targetSnap.data()?.role || 'farmer') : 'farmer';
     if (targetRole === 'admin') {
-      return res.status(403).json({ error: 'Owners cannot disable Admin accounts.' });
+      return res.status(403).json({ error: 'Owners cannot reset Admin account passwords.' });
     }
   }
+
   try {
-    await admin.auth().updateUser(req.params.uid, { disabled });
-    await admin.firestore().collection('users').doc(req.params.uid).set(
-      { status: disabled ? 'inactive' : 'active', updatedAt: admin.firestore.FieldValue.serverTimestamp() },
-      { merge: true },
-    );
+    await admin.auth().updateUser(req.params.uid, { password });
     return res.status(200).json({ success: true });
   } catch (e) {
-    console.error('[PATCH /api/users]', e.message);
+    console.error('[PATCH /api/users/:uid/password]', e.message);
+    if (e.code === 'auth/user-not-found') {
+      return res.status(404).json({ error: 'User not found in Firebase Authentication.' });
+    }
     return res.status(400).json({ error: e.message });
   }
 });

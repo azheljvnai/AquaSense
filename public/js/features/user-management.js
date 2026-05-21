@@ -1,17 +1,18 @@
 /**
  * User Management feature.
- * Admin: full access — create, edit, disable/enable, delete, assign any role.
- * Owner: can create and edit users (farmer/owner roles only), disable accounts.
- *        Cannot delete users or assign/modify admin accounts.
+ * Admin: full access — create, edit, reset password, disable/enable, delete, assign any role.
+ * Owner: can create and edit users (farmer/owner roles only), reset passwords, disable accounts.
+ *        Cannot delete users, reset admin passwords, or assign/modify admin accounts.
  * Farmer: no access to this page (hidden by RBAC guards in app.js).
  */
+import { fbGetIdToken } from '../firebase-client.js';
+import { showAppToast, showConfirmModal, wireAppDialog, escHtml } from '../ui/modal-ui.js';
 import {
-  fbFirestore,
-  fbDoc,
-  fbSetDoc,
-  fbServerTimestamp,
-  fbGetIdToken,
-} from '../firebase-client.js';
+  validatePassword,
+  passwordsMatch,
+  syncPasswordChecklistUI,
+  PASSWORD_RULES,
+} from '../password-rules.js';
 
 // Canonical role values
 const ROLES = ['admin', 'owner', 'farmer'];
@@ -128,6 +129,12 @@ function renderTable() {
          </button>`
       : '';
 
+    const resetPwBtn = (isAdmin || ownerCanAct)
+      ? `<button class="um-btn-icon" title="Reset password" data-action="reset-password" data-uid="${u.id}">
+           <svg class="icon icon-14"><use href="#icon-key"/></svg>
+         </button>`
+      : '';
+
     const toggleBtn = ((isAdmin && !isSelf) || ownerCanAct)
       ? `<button class="um-btn-icon${disabled ? ' success' : ' warn'}" title="${disabled ? 'Enable account' : 'Disable account'}" data-action="toggle" data-uid="${u.id}" data-disabled="${disabled}">
            <svg class="icon icon-14"><use href="${disabled ? '#icon-check' : '#icon-warning'}"/></svg>
@@ -155,7 +162,7 @@ function renderTable() {
         <td><span class="um-role-badge um-role-${role}">${ROLE_LABEL[role] || role}</span></td>
         <td>${statusBadge}</td>
         <td style="color:var(--text-muted);font-size:0.82rem;">${joined}</td>
-        <td><div class="um-actions">${editBtn}${toggleBtn}${deleteBtn}</div></td>
+        <td><div class="um-actions">${editBtn}${resetPwBtn}${toggleBtn}${deleteBtn}</div></td>
       </tr>
     `;
   }).join('');
@@ -167,6 +174,7 @@ function renderTable() {
       const user   = allUsers.find((u) => u.id === uid);
       if (!user) return;
       if (action === 'edit')   openUserModal(user);
+      if (action === 'reset-password') openResetPasswordModal(user);
       if (action === 'toggle') confirmToggle(user);
       if (action === 'delete') confirmDelete(user);
     });
@@ -192,7 +200,7 @@ function openUserModal(user) {
   const assignableRoles = isAdmin ? ROLES : ROLES.filter((r) => r !== 'admin');
 
   const dlg = document.createElement('dialog');
-  dlg.className = 'um-modal';
+  dlg.className = 'um-modal app-modal';
 
   dlg.innerHTML = `
     <div class="um-modal-inner">
@@ -249,11 +257,9 @@ function openUserModal(user) {
 
   document.body.appendChild(dlg);
   dlg.showModal();
-
-  const close = () => { dlg.close(); setTimeout(() => dlg.remove(), 0); };
+  const { close } = wireAppDialog(dlg, { initialFocusSelector: '#um-f-name' });
   dlg.querySelector('#um-dlg-close')?.addEventListener('click', close);
   dlg.querySelector('#um-dlg-cancel')?.addEventListener('click', close);
-  dlg.addEventListener('close', () => setTimeout(() => dlg.remove(), 0));
 
   dlg.querySelector('#um-dlg-save')?.addEventListener('click', async () => {
     const errEl  = dlg.querySelector('#um-dlg-error');
@@ -267,6 +273,14 @@ function openUserModal(user) {
     if (!isEdit && !dlg.querySelector('#um-f-password')?.value) {
       showErr(errEl, 'Password is required for new users.'); return;
     }
+    if (!isEdit) {
+      const createPw = dlg.querySelector('#um-f-password')?.value || '';
+      const pwResult = validatePassword(createPw);
+      if (!pwResult.ok) {
+        showErr(errEl, 'Password does not meet requirements: ' + pwResult.errors.join(', '));
+        return;
+      }
+    }
 
     // Owners cannot assign admin role
     if (!isAdmin && role === 'admin') {
@@ -279,11 +293,14 @@ function openUserModal(user) {
 
     try {
       if (isEdit) {
-        await fbSetDoc(
-          fbDoc(fbFirestore(), 'users', user.id),
-          { displayName: name, phone, role, farmId, updatedAt: fbServerTimestamp() },
-          { merge: true },
-        );
+        const token = await fbGetIdToken();
+        const resp = await fetch(`/api/users/${user.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ displayName: name, phone, role, farmId }),
+        });
+        const data = await resp.json();
+        if (!resp.ok) throw new Error(data.error || 'Failed to update user.');
         const idx = allUsers.findIndex((u) => u.id === user.id);
         if (idx !== -1) allUsers[idx] = { ...allUsers[idx], displayName: name, phone, role, farmId };
       } else {
@@ -300,11 +317,142 @@ function openUserModal(user) {
       }
       updateStats();
       renderTable();
+      showAppToast(isEdit ? 'User updated successfully.' : 'User created successfully.', 'success');
       close();
     } catch (e) {
       showErr(errEl, 'Save failed: ' + (e?.message || String(e)));
       saveBtn.disabled = false;
       saveBtn.textContent = isEdit ? 'Save Changes' : 'Create User';
+    }
+  });
+}
+
+// ─── Reset password modal ─────────────────────────────────────────────────────
+
+function buildPasswordChecklistHtml(idPrefix) {
+  return `
+    <div class="acct-pw-requirements" aria-live="polite">
+      <p class="acct-pw-requirements-label">Password requirements</p>
+      <ul class="acct-pw-checklist">
+        ${PASSWORD_RULES.map(({ id, message }) => `
+          <li id="${idPrefix}${id}" class="acct-pw-check">
+            <span class="acct-pw-check-mark" aria-hidden="true"></span>
+            <span class="acct-pw-check-text">${message}</span>
+          </li>`).join('')}
+        <li id="${idPrefix}rule-match" class="acct-pw-check">
+          <span class="acct-pw-check-mark" aria-hidden="true"></span>
+          <span class="acct-pw-check-text">Passwords match</span>
+        </li>
+      </ul>
+    </div>`;
+}
+
+function openResetPasswordModal(user) {
+  const name = user.displayName || user.email?.split('@')[0] || 'User';
+  const email = user.email || '—';
+  const idPrefix = 'um-';
+
+  const dlg = document.createElement('dialog');
+  dlg.className = 'um-modal app-modal';
+
+  dlg.innerHTML = `
+    <div class="um-modal-inner">
+      <div class="um-modal-head">
+        <div>
+          <div class="um-modal-title">Reset Password</div>
+          <div class="um-modal-sub">Set a new password for <strong>${esc(name)}</strong> (${esc(email)}). This updates Firebase Authentication immediately.</div>
+        </div>
+        <button class="um-modal-close" id="um-pw-close" type="button" aria-label="Close">
+          <svg class="icon icon-16"><use href="#icon-x"/></svg>
+        </button>
+      </div>
+
+      <div class="um-form-grid">
+        <div class="um-field full">
+          <label>New password</label>
+          <input id="um-pw-new" type="password" autocomplete="new-password" placeholder="Create a new password" />
+        </div>
+        <div class="um-field full">
+          <label>Confirm new password</label>
+          <input id="um-pw-confirm" type="password" autocomplete="new-password" placeholder="Re-enter new password" />
+        </div>
+        <div class="um-field full um-pw-checklist-wrap">
+          ${buildPasswordChecklistHtml(idPrefix)}
+        </div>
+      </div>
+
+      <div id="um-pw-error" class="um-error"></div>
+
+      <div class="um-modal-footer">
+        <button type="button" class="btn btn-outline" id="um-pw-cancel">Cancel</button>
+        <button type="button" class="btn btn-primary" id="um-pw-save">Reset Password</button>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(dlg);
+  dlg.showModal();
+  const { close } = wireAppDialog(dlg, { initialFocusSelector: '#um-pw-new' });
+
+  const syncRules = () => {
+    syncPasswordChecklistUI({
+      password: dlg.querySelector('#um-pw-new')?.value || '',
+      confirm: dlg.querySelector('#um-pw-confirm')?.value || '',
+      ruleIdPrefix: idPrefix,
+      matchRuleId: `${idPrefix}rule-match`,
+    });
+  };
+
+  dlg.querySelector('#um-pw-new')?.addEventListener('input', syncRules);
+  dlg.querySelector('#um-pw-confirm')?.addEventListener('input', syncRules);
+  dlg.querySelector('#um-pw-close')?.addEventListener('click', close);
+  dlg.querySelector('#um-pw-cancel')?.addEventListener('click', close);
+  syncRules();
+
+  dlg.querySelector('#um-pw-save')?.addEventListener('click', async () => {
+    const errEl = dlg.querySelector('#um-pw-error');
+    const newPw = dlg.querySelector('#um-pw-new')?.value || '';
+    const confirm = dlg.querySelector('#um-pw-confirm')?.value || '';
+    const saveBtn = dlg.querySelector('#um-pw-save');
+
+    if (errEl) {
+      errEl.textContent = '';
+      errEl.style.display = 'none';
+    }
+
+    if (!newPw || !confirm) {
+      showErr(errEl, 'New password and confirmation are required.');
+      return;
+    }
+    const pwResult = validatePassword(newPw);
+    if (!pwResult.ok) {
+      showErr(errEl, 'Password does not meet requirements: ' + pwResult.errors.join(', '));
+      return;
+    }
+    if (!passwordsMatch(newPw, confirm)) {
+      showErr(errEl, 'Passwords do not match.');
+      return;
+    }
+
+    saveBtn.disabled = true;
+    saveBtn.textContent = 'Resetting…';
+
+    try {
+      const token = await fbGetIdToken();
+      const resp = await fetch(`/api/users/${user.id}/password`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ password: newPw }),
+      });
+      const data = await resp.json();
+      if (!resp.ok) throw new Error(data.error || 'Failed to reset password.');
+
+      showAppToast(`Password reset successfully for ${name}.`, 'success');
+      close();
+    } catch (e) {
+      showErr(errEl, e?.message || 'Password reset failed.');
+      saveBtn.disabled = false;
+      saveBtn.textContent = 'Reset Password';
     }
   });
 }
@@ -316,45 +464,18 @@ function confirmToggle(user) {
   const action     = isDisabled ? 'Enable' : 'Disable';
   const name       = user.displayName || user.email || 'this user';
 
-  const dlg = document.createElement('dialog');
-  dlg.className = 'um-modal';
-  dlg.innerHTML = `
-    <div class="um-modal-inner">
-      <div class="um-modal-head">
-        <div>
-          <div class="um-modal-title">${action} Account</div>
-          <div class="um-modal-sub">${isDisabled ? 'The user will be able to log in again.' : 'The user will be blocked from logging in.'}</div>
-        </div>
-        <button class="um-modal-close" id="ct-close" type="button" aria-label="Close">
-          <svg class="icon icon-16"><use href="#icon-x"/></svg>
-        </button>
-      </div>
-      <p class="um-confirm-text">
-        ${isDisabled
-          ? `Re-enable <strong>${esc(name)}</strong>? They will be able to sign in immediately.`
-          : `Disable <strong>${esc(name)}</strong>? They will be signed out and blocked from logging in.`}
-      </p>
-      <div id="ct-error" class="um-error"></div>
-      <div class="um-modal-footer">
-        <button type="button" class="btn btn-outline" id="ct-cancel">Cancel</button>
-        <button type="button" class="btn btn-primary${isDisabled ? '' : ' um-btn-warn'}" id="ct-confirm">${action}</button>
-      </div>
-    </div>
-  `;
-  document.body.appendChild(dlg);
-  dlg.showModal();
-
-  const close = () => { dlg.close(); setTimeout(() => dlg.remove(), 0); };
-  dlg.querySelector('#ct-close')?.addEventListener('click', close);
-  dlg.querySelector('#ct-cancel')?.addEventListener('click', close);
-  dlg.addEventListener('close', () => setTimeout(() => dlg.remove(), 0));
-
-  dlg.querySelector('#ct-confirm')?.addEventListener('click', async () => {
-    const errEl = dlg.querySelector('#ct-error');
-    const btn   = dlg.querySelector('#ct-confirm');
-    btn.disabled = true;
-    btn.textContent = `${action}ing…`;
-    try {
+  showConfirmModal({
+    title: `${action} account`,
+    subtitle: isDisabled
+      ? 'The user will be able to sign in again immediately.'
+      : 'The user will be signed out and blocked from logging in.',
+    messageHtml: isDisabled
+      ? `Re-enable <strong>${escHtml(name)}</strong>?`
+      : `Disable <strong>${escHtml(name)}</strong>? They will lose access until re-enabled.`,
+    confirmLabel: action,
+    variant: isDisabled ? 'warning' : 'warning',
+    destructive: !isDisabled,
+    onConfirm: async () => {
       const token = await fbGetIdToken();
       const resp = await fetch(`/api/users/${user.id}`, {
         method: 'PATCH',
@@ -367,12 +488,8 @@ function confirmToggle(user) {
       if (idx !== -1) allUsers[idx].status = isDisabled ? 'active' : 'inactive';
       updateStats();
       renderTable();
-      close();
-    } catch (e) {
-      showErr(errEl, `Failed: ${e?.message || String(e)}`);
-      btn.disabled = false;
-      btn.textContent = action;
-    }
+      showAppToast(`Account ${isDisabled ? 'enabled' : 'disabled'} for ${name}.`, 'success');
+    },
   });
 }
 
@@ -380,42 +497,14 @@ function confirmToggle(user) {
 
 function confirmDelete(user) {
   const name = user.displayName || user.email || 'this user';
-  const dlg  = document.createElement('dialog');
-  dlg.className = 'um-modal';
-  dlg.innerHTML = `
-    <div class="um-modal-inner">
-      <div class="um-modal-head">
-        <div>
-          <div class="um-modal-title">Delete user</div>
-        </div>
-        <button class="um-modal-close" id="cd-close" type="button" aria-label="Close">
-          <svg class="icon icon-16"><use href="#icon-x"/></svg>
-        </button>
-      </div>
-      <p class="um-confirm-text">
-        Are you sure you want to delete <strong>${esc(name)}</strong>?
-      </p>
-      <div id="cd-error" class="um-error"></div>
-      <div class="um-modal-footer">
-        <button type="button" class="btn btn-outline" id="cd-cancel">Cancel</button>
-        <button type="button" class="btn btn-primary um-btn-danger" id="cd-confirm">Delete</button>
-      </div>
-    </div>
-  `;
-  document.body.appendChild(dlg);
-  dlg.showModal();
 
-  const close = () => { dlg.close(); setTimeout(() => dlg.remove(), 0); };
-  dlg.querySelector('#cd-close')?.addEventListener('click', close);
-  dlg.querySelector('#cd-cancel')?.addEventListener('click', close);
-  dlg.addEventListener('close', () => setTimeout(() => dlg.remove(), 0));
-
-  dlg.querySelector('#cd-confirm')?.addEventListener('click', async () => {
-    const errEl = dlg.querySelector('#cd-error');
-    const btn   = dlg.querySelector('#cd-confirm');
-    btn.disabled = true;
-    btn.textContent = 'Deleting…';
-    try {
+  showConfirmModal({
+    title: 'Delete user',
+    subtitle: 'This permanently removes the user account from the system.',
+    messageHtml: `Delete <strong>${escHtml(name)}</strong>? This action cannot be undone.`,
+    confirmLabel: 'Delete user',
+    destructive: true,
+    onConfirm: async () => {
       const token = await fbGetIdToken();
       const resp = await fetch(`/api/users/${user.id}`, {
         method: 'DELETE',
@@ -423,19 +512,13 @@ function confirmDelete(user) {
       });
       const data = await resp.json();
       if (!resp.ok) throw new Error(data.error || 'Request failed.');
-      // Track deletion so re-fetches don't resurrect the user before Firestore propagates
       deletedIds.add(user.id);
       allUsers = allUsers.filter((u) => u.id !== user.id);
       updateStats();
       renderTable();
-      close();
-      // Re-fetch from Firestore in the background to confirm server-side deletion
+      showAppToast(`User "${name}" deleted.`, 'success');
       loadUsers();
-    } catch (e) {
-      showErr(errEl, `Failed: ${e?.message || String(e)}`);
-      btn.disabled = false;
-      btn.textContent = 'Delete';
-    }
+    },
   });
 }
 

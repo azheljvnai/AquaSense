@@ -5,23 +5,40 @@ import fc from 'fast-check';
 
 // ─── Pure logic extracted from feeding.js for testing ────────────────────────
 
-/**
- * _scheduleStatus — returns 'completed' | 'upcoming' | 'scheduled' | 'not-today'
- * based on the 30-minute boundary rule relative to `nowMs` and day of week.
- */
-function _scheduleStatus(timeStr, days, nowMs) {
-  const [h, m] = timeStr.split(':').map(Number);
+const ALL_DAYS = [0, 1, 2, 3, 4, 5, 6];
+
+function normalizeDays(days) {
+  if (!Array.isArray(days)) return [];
+  return [...new Set(days.filter((d) => Number.isInteger(d) && d >= 0 && d <= 6))].sort((a, b) => a - b);
+}
+
+function _nextOccurrenceMs(timeStr, days, nowMs) {
+  const normalized = normalizeDays(days);
+  if (normalized.length === 0) return null;
   const now = new Date(nowMs);
-  const todayDay = now.getDay(); // 0 = Sunday, 6 = Saturday
-  
-  // Check if schedule applies to today
-  if (!days || !days.includes(todayDay)) {
-    return 'not-today';
-  }
-  
-  const schedMs = new Date(now.getFullYear(), now.getMonth(), now.getDate(), h, m).getTime();
-  const diffMin = (schedMs - nowMs) / 60000;
-  if (diffMin < 0)   return 'completed';
+  const todayDay = now.getDay();
+  const [h, m] = timeStr.split(':').map(Number);
+  let best = null;
+  normalized.forEach((day) => {
+    let daysAhead = day - todayDay;
+    if (daysAhead < 0) daysAhead += 7;
+    const d = new Date(now);
+    d.setDate(d.getDate() + daysAhead);
+    d.setHours(h, m, 0, 0);
+    let ms = d.getTime();
+    if (ms <= nowMs) ms += 7 * 86400000;
+    if (best === null || ms < best) best = ms;
+  });
+  return best;
+}
+
+/** Recurring schedules: upcoming | scheduled (never completed). */
+function _scheduleStatus(timeStr, days, nowMs) {
+  const normalized = normalizeDays(days);
+  const effectiveDays = normalized.length > 0 ? normalized : ALL_DAYS;
+  const nextMs = _nextOccurrenceMs(timeStr, effectiveDays, nowMs);
+  if (nextMs === null) return 'scheduled';
+  const diffMin = (nextMs - nowMs) / 60000;
   if (diffMin <= 30) return 'upcoming';
   return 'scheduled';
 }
@@ -94,13 +111,9 @@ function _nextScheduleTime(schedules, nowMs) {
 
 describe('FeedingModule — Property-Based Tests', () => {
 
-  // Property 1: Schedule status is mutually exclusive and exhaustive
-  // For any valid HH:MM time string, days array, and any current time, _scheduleStatus SHALL return
-  // exactly one of "completed", "upcoming", "scheduled", or "not-today", and the result SHALL be
-  // consistent with the 30-minute boundary rule and day-of-week matching.
-  // Validates: Requirements 1.2, 1.3, 1.4
+  // Property 1: Schedule status is mutually exclusive and exhaustive (recurring — no "completed")
   it('Property 1: _scheduleStatus returns exactly one valid status and respects 30-min boundary + day matching', () => {
-    const VALID_STATUSES = new Set(['completed', 'upcoming', 'scheduled', 'not-today']);
+    const VALID_STATUSES = new Set(['upcoming', 'scheduled']);
 
     fc.assert(
       fc.property(
@@ -124,18 +137,14 @@ describe('FeedingModule — Property-Based Tests', () => {
 
           const status = _scheduleStatus(timeStr, uniqueDays, nowMs);
 
-          // Must be one of the four valid values
           if (!VALID_STATUSES.has(status)) return false;
 
-          // If today is not in the days array, must be 'not-today'
-          if (!uniqueDays.includes(nowDay)) {
-            return status === 'not-today';
-          }
-
-          // If today IS in the days array, must respect the boundary rules
-          if (diffMin < 0 && status !== 'completed') return false;
-          if (diffMin >= 0 && diffMin <= 30 && status !== 'upcoming') return false;
-          if (diffMin > 30 && status !== 'scheduled') return false;
+          const effectiveDays = uniqueDays.length > 0 ? uniqueDays : ALL_DAYS;
+          const nextMs = _nextOccurrenceMs(timeStr, effectiveDays, nowMs);
+          if (nextMs === null) return status === 'scheduled';
+          const diffToNext = (nextMs - nowMs) / 60000;
+          if (diffToNext <= 30 && status !== 'upcoming') return false;
+          if (diffToNext > 30 && status !== 'scheduled') return false;
 
           return true;
         }

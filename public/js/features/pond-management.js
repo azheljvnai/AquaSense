@@ -10,6 +10,7 @@ import {
   updatePondConfiguration, deletePondConfiguration, deactivatePondConfig,
   loadActivePondConfig, seedSpeciesPresets, updateSpeciesPresets,
 } from '../pond-config.js';
+import { showAppToast, showConfirmModal, wireAppDialog } from '../ui/modal-ui.js';
 
 const SPECIES_LABELS = {
   crayfish: 'Crayfish', tilapia: 'Tilapia', catfish: 'Catfish', shrimp: 'Shrimp',
@@ -74,15 +75,24 @@ export async function init() {
 
     if (btn.classList.contains('btn-deactivate-cfg')) {
       if (!canEdit()) return alert('Owner/Admin required.');
-      if (!confirm('Deactivate this configuration? The pond will have no active config until one is set.')) return;
-      btn.disabled = true;
-      btn.textContent = 'Deactivating…';
-      await deactivatePondConfig(_currentPondId, id);
-      await renderPondConfigs(_currentPondId);
-      updateActiveBadge(null);
-      // Propagate unconfigured state globally
-      _propagatePondState(null);
-      window.dispatchEvent(new CustomEvent('thresholds-changed'));
+      const configs = await getPondConfigurations(_currentPondId);
+      const cfg = configs.find((c) => c.id === id);
+      const cfgName = cfg?.name || cfg?.species || 'this configuration';
+      showConfirmModal({
+        title: 'Deactivate configuration',
+        subtitle: 'The pond will have no active species thresholds until another config is set.',
+        message: `Deactivate "${cfgName}"? Monitoring alerts may stop until a new configuration is activated.`,
+        confirmLabel: 'Deactivate',
+        variant: 'warning',
+        onConfirm: async () => {
+          await deactivatePondConfig(_currentPondId, id);
+          await renderPondConfigs(_currentPondId);
+          updateActiveBadge(null);
+          _propagatePondState(null);
+          window.dispatchEvent(new CustomEvent('thresholds-changed'));
+          showAppToast(`Configuration "${cfgName}" deactivated.`, 'success');
+        },
+      });
     }
 
     if (btn.classList.contains('btn-edit-cfg')) {
@@ -93,9 +103,21 @@ export async function init() {
 
     if (btn.classList.contains('btn-del-cfg')) {
       if (!canEdit()) return alert('Owner/Admin required.');
-      if (!confirm('Remove this configuration from the pond?')) return;
-      await deletePondConfiguration(id);
-      await renderPondConfigs(_currentPondId);
+      const configs = await getPondConfigurations(_currentPondId);
+      const cfg = configs.find((c) => c.id === id);
+      const cfgName = cfg?.name || cfg?.species || 'this configuration';
+      showConfirmModal({
+        title: 'Remove configuration',
+        subtitle: 'This removes the configuration from this pond only.',
+        message: `Remove "${cfgName}" from this pond? Threshold presets for this assignment will be deleted.`,
+        confirmLabel: 'Remove',
+        destructive: true,
+        onConfirm: async () => {
+          await deletePondConfiguration(id);
+          await renderPondConfigs(_currentPondId);
+          showAppToast(`Configuration "${cfgName}" removed.`, 'success');
+        },
+      });
     }
 
     if (btn.id === 'btn-assign-first') {
@@ -330,7 +352,7 @@ function openPondDialog(pond, onSaved) {
   const isEdit = !!pond;
   const esc = s => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   const dlg = document.createElement('dialog');
-  dlg.className = 'um-modal';
+  dlg.className = 'um-modal app-modal';
   dlg.innerHTML = `
     <div class="um-modal-inner">
       <div class="um-modal-head">
@@ -353,10 +375,9 @@ function openPondDialog(pond, onSaved) {
     </div>`;
   document.body.appendChild(dlg);
   dlg.showModal();
-  const close = () => { dlg.close(); setTimeout(() => dlg.remove(), 0); };
+  const { close } = wireAppDialog(dlg, { initialFocusSelector: '#pd-name' });
   dlg.querySelector('#pd-x').addEventListener('click', close);
   dlg.querySelector('#pd-cancel').addEventListener('click', close);
-  dlg.addEventListener('close', () => setTimeout(() => dlg.remove(), 0));
   dlg.querySelector('#pd-save').addEventListener('click', async () => {
     const errEl = dlg.querySelector('#pd-error');
     const name = dlg.querySelector('#pd-name').value.trim();
@@ -369,6 +390,7 @@ function openPondDialog(pond, onSaved) {
     try {
       if (isEdit) await updatePond(pond.id, data);
       else await createPond(data);
+      showAppToast(isEdit ? 'Pond updated successfully.' : 'Pond created successfully.', 'success');
       close();
       await onSaved();
     } catch (e) {

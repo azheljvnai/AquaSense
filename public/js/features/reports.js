@@ -7,6 +7,7 @@
 import { getHistoryRange, mergeRtdbEntries } from '../utils.js';
 import { getActivePond, getPondList, onActivePondChange } from '../pond-context.js';
 import { getPondConfigurations, SPECIES_PRESETS } from '../pond-config.js';
+import { showAppToast, showConfirmModal } from '../ui/modal-ui.js';
 
 // ─── Report History store ────────────────────────────────────────────────────
 const HISTORY_KEY = 'aquasense.reportHistory.v1';
@@ -624,9 +625,18 @@ export function init() {
 
   // Clear history
   document.getElementById('btn-clear-report-history')?.addEventListener('click', () => {
-    if (!confirm('Clear all report history?')) return;
-    saveReportHistory([]);
-    renderHistory();
+    showConfirmModal({
+      title: 'Clear report history',
+      subtitle: 'Downloaded report records will be removed from this device.',
+      message: 'Clear all report history? This cannot be undone.',
+      confirmLabel: 'Clear history',
+      destructive: true,
+      onConfirm: async () => {
+        saveReportHistory([]);
+        renderHistory();
+        showAppToast('Report history cleared.', 'success');
+      },
+    });
   });
 
   // Initial render

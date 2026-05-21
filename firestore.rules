@@ -2,12 +2,26 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    function callerRole() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
+    }
+
+    function isAdminOrOwner() {
+      return request.auth != null &&
+        callerRole() in ['admin', 'owner', 'manager'];
+    }
+
     // Users can read/write their own profile
     match /users/{userId} {
       allow read, write: if request.auth != null && request.auth.uid == userId;
-      // Admins can read all user profiles
-      allow read: if request.auth != null &&
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+      // Admins and owners can read all user profiles
+      allow read: if isAdminOrOwner();
+      // Admins and owners can update other users (client should use API; rule for consistency)
+      allow update: if isAdminOrOwner()
+        && request.auth.uid != userId
+        && !(callerRole() in ['owner', 'manager']
+          && (resource.data.role == 'admin'
+            || (request.resource.data.role == 'admin')));
 
       // Notification preferences — users can read/write their own
       match /notificationPrefs/{docId} {

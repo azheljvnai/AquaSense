@@ -28,6 +28,7 @@ import {
   fbGetIdToken,
 } from '../firebase-client.js';
 import { alertPondFilterButton, alertEmptyListRow, escapeHtml } from '../ui/templates.js';
+import { showAppToast, showConfirmModal } from '../ui/modal-ui.js';
 
 /** Set in init() so module-level helpers can refresh the alerts tab UI. */
 let rerenderAlertsTab = () => {};
@@ -479,12 +480,17 @@ export function init() {
       const allAlerts = loadAlerts();
       const totalCount = allAlerts.length;
       if (totalCount === 0) {
-        showToast('No alerts to clear', 'info');
+        showAppToast('No alerts to clear', 'info');
         return;
       }
-      if (confirm(`Are you sure you want to clear all ${totalCount} alerts? This action cannot be undone.`)) {
-        void clearAllAlerts();
-      }
+      showConfirmModal({
+        title: 'Clear all alerts',
+        subtitle: 'This permanently removes every alert from your history.',
+        message: `Clear all ${totalCount} alert${totalCount === 1 ? '' : 's'}? This action cannot be undone.`,
+        confirmLabel: 'Clear all',
+        destructive: true,
+        onConfirm: async () => { await clearAllAlerts(); },
+      });
     });
   }
 
@@ -493,12 +499,17 @@ export function init() {
       const allAlerts = loadAlerts();
       const unresolvedCount = allAlerts.filter(a => !a.resolved).length;
       if (unresolvedCount === 0) {
-        showToast('No unresolved alerts to mark', 'info');
+        showAppToast('No unresolved alerts to mark', 'info');
         return;
       }
-      if (confirm(`Mark all ${unresolvedCount} active alerts as resolved?`)) {
-        markAllAlertsAsResolved();
-      }
+      showConfirmModal({
+        title: 'Mark all as resolved',
+        subtitle: 'Active alerts will move to your resolved history.',
+        message: `Mark all ${unresolvedCount} active alert${unresolvedCount === 1 ? '' : 's'} as resolved?`,
+        confirmLabel: 'Mark resolved',
+        variant: 'warning',
+        onConfirm: async () => { await markAllAlertsAsResolved(); },
+      });
     });
   }
 
@@ -755,10 +766,10 @@ async function clearAllAlerts() {
     rerenderAlertsTab();
     window.dispatchEvent(new Event('alerts-updated'));
     subscribeAlertsRealtime();
-    showToast(totalCount ? `Successfully cleared ${totalCount} alerts` : 'Alerts cleared', 'success');
+    showAppToast(totalCount ? `Successfully cleared ${totalCount} alerts` : 'Alerts cleared', 'success');
   } catch (err) {
     console.error('[clearAllAlerts] Error:', err);
-    showToast('Failed to clear alerts', 'error');
+    showAppToast('Failed to clear alerts', 'error');
     try {
       subscribeAlertsRealtime();
     } catch { /* ignore */ }
@@ -774,7 +785,7 @@ async function markAllAlertsAsResolved() {
     const unresolvedAlerts = allAlerts.filter(alert => !alert.resolved);
     
     if (unresolvedAlerts.length === 0) {
-      showToast('No unresolved alerts to mark', 'info');
+      showAppToast('No unresolved alerts to mark', 'info');
       return;
     }
 
@@ -796,39 +807,10 @@ async function markAllAlertsAsResolved() {
     
     rerenderAlertsTab();
     window.dispatchEvent(new Event('alerts-updated'));
-    showToast(`Successfully marked ${unresolvedAlerts.length} alerts as resolved`, 'success');
+    showAppToast(`Successfully marked ${unresolvedAlerts.length} alerts as resolved`, 'success');
   } catch (err) {
     console.error('[markAllAlertsAsResolved] Error:', err);
-    showToast('Failed to mark alerts as resolved', 'error');
+    showAppToast('Failed to mark alerts as resolved', 'error');
   }
 }
 
-/**
- * Show a toast notification
- */
-function showToast(message, type = 'info') {
-  const toast = document.createElement('div');
-  toast.className = `alert-toast alert-toast-${type}`;
-  toast.textContent = message;
-  toast.style.cssText = [
-    'position:fixed',
-    'bottom:24px',
-    'right:24px',
-    'z-index:9999',
-    'padding:12px 20px',
-    'border-radius:8px',
-    'font-size:0.875rem',
-    'max-width:360px',
-    'box-shadow:0 4px 12px rgba(0,0,0,0.15)',
-    'color:#fff',
-    `background:${type === 'error' ? '#ef4444' : type === 'success' ? '#22c55e' : '#3b82f6'}`,
-    'transition:opacity 0.3s ease',
-  ].join(';');
-
-  document.body.appendChild(toast);
-
-  setTimeout(() => {
-    toast.style.opacity = '0';
-    setTimeout(() => toast.remove(), 300);
-  }, 4000);
-}

@@ -16,6 +16,7 @@ import {
   fbGetIdToken,
 } from '../firebase-client.js';
 import { getConfig } from '../config.js';
+import { showAppToast } from '../ui/modal-ui.js';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -153,13 +154,13 @@ export async function handleAlert(alert) {
       const mine = data.errors.filter((e) => e.uid === _currentUser.uid);
       if (mine.length) {
         const detail = mine.map((e) => `${e.channel}: ${e.message}`).join('; ');
-        showToast(`Notification failed: ${detail}`, 'error');
+        showAppToast(`Notification failed: ${detail}`, 'error');
       }
     }
   } catch (err) {
     console.error('[NotificationService] dispatch-alert failed:', err);
     if (_currentUser?.uid) {
-      showToast(`Notifications could not be sent: ${err?.message || String(err)}`, 'error');
+      showAppToast(`Notifications could not be sent: ${err?.message || String(err)}`, 'error');
     }
   }
 }
@@ -235,9 +236,9 @@ function initPrefsUI(user) {
     };
     try {
       await savePrefs(user.uid, prefs);
-      showToast('Notification preferences saved.', 'success');
+      showAppToast('Notification preferences saved.', 'success');
     } catch (err) {
-      showToast(`Failed to save preferences: ${err.message}`, 'error');
+      showAppToast(`Failed to save preferences: ${err.message}`, 'error');
     }
   }
 
@@ -316,7 +317,7 @@ async function flushRetryQueue() {
         const mine = data.errors.filter((e) => e.uid === _currentUser.uid);
         if (mine.length) {
           const detail = mine.map((e) => `${e.channel}: ${e.message}`).join('; ');
-          showToast(`Notification failed: ${detail}`, 'error');
+          showAppToast(`Notification failed: ${detail}`, 'error');
         }
       }
     } catch {
@@ -330,35 +331,6 @@ async function flushRetryQueue() {
   try {
     sessionStorage.setItem(RETRY_QUEUE_KEY, JSON.stringify(remaining));
   } catch { /* ignore */ }
-}
-
-// ─── Internal: toast ─────────────────────────────────────────────────────────
-
-function showToast(message, type) {
-  const toast = document.createElement('div');
-  toast.className = `notif-toast notif-toast-${type || 'info'}`;
-  toast.textContent = message;
-  toast.style.cssText = [
-    'position:fixed',
-    'bottom:24px',
-    'right:24px',
-    'z-index:9999',
-    'padding:12px 20px',
-    'border-radius:8px',
-    'font-size:0.875rem',
-    'max-width:360px',
-    'box-shadow:0 4px 12px rgba(0,0,0,0.15)',
-    'color:#fff',
-    `background:${type === 'error' ? '#ef4444' : type === 'success' ? '#22c55e' : '#3b82f6'}`,
-    'transition:opacity 0.3s ease',
-  ].join(';');
-
-  document.body.appendChild(toast);
-
-  setTimeout(() => {
-    toast.style.opacity = '0';
-    setTimeout(() => toast.remove(), 300);
-  }, 4000);
 }
 
 // ─── Internal: helpers ────────────────────────────────────────────────────────

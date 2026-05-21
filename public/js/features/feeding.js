@@ -4,7 +4,7 @@
  * Firebase RTDB paths (matching ESP32 firmware):
  *   /devices/{id}/feeding/manualFeed          boolean — set true to trigger feed
  *   /devices/{id}/feeding/schedules/times/0   "HH:MM" — schedule slot 0
- *   /devices/{id}/feeding/schedules/times/1   "HH:MM" — schedule slot 1
+ *   /devices/{id}/feeding/schedules/days/0   [0..6] — repeat days (0=Sun)
  *   ...
  *   /devices/{id}/feedLog/{timestamp-key}/reason     string
  *   /devices/{id}/feedLog/{timestamp-key}/timestamp  string "YYYY-MM-DD HH:MM:SS"
@@ -18,15 +18,27 @@ import {
   fbGet,
 } from '../firebase-client.js';
 import { log } from '../utils.js';
+import {
+  showAppToast,
+  showAlertModal,
+  showConfirmModal,
+  escHtml,
+} from '../ui/modal-ui.js';
 
 // ── Module-level state ────────────────────────────────────────────────────────
 let _deviceId          = null;   // active device ID
 let _listeners         = [];     // RTDB unsubscribe functions
-let _schedules         = [];     // [{ index, time }] sorted by time
+const ALL_DAYS = [0, 1, 2, 3, 4, 5, 6];
+const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+let _schedules         = [];     // [{ index, time, days }] sorted by time
+let _timesByIndex      = {};
+let _daysByIndex       = {};
 let _logEntries        = [];     // [{ ts, type }] sorted descending, max 20
 let _feedChart         = null;   // Chart.js instance
 let _manualFeedTimeout = null;   // 10-second timeout handle
 let _editingIndex      = null;   // schedule index being edited (null = new)
+let _formSnapshot      = null;   // { time, days } when add/edit form is open
 let _dispensing        = false;  // true while waiting for ESP32 to reset manualFeed
 let _firebaseConnected = false;  // RTDB connect state (dashboard feed-btn gate)
 
@@ -52,14 +64,16 @@ export function init(deviceId = 'device001') {
     _editingIndex = null;
     const input = document.getElementById('feed-schedule-input');
     if (input) input.value = '';
-    _showScheduleError('');
-    document.getElementById('feed-schedule-form').style.display = '';
+    _setDayCheckboxes(ALL_DAYS);
+    _clearScheduleFieldError();
+    _openScheduleForm();
   });
   document.getElementById('feed-schedule-confirm')?.addEventListener('click', _saveSchedule);
-  document.getElementById('feed-schedule-cancel')?.addEventListener('click', () => {
-    document.getElementById('feed-schedule-form').style.display = 'none';
-    _showScheduleError('');
-  });
+  document.getElementById('feed-schedule-cancel')?.addEventListener('click', _cancelScheduleForm);
+  document.getElementById('feed-schedule-input')?.addEventListener('input', _clearScheduleFieldError);
+  for (let d = 0; d <= 6; d++) {
+    document.getElementById(`feed-day-${d}`)?.addEventListener('change', _clearScheduleFieldError);
+  }
 
   const noPondEl = document.getElementById('feed-no-pond');
   if (noPondEl) noPondEl.style.display = 'none';
@@ -86,15 +100,22 @@ export function setFirebaseConnected(connected) {
 function _subscribe(deviceId) {
   const db = fbDatabase();
 
-  // 1. Schedules listener — /feeding/schedules/times
+  // 1. Schedules listeners — times + repeat days
+  _timesByIndex = {};
+  _daysByIndex = {};
   const timesRef = fbRef(db, `/devices/${deviceId}/feeding/schedules/times`);
-  const unsubSchedules = fbOnValue(timesRef, (snap) => {
-    _schedules = _parseSchedules(snap);
-    _renderScheduleList();
-    _hydrateDashboardInputs();
-    _updateMetricCards();
-  }, (err) => console.error('[feeding] schedules listener error', err));
-  _listeners.push(unsubSchedules);
+  const unsubTimes = fbOnValue(timesRef, (snap) => {
+    _timesByIndex = _parseTimesMap(snap);
+    _rebuildSchedules();
+  }, (err) => console.error('[feeding] schedules/times listener error', err));
+  _listeners.push(unsubTimes);
+
+  const daysRef = fbRef(db, `/devices/${deviceId}/feeding/schedules/days`);
+  const unsubDays = fbOnValue(daysRef, (snap) => {
+    _daysByIndex = _parseDaysMap(snap);
+    _rebuildSchedules();
+  }, (err) => console.error('[feeding] schedules/days listener error', err));
+  _listeners.push(unsubDays);
 
   // 2. Feed log listener — /feedLog (firmware writes here; app also writes here)
   const logRef = fbRef(db, `/devices/${deviceId}/feedLog`);
@@ -134,6 +155,8 @@ function _teardown() {
   _listeners.forEach((unsub) => { try { unsub(); } catch { /* ignore */ } });
   _listeners = [];
   _schedules = [];
+  _timesByIndex = {};
+  _daysByIndex = {};
   _logEntries = [];
 
   // Clear timeout
@@ -153,28 +176,89 @@ function _teardown() {
   if (manualBtn) { manualBtn.disabled = false; manualBtn.textContent = '▶ Manual Feed'; }
   const manualStatus = document.getElementById('feed-manual-status');
   if (manualStatus) manualStatus.textContent = '';
-  document.getElementById('feed-schedule-form').style.display = 'none';
+  _closeScheduleForm();
 }
 
 // ── Schedule helpers ──────────────────────────────────────────────────────────
 
-/**
- * Parse the /feeding/schedules/times snapshot.
- * Firebase stores numeric-keyed children as an array-like object:
- *   { "0": "07:00", "1": "12:00", "2": "18:00" }
- * Returns [{ index: 0, time: "07:00" }, ...]
- */
-function _parseSchedules(snapshot) {
-  const result = [];
+function _parseTimesMap(snapshot) {
+  const result = {};
   snapshot.forEach((child) => {
     const index = parseInt(child.key, 10);
     const val   = child.val();
     if (!isNaN(index) && typeof val === 'string' && /^\d{2}:\d{2}$/.test(val)) {
-      result.push({ index, time: val });
+      result[index] = val;
     }
   });
-  result.sort((a, b) => a.time.localeCompare(b.time));
   return result;
+}
+
+function _parseDaysVal(val) {
+  if (Array.isArray(val)) return normalizeDays(val.map((n) => Number(n)));
+  if (typeof val === 'string' && val.trim()) {
+    return normalizeDays(val.split(',').map((n) => Number(n.trim())));
+  }
+  return [...ALL_DAYS];
+}
+
+function _parseDaysMap(snapshot) {
+  const result = {};
+  snapshot.forEach((child) => {
+    const index = parseInt(child.key, 10);
+    if (!isNaN(index)) result[index] = _parseDaysVal(child.val());
+  });
+  return result;
+}
+
+function _rebuildSchedules() {
+  const indices = new Set([
+    ...Object.keys(_timesByIndex).map(Number),
+    ...Object.keys(_daysByIndex).map(Number),
+  ]);
+  _schedules = [...indices]
+    .map((index) => {
+      const time = _timesByIndex[index];
+      if (typeof time !== 'string' || !/^\d{2}:\d{2}$/.test(time)) return null;
+      return {
+        index,
+        time,
+        days: normalizeDays(_daysByIndex[index] ?? ALL_DAYS),
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => a.time.localeCompare(b.time));
+  _renderScheduleList();
+  _hydrateDashboardInputs();
+  _updateMetricCards();
+}
+
+export function normalizeDays(days) {
+  if (!Array.isArray(days)) return [];
+  return [...new Set(days.filter((d) => Number.isInteger(d) && d >= 0 && d <= 6))].sort((a, b) => a - b);
+}
+
+export function formatScheduleDaysLabel(days) {
+  const normalized = normalizeDays(days);
+  if (normalized.length === 0) return 'No days selected';
+  if (normalized.length === 7) return 'Every day';
+  return normalized.map((d) => DAY_LABELS[d]).join(', ');
+}
+
+function _getSelectedDays() {
+  const days = [];
+  for (let d = 0; d <= 6; d++) {
+    const cb = document.getElementById(`feed-day-${d}`);
+    if (cb?.checked) days.push(d);
+  }
+  return days;
+}
+
+function _setDayCheckboxes(days) {
+  const normalized = normalizeDays(days);
+  for (let d = 0; d <= 6; d++) {
+    const cb = document.getElementById(`feed-day-${d}`);
+    if (cb) cb.checked = normalized.includes(d);
+  }
 }
 
 /**
@@ -188,12 +272,38 @@ function _parseTimestamp(str) {
   return isNaN(ms) ? null : ms;
 }
 
-export function _scheduleStatus(timeStr) {
+/** Next occurrence (ms) for a recurring schedule; null if no valid days. */
+export function _nextOccurrenceMs(timeStr, days, nowMs = Date.now()) {
+  const normalized = normalizeDays(days);
+  if (normalized.length === 0) return null;
+
+  const now = new Date(nowMs);
+  const todayDay = now.getDay();
   const [h, m] = timeStr.split(':').map(Number);
-  const now     = new Date();
-  const schedMs = new Date(now.getFullYear(), now.getMonth(), now.getDate(), h, m).getTime();
-  const diffMin = (schedMs - now.getTime()) / 60000;
-  if (diffMin < 0)   return 'completed';
+  let best = null;
+
+  normalized.forEach((day) => {
+    let daysAhead = day - todayDay;
+    if (daysAhead < 0) daysAhead += 7;
+    const d = new Date(now);
+    d.setDate(d.getDate() + daysAhead);
+    d.setHours(h, m, 0, 0);
+    let ms = d.getTime();
+    if (ms <= nowMs) ms += 7 * 86400000;
+    if (best === null || ms < best) best = ms;
+  });
+
+  return best;
+}
+
+/** Recurring schedules: upcoming or scheduled (never completed / not-today). */
+export function _scheduleStatus(timeStr, days = ALL_DAYS, nowMs = Date.now()) {
+  const normalized = normalizeDays(days);
+  const effectiveDays = normalized.length > 0 ? normalized : ALL_DAYS;
+  const nextMs = _nextOccurrenceMs(timeStr, effectiveDays, nowMs);
+  if (nextMs === null) return 'scheduled';
+
+  const diffMin = (nextMs - nowMs) / 60000;
   if (diffMin <= 30) return 'upcoming';
   return 'scheduled';
 }
@@ -220,17 +330,14 @@ function _renderScheduleList() {
     return;
   }
 
-  ul.innerHTML = _schedules.map(({ index, time }) => {
-    const status = _scheduleStatus(time);
-    const iconClass = status === 'completed' ? 'sched-icon--done'
-      : status === 'upcoming' ? 'sched-icon--upcoming'
-      : 'sched-icon--scheduled';
-    const iconSvg = status === 'completed'
-      ? '<svg class="icon icon-16"><use href="#icon-check"/></svg>'
-      : '<svg class="icon icon-16"><use href="#icon-clock"/></svg>';
-    const statusLabel = status === 'completed' ? '<span class="status-done">completed</span>'
-      : status === 'upcoming' ? '<span class="status-pending">upcoming</span>'
+  ul.innerHTML = _schedules.map(({ index, time, days }) => {
+    const status = _scheduleStatus(time, days);
+    const iconClass = status === 'upcoming' ? 'sched-icon--upcoming' : 'sched-icon--scheduled';
+    const iconSvg = '<svg class="icon icon-16"><use href="#icon-clock"/></svg>';
+    const statusLabel = status === 'upcoming'
+      ? '<span class="status-pending">upcoming</span>'
       : '<span class="status-pending">scheduled</span>';
+    const daysLabel = formatScheduleDaysLabel(days);
     const actions = perms.canEditSchedules
       ? `<span class="actions">
            <button class="um-btn-icon" data-action="edit" data-index="${index}" title="Edit">
@@ -248,7 +355,7 @@ function _renderScheduleList() {
           <span class="time">${_fmt12h(time)}</span>
           ${statusLabel}
         </div>
-        <span class="sched-days">Every day</span>
+        <span class="sched-days">${escHtml(daysLabel)}</span>
       </div>
       ${actions}
     </li>`;
@@ -260,9 +367,35 @@ function _renderScheduleList() {
       const action = btn.dataset.action;
       const index  = parseInt(btn.dataset.index, 10);
       if (action === 'edit')   _startEditSchedule(index);
-      if (action === 'delete') _deleteSchedule(index);
+      if (action === 'delete') _confirmDeleteSchedule(index);
     });
   });
+}
+
+function _captureFormSnapshot() {
+  return {
+    time: document.getElementById('feed-schedule-input')?.value.trim() || '',
+    days: normalizeDays(_getSelectedDays()),
+  };
+}
+
+function _isFormDirty() {
+  if (!_formSnapshot) return false;
+  const cur = _captureFormSnapshot();
+  return cur.time !== _formSnapshot.time
+    || cur.days.join(',') !== _formSnapshot.days.join(',');
+}
+
+function _openScheduleForm() {
+  document.getElementById('feed-schedule-form').style.display = '';
+  _formSnapshot = _captureFormSnapshot();
+}
+
+function _closeScheduleForm() {
+  document.getElementById('feed-schedule-form').style.display = 'none';
+  _editingIndex = null;
+  _formSnapshot = null;
+  _clearScheduleFieldError();
 }
 
 function _startEditSchedule(index) {
@@ -271,13 +404,31 @@ function _startEditSchedule(index) {
   _editingIndex = index;
   const input = document.getElementById('feed-schedule-input');
   if (input) input.value = sched.time;
-  _showScheduleError('');
-  document.getElementById('feed-schedule-form').style.display = '';
+  _setDayCheckboxes(sched.days);
+  _clearScheduleFieldError();
+  _openScheduleForm();
 }
 
-async function _saveScheduleAtIndex(index, timeVal) {
+function _cancelScheduleForm() {
+  if (!_isFormDirty()) {
+    _closeScheduleForm();
+    return;
+  }
+  showConfirmModal({
+    title: 'Discard changes?',
+    message: 'Unsaved changes will be lost.',
+    confirmLabel: 'Discard',
+    cancelLabel: 'Keep editing',
+    destructive: true,
+    onConfirm: async () => { _closeScheduleForm(); },
+  });
+}
+
+async function _saveScheduleAtIndex(index, timeVal, days) {
   const db = fbDatabase();
+  const normalizedDays = normalizeDays(days);
   await fbSet(fbRef(db, `/devices/${_deviceId}/feeding/schedules/times/${index}`), timeVal);
+  await fbSet(fbRef(db, `/devices/${_deviceId}/feeding/schedules/days/${index}`), normalizedDays);
 }
 
 async function _saveSchedule() {
@@ -288,23 +439,56 @@ async function _saveSchedule() {
   }
   const input   = document.getElementById('feed-schedule-input');
   const timeVal = input ? input.value.trim() : '';
+
+  if (!timeVal) {
+    if (input) input.reportValidity();
+    _setScheduleFieldError('Time is required.');
+    return;
+  }
   if (!/^\d{2}:\d{2}$/.test(timeVal)) {
-    _showScheduleError('Please enter a valid time (HH:MM).');
+    if (input) input.reportValidity();
+    _setScheduleFieldError('Please enter a valid time (HH:MM).');
     return;
   }
 
-  const index = _editingIndex !== null
+  const days = _getSelectedDays();
+  if (days.length === 0) {
+    _setScheduleFieldError('Select at least one day.', { focusDays: true });
+    return;
+  }
+
+  const excludeIndex = _editingIndex !== null ? _editingIndex : null;
+  if (hasDuplicateScheduleTime(_schedules, timeVal, excludeIndex)) {
+    showAlertModal({
+      title: 'Duplicate schedule',
+      message: `A schedule at ${_fmt12h(timeVal)} already exists.`,
+      variant: 'warning',
+    });
+    return;
+  }
+
+  const isEdit = _editingIndex !== null;
+  const index = isEdit
     ? _editingIndex
     : _nextScheduleIndex(_schedules.map((s) => s.index));
 
-  try {
-    await _saveScheduleAtIndex(index, timeVal);
-    document.getElementById('feed-schedule-form').style.display = 'none';
-    _editingIndex = null;
-    _showScheduleError('');
-  } catch (err) {
-    _showScheduleError('Save failed: ' + (err?.message || String(err)));
-  }
+  const summary = `${_fmt12h(timeVal)} (${formatScheduleDaysLabel(days)})`;
+
+  showConfirmModal({
+    title: isEdit ? 'Save changes?' : 'Add schedule?',
+    message: isEdit
+      ? `Save changes to ${summary}?`
+      : `Add schedule for ${summary}?`,
+    confirmLabel: 'Save',
+    onConfirm: async () => {
+      await _saveScheduleAtIndex(index, timeVal, days);
+      _closeScheduleForm();
+      showAppToast(
+        isEdit ? `Schedule updated: ${summary}.` : `Schedule added: ${summary}.`,
+        'success',
+      );
+    },
+  });
 }
 
 async function _saveDashboardSchedules() {
@@ -329,19 +513,31 @@ async function _saveDashboardSchedules() {
   }
 
   const byIndex = {};
-  _schedules.forEach((s) => { byIndex[s.index] = s.time; });
+  _schedules.forEach((s) => {
+    byIndex[s.index] = { time: s.time, days: s.days };
+  });
 
-  if (t0) byIndex[0] = t0;
-  else delete byIndex[0];
-  if (t1) byIndex[1] = t1;
-  else delete byIndex[1];
+  if (t0) {
+    byIndex[0] = { time: t0, days: byIndex[0]?.days ?? [...ALL_DAYS] };
+  } else {
+    delete byIndex[0];
+  }
+  if (t1) {
+    byIndex[1] = { time: t1, days: byIndex[1]?.days ?? [...ALL_DAYS] };
+  } else {
+    delete byIndex[1];
+  }
 
   const sorted = Object.entries(byIndex)
-    .map(([idx, time]) => ({ index: parseInt(idx, 10), time }))
+    .map(([idx, entry]) => ({ index: parseInt(idx, 10), time: entry.time, days: entry.days }))
     .sort((a, b) => a.time.localeCompare(b.time));
 
   const newTimes = {};
-  sorted.forEach((s, i) => { newTimes[i] = s.time; });
+  const newDays = {};
+  sorted.forEach((s, i) => {
+    newTimes[i] = s.time;
+    newDays[i] = normalizeDays(s.days);
+  });
 
   try {
     const db = fbDatabase();
@@ -349,9 +545,18 @@ async function _saveDashboardSchedules() {
       fbRef(db, `/devices/${_deviceId}/feeding/schedules/times`),
       sorted.length ? newTimes : null,
     );
-    log(sorted.length ? `Schedules saved (${sorted.length} active) ✓` : 'Schedules cleared ✓', 'feed');
+    await fbSet(
+      fbRef(db, `/devices/${_deviceId}/feeding/schedules/days`),
+      sorted.length ? newDays : null,
+    );
+    showAppToast(
+      sorted.length
+        ? `Dashboard schedules saved (${sorted.length} active).`
+        : 'All feeding schedules cleared.',
+      'success',
+    );
   } catch (err) {
-    log('Save error: ' + (err?.message || String(err)), 'err');
+    showAppToast('Save error: ' + (err?.message || String(err)), 'error');
   }
 }
 
@@ -410,8 +615,13 @@ async function _migrateLegacySchedules(deviceId) {
     if (legacy.length === 0) return;
 
     const newTimes = {};
-    legacy.forEach((t, i) => { newTimes[i] = t; });
+    const newDays = {};
+    legacy.forEach((t, i) => {
+      newTimes[i] = t;
+      newDays[i] = [...ALL_DAYS];
+    });
     await fbSet(fbRef(db, `/devices/${deviceId}/feeding/schedules/times`), newTimes);
+    await fbSet(fbRef(db, `/devices/${deviceId}/feeding/schedules/days`), newDays);
     await fbSet(fbRef(db, `/devices/${deviceId}/feeding/schedule1`), null);
     await fbSet(fbRef(db, `/devices/${deviceId}/feeding/schedule2`), null);
     log('Migrated legacy feeding schedules to unified format ✓', 'feed');
@@ -420,27 +630,61 @@ async function _migrateLegacySchedules(deviceId) {
   }
 }
 
+/** Re-render schedule list after RBAC permissions are applied (fixes hidden Add/Edit on first load). */
+export function refreshFeedingScheduleUi() {
+  _renderScheduleList();
+}
+
+function _confirmDeleteSchedule(index) {
+  const perms = window._rbacPerms || { canEditSchedules: false };
+  if (!perms.canEditSchedules) {
+    console.warn('Permission denied: canEditSchedules required');
+    return;
+  }
+  const sched = _schedules.find((s) => s.index === index);
+  if (!sched) return;
+
+  const timeLabel = _fmt12h(sched.time);
+  const daysLabel = formatScheduleDaysLabel(sched.days);
+
+  showConfirmModal({
+    title: 'Delete schedule?',
+    message: `Remove ${timeLabel} (${daysLabel})?`,
+    confirmLabel: 'Delete',
+    destructive: true,
+    onConfirm: async () => {
+      await _deleteSchedule(index);
+      showAppToast(`Schedule deleted: ${timeLabel} (${daysLabel}).`, 'success');
+    },
+  });
+}
+
 async function _deleteSchedule(index) {
   const perms = window._rbacPerms || { canEditSchedules: false };
   if (!perms.canEditSchedules) {
     console.warn('Permission denied: canEditSchedules required');
     return;
   }
-  try {
-    const db = fbDatabase();
-    // Remove the slot by setting null, then compact remaining slots
-    const remaining = _schedules
-      .filter((s) => s.index !== index)
-      .sort((a, b) => a.time.localeCompare(b.time));
+  const db = fbDatabase();
+  const remaining = _schedules
+    .filter((s) => s.index !== index)
+    .sort((a, b) => a.time.localeCompare(b.time));
 
-    // Rebuild the times object from scratch so indices stay contiguous
-    const newTimes = {};
-    remaining.forEach((s, i) => { newTimes[i] = s.time; });
+  const newTimes = {};
+  const newDays = {};
+  remaining.forEach((s, i) => {
+    newTimes[i] = s.time;
+    newDays[i] = normalizeDays(s.days);
+  });
 
-    await fbSet(fbRef(db, `/devices/${_deviceId}/feeding/schedules/times`), remaining.length ? newTimes : null);
-  } catch (err) {
-    console.error('[feeding] delete schedule error', err);
-  }
+  await fbSet(
+    fbRef(db, `/devices/${_deviceId}/feeding/schedules/times`),
+    remaining.length ? newTimes : null,
+  );
+  await fbSet(
+    fbRef(db, `/devices/${_deviceId}/feeding/schedules/days`),
+    remaining.length ? newDays : null,
+  );
 }
 
 export function _nextScheduleIndex(existingIndices) {
@@ -448,11 +692,42 @@ export function _nextScheduleIndex(existingIndices) {
   return Math.max(...existingIndices) + 1;
 }
 
-function _showScheduleError(msg) {
+export function hasDuplicateScheduleTime(schedules, timeVal, excludeIndex = null) {
+  return schedules.some(
+    (s) => s.time === timeVal && (excludeIndex === null || s.index !== excludeIndex),
+  );
+}
+
+function _clearScheduleFieldError() {
+  const input = document.getElementById('feed-schedule-input');
+  if (input) {
+    input.classList.remove('input-field--error');
+    input.removeAttribute('aria-invalid');
+  }
+  document.querySelector('.feed-day-selector')?.classList.remove('feed-day-selector--error');
   const el = document.getElementById('feed-schedule-error');
-  if (!el) return;
-  el.textContent = msg;
-  el.style.display = msg ? '' : 'none';
+  if (el) {
+    el.textContent = '';
+    el.style.display = 'none';
+  }
+}
+
+function _setScheduleFieldError(message, { focusDays = false } = {}) {
+  const input = document.getElementById('feed-schedule-input');
+  if (!focusDays && input) {
+    input.classList.add('input-field--error');
+    input.setAttribute('aria-invalid', 'true');
+    input.focus();
+  }
+  if (focusDays) {
+    document.querySelector('.feed-day-selector')?.classList.add('feed-day-selector--error');
+    document.getElementById('feed-day-0')?.focus();
+  }
+  const el = document.getElementById('feed-schedule-error');
+  if (el) {
+    el.textContent = message;
+    el.style.display = 'block';
+  }
 }
 
 // ── Feed Log ──────────────────────────────────────────────────────────────────
@@ -486,14 +761,25 @@ function _renderFeedLog() {
 
 // ── Metric Cards ──────────────────────────────────────────────────────────────
 
-export function _nextScheduleTime(schedules) {
-  const now = new Date();
-  const candidates = schedules.map((s) => {
+export function _nextScheduleTime(schedules, nowMs = Date.now()) {
+  const now = new Date(nowMs);
+  const todayDay = now.getDay();
+  const candidates = [];
+
+  schedules.forEach((s) => {
     const [h, m] = s.time.split(':').map(Number);
-    const ms = new Date(now.getFullYear(), now.getMonth(), now.getDate(), h, m).getTime();
-    // If already passed today, wrap to tomorrow
-    return ms > now.getTime() ? ms : ms + 86400000;
+    const days = normalizeDays(s.days ?? ALL_DAYS);
+    days.forEach((day) => {
+      let daysAhead = day - todayDay;
+      if (daysAhead < 0) daysAhead += 7;
+      const d = new Date(now);
+      d.setDate(d.getDate() + daysAhead);
+      d.setHours(h, m, 0, 0);
+      const ms = d.getTime();
+      if (ms > nowMs) candidates.push(ms);
+    });
   });
+
   if (candidates.length === 0) return null;
   return Math.min(...candidates);
 }
