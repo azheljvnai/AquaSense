@@ -163,6 +163,7 @@ describe('Feeding Tab Device Migration — Preservation Properties', () => {
     expect(feedLogCall).toBeDefined();
     expect(feedLogCall.value).toHaveProperty('reason', 'Manual');
     expect(feedLogCall.value).toHaveProperty('timestamp');
+    expect(feedLogCall.value).toHaveProperty('amountMg', 300);
     expect(feedLogCall.value.timestamp).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/);
   });
 
@@ -528,6 +529,9 @@ describe('Feeding Tab Device Migration — Preservation Properties', () => {
     expect(feedLogCall).toBeDefined();
     expect(feedLogCall.value).toHaveProperty('reason');
     expect(feedLogCall.value).toHaveProperty('timestamp');
+    expect(feedLogCall.value).toHaveProperty('amountMg');
+    expect(feedLogCall.value.amountMg).toBeGreaterThanOrEqual(200);
+    expect(feedLogCall.value.amountMg).toBeLessThanOrEqual(400);
 
     // Verify reason is valid
     expect(['Manual', 'Scheduled']).toContain(feedLogCall.value.reason);

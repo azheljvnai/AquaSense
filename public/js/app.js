@@ -18,7 +18,7 @@ import {
   fbReauthenticate,
   fbUpdatePassword,
 } from './firebase-client.js';
-import { connect, initRoleTracking, fetchHistoryFromRTDB } from './firebase.js';
+import { connect, initRoleTracking, fetchHistoryFromRTDB, fetchFeedLogFromRTDB } from './firebase.js';
 import {
   init as initFeeding,
   triggerManualFeed,
@@ -576,6 +576,8 @@ function connectFirebase() {
 window.connectFirebase = connectFirebase;
 window.triggerFeed = () => triggerManualFeed();
 window.fetchHistoryFromRTDB = (fromMs, toMs) => fetchHistoryFromRTDB(deviceId, fromMs, toMs);
+window.fetchFeedLogFromRTDB = (fromMs, toMs) => fetchFeedLogFromRTDB(deviceId, fromMs, toMs);
+window.getReportDeviceId = () => deviceId;
 
 async function hydrateHistoryFromRTDB() {
   if (!currentUser || hydratedHistoryForUid === currentUser.uid) return;

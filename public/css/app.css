@@ -1553,6 +1553,81 @@ body.theme-dark .recent-alerts .alert-item.neutral {
 .rpt-history-meta { font-size: 0.72rem; color: var(--text-muted); margin-top: 2px; }
 .rpt-history-actions { display: flex; gap: 6px; flex-shrink: 0; }
 
+/* In-app report preview (mobile / blocked popups) */
+#report-print-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 10050;
+  background: rgba(15, 23, 42, 0.55);
+  padding: 0;
+}
+#report-print-overlay.is-open { display: block; }
+body.report-print-open { overflow: hidden; }
+.report-print-shell {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  max-height: 100dvh;
+  background: var(--surface-1, #fff);
+}
+.report-print-toolbar {
+  flex-shrink: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel);
+}
+.report-print-toolbar-title {
+  margin: 0;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+.report-print-toolbar-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.report-print-scroll {
+  flex: 1;
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 12px;
+}
+.report-print-loading {
+  text-align: center;
+  color: var(--text-muted);
+  padding: 24px;
+}
+.report-print-document {
+  max-width: 900px;
+  margin: 0 auto;
+  background: #fff;
+  color: #0f172a;
+}
+
+@media print {
+  body.report-print-open * { visibility: hidden; }
+  body.report-print-open #report-print-overlay,
+  body.report-print-open #report-print-overlay * { visibility: visible; }
+  body.report-print-open #report-print-overlay {
+    position: absolute;
+    inset: 0;
+    display: block !important;
+    background: #fff;
+  }
+  body.report-print-open .report-print-toolbar,
+  body.report-print-open .no-print { display: none !important; }
+  body.report-print-open .report-print-scroll {
+    overflow: visible;
+    padding: 0;
+  }
+}
+
 /* ── 17. Configuration ──────────────────────────────────────────────────── */
 .cfg-topcard { margin-bottom: 20px; }
 .cfg-top-title { display: flex; gap: 12px; align-items: center; }

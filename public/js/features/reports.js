@@ -12,6 +12,15 @@ import {
   SPECIES_PRESETS,
 } from '../pond-config.js';
 import { showAppToast, showConfirmModal } from '../ui/modal-ui.js';
+import { FEED_DISPENSE_MG_RANGE_LABEL } from '../feed-dispense.js';
+import { buildFeedingCsvRows } from './report-feeding-rows.js';
+import { rowsToStyledExcelBlob, buildPrintableHtml } from './report-format.js';
+import {
+  closeReportPrintTarget,
+  openReportPrintTargetSync,
+  writeReportPrintTarget,
+  shouldAutoPrint,
+} from './report-print.js';
 
 function getReportConfig() {
   const species = getActiveSpecies();
@@ -136,39 +145,9 @@ export function init() {
       .join('\n');
   }
 
-  function escapeXml(s) {
-    return String(s ?? '')
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;');
-  }
-
-  /** Excel-compatible SpreadsheetML (.xls) — opens in Excel/LibreOffice. */
-  function rowsToExcelBlob(rows) {
-    const rowXml = rows.map((row) => {
-      const cells = row.map((cell) => {
-        const v = String(cell ?? '');
-        const num = /^-?\d+(\.\d+)?$/.test(v);
-        const type = num ? 'Number' : 'String';
-        return `<Cell><Data ss:Type="${type}">${escapeXml(v)}</Data></Cell>`;
-      }).join('');
-      return `<Row>${cells}</Row>`;
-    }).join('');
-    const xml = `<?xml version="1.0"?>
-<?mso-application progid="Excel.Sheet"?>
-<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
- xmlns:o="urn:schemas-microsoft-com:office:office"
- xmlns:x="urn:schemas-microsoft-com:office:excel"
- xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">
-<Worksheet ss:Name="Report"><Table>${rowXml}</Table></Worksheet>
-</Workbook>`;
-    return new Blob([xml], { type: 'application/vnd.ms-excel' });
-  }
-
   function downloadReportFile(filename, rows, format) {
     if (format === 'xlsx') {
-      downloadBlob(filename.replace(/\.xlsx$/i, '.xls'), rowsToExcelBlob(rows));
+      downloadBlob(filename.replace(/\.xlsx$/i, '.xls'), rowsToStyledExcelBlob(rows));
       return;
     }
     downloadBlob(filename, new Blob(['\uFEFF' + rowsToCsvString(rows)], { type: 'text/csv;charset=utf-8' }));
@@ -236,17 +215,18 @@ export function init() {
     return rows;
   }
 
-  function feedingCsvRows(period, range) {
-    const daysInMonth = new Date(range.to.getFullYear(), range.to.getMonth()+1, 0).getDate();
-    const rows = [['--- FEEDING ---'], ['metric','value'], ['period_label', range.label]];
-    if (period === 'daily') {
-      rows.push(['scheduled_feedings','4'],['completed_feedings','2'],['total_feed_kg','55'],['feed_efficiency_pct','93']);
-    } else if (period === 'weekly') {
-      rows.push(['avg_daily_feed_kg','86.4'],['total_feed_kg','604.8'],['feed_efficiency_pct','93'],['days_in_week','7']);
-    } else {
-      rows.push(['avg_daily_feed_kg','86.4'],['total_feed_kg',String((86.4*daysInMonth).toFixed(1))],['feed_efficiency_pct','93'],['days_in_month',String(daysInMonth)]);
+  async function loadFeedDispenses(range) {
+    if (typeof window.fetchFeedLogFromRTDB !== 'function') return [];
+    try {
+      return await window.fetchFeedLogFromRTDB(range.from.getTime(), range.to.getTime());
+    } catch {
+      return [];
     }
-    return rows;
+  }
+
+  function getReportDeviceLabel() {
+    if (typeof window.getReportDeviceId === 'function') return window.getReportDeviceId();
+    return 'device001';
   }
 
   async function buildReportRows({ period, type, customFrom, customTo }) {
@@ -272,13 +252,20 @@ export function init() {
       ['period', period], ['date_range', range.label],
       ['configuration', configLabel],
       ['species', speciesLabel],
+      ['device_id', getReportDeviceLabel()],
       ['generated_at', new Date().toISOString()], ['firebase_status', snap.status], [],
     ];
 
     let body = [];
-    if (type === 'water-quality') body = wqCsvRows(readings, snap, reportCfg);
-    else if (type === 'feeding')  body = feedingCsvRows(period, range);
-    else body = [...wqCsvRows(readings, snap, reportCfg), [], ...feedingCsvRows(period, range)];
+    if (type === 'water-quality') {
+      body = wqCsvRows(readings, snap, reportCfg);
+    } else if (type === 'feeding') {
+      const dispenses = await loadFeedDispenses(range);
+      body = buildFeedingCsvRows(dispenses, range);
+    } else {
+      const dispenses = await loadFeedDispenses(range);
+      body = [...wqCsvRows(readings, snap, reportCfg), [], ...buildFeedingCsvRows(dispenses, range)];
+    }
 
     return [...header, ...body];
   }
@@ -289,52 +276,55 @@ export function init() {
 
   // ── Printable report builder ───────────────────────────────────────────────
 
-  function wqSummaryHtml(readings, snap, pondCfg, { includeRaw = true } = {}) {
+  function buildWqPrintSections(readings, snap, pondCfg) {
     const metrics = [
-      { key:'ph',   label:'pH',                  current: snap.ph },
-      { key:'do',   label:'Dissolved O₂ (mg/L)', current: snap.do },
-      { key:'turb', label:'Turbidity (NTU)',      current: snap.turb },
-      { key:'temp', label:'Temperature (°C)',     current: snap.temp },
+      { key: 'ph', label: 'pH', current: snap.ph },
+      { key: 'do', label: 'Dissolved O₂ (mg/L)', current: snap.do },
+      { key: 'turb', label: 'Turbidity (NTU)', current: snap.turb },
+      { key: 'temp', label: 'Temperature (°C)', current: snap.temp },
     ];
-    const rows = metrics.map(m => {
-      const s      = stats(readings, m.key);
+    const summaryRows = metrics.map((m) => {
+      const s = stats(readings, m.key);
       const status = evalStatus(m.key, m.current, pondCfg?.thresholds);
-      const statusColor = { Normal:'#166534', Warning:'#b45309', Critical:'#991b1b' }[status] || '#475569';
-      return `<tr>
-        <td>${m.label}</td>
-        <td>${m.current||'—'}</td>
-        <td style="color:${statusColor};font-weight:600">${status}</td>
-        <td>${s?.avg??'—'}</td><td>${s?.min??'—'}</td><td>${s?.max??'—'}</td><td>${s?.count??0}</td>
-      </tr>`;
-    }).join('');
-    const rawSection = includeRaw ? `
-      <h3 style="margin-top:20px;font-size:12px;color:#334155">Raw Readings <span style="font-weight:400;color:#64748b">(${readings.length} records)</span></h3>
-      <table>
-        <thead><tr><th>Timestamp</th><th>pH</th><th>DO (mg/L)</th><th>Turbidity (NTU)</th><th>Temp (°C)</th></tr></thead>
-        <tbody>${readings.length
-          ? readings.map(r=>`<tr><td>${fmtDateTime(new Date(r.ts))}</td><td>${r.ph?.toFixed(2)??'—'}</td><td>${r.do?.toFixed(2)??'—'}</td><td>${r.turb?.toFixed(2)??'—'}</td><td>${r.temp?.toFixed(2)??'—'}</td></tr>`).join('')
-          : '<tr><td colspan="5" style="color:#64748b;font-style:italic">No readings for this period.</td></tr>'
-        }</tbody>
-      </table>` : '';
-    return `
-      <h3 style="font-size:12px;font-weight:600;margin:14px 0 6px;color:#334155;border-bottom:1px solid #e2e8f0;padding-bottom:4px">Water Quality Summary</h3>
-      <table>
-        <thead><tr><th>Metric</th><th>Current</th><th>Status</th><th>Avg</th><th>Min</th><th>Max</th><th>Samples</th></tr></thead>
-        <tbody>${rows}</tbody>
-      </table>${rawSection}`;
+      return [m.label, m.current || '—', status, s?.avg ?? '—', s?.min ?? '—', s?.max ?? '—', String(s?.count ?? 0)];
+    });
+    return [{
+      title: 'Water Quality Summary',
+      kind: 'table',
+      columns: ['Metric', 'Current', 'Status', 'Avg', 'Min', 'Max', 'Samples'],
+      rows: summaryRows,
+      tableOpts: { numericCols: [3, 4, 5, 6] },
+    }];
   }
 
-  function feedingHtml(period, range) {
-    const daysInMonth = new Date(range.to.getFullYear(), range.to.getMonth()+1, 0).getDate();
-    let rows = '';
-    if (period === 'daily') rows = `<tr><th>Scheduled Feedings</th><td>4</td></tr><tr><th>Completed Feedings</th><td>2</td></tr><tr><th>Total Feed Dispensed</th><td>55 kg</td></tr><tr><th>Feed Efficiency</th><td>93%</td></tr><tr><th>Stock Remaining</th><td>1,250 kg (~14 days)</td></tr>`;
-    else if (period === 'weekly') rows = `<tr><th>Days in Week</th><td>7</td></tr><tr><th>Avg Daily Feed</th><td>86.4 kg/day</td></tr><tr><th>Total Feed Dispensed</th><td>604.8 kg</td></tr><tr><th>Feed Efficiency</th><td>93%</td></tr><tr><th>Stock Remaining</th><td>1,250 kg (~14 days)</td></tr>`;
-    else rows = `<tr><th>Days in Month</th><td>${daysInMonth}</td></tr><tr><th>Avg Daily Feed</th><td>86.4 kg/day</td></tr><tr><th>Total Feed Dispensed</th><td>${(86.4*daysInMonth).toFixed(1)} kg</td></tr><tr><th>Feed Efficiency</th><td>93%</td></tr><tr><th>Stock Remaining</th><td>1,250 kg (~14 days)</td></tr>`;
-    return `<h3 style="font-size:12px;font-weight:600;margin:14px 0 6px;color:#334155;border-bottom:1px solid #e2e8f0;padding-bottom:4px">Feeding Summary</h3><table style="max-width:420px"><tbody>${rows}</tbody></table>`;
+  function buildFeedingPrintSections(dispenses, range) {
+    const totalMg = dispenses.reduce((sum, d) => sum + (d.amountMg || 0), 0);
+    return [
+      {
+        title: 'Feeding Summary',
+        kind: 'kv',
+        rows: [
+          ['Period', range.label],
+          ['Total Dispenses', String(dispenses.length)],
+          ['Total Amount Dispensed', `${totalMg} mg`],
+          ['Expected per Dispense', `${FEED_DISPENSE_MG_RANGE_LABEL} mg`],
+        ],
+      },
+      {
+        title: 'Dispense Log',
+        subtitle: dispenses.length ? `${dispenses.length} events` : 'No events',
+        kind: 'table',
+        columns: ['Dispense Time', 'Type', 'Amount (mg)', 'Reason'],
+        rows: dispenses.length
+          ? dispenses.map((d) => [d.timestampDisplay, d.type, String(d.amountMg), d.reason])
+          : [],
+        tableOpts: { numericCols: [2] },
+      },
+    ];
   }
 
-  async function openPrintableReport({ period, type, customFrom, customTo }) {
-    const range    = getDateRange(period, customFrom, customTo);
+  async function buildReportPrintHtml({ period, type, customFrom, customTo }) {
+    const range = getDateRange(period, customFrom, customTo);
     if (typeof window.fetchHistoryFromRTDB === 'function') {
       try {
         const rtdbEntries = await window.fetchHistoryFromRTDB(range.from.getTime(), range.to.getTime());
@@ -344,59 +334,71 @@ export function init() {
       }
     }
     const readings = getHistoryRange(range.from.getTime(), range.to.getTime());
-    const snap     = getLiveSnapshot();
+    const snap = getLiveSnapshot();
     const reportCfg = getReportConfig();
     const configLabel = getReportConfigLabel();
     const speciesLabel = reportCfg.species.charAt(0).toUpperCase() + reportCfg.species.slice(1);
-    const periodLabel  = { daily:'Daily', weekly:'Weekly', monthly:'Monthly', custom:'Custom' }[period] ?? period;
-    const typeLabel    = { 'water-quality':'Water Quality', feeding:'Feeding', combined:'Combined' }[type] ?? type;
-    const title        = `${periodLabel} ${typeLabel} Report`;
+    const periodLabel = { daily: 'Daily', weekly: 'Weekly', monthly: 'Monthly', custom: 'Custom' }[period] ?? period;
+    const typeLabel = { 'water-quality': 'Water Quality', feeding: 'Feeding', combined: 'Combined' }[type] ?? type;
+    const title = `${periodLabel} ${typeLabel} Report`;
 
-    const w = window.open('', '_blank');
-    if (!w) { alert('Popup blocked. Allow popups to print/save as PDF.'); return; }
+    const badges = [
+      { label: periodLabel, bg: '#e0f2fe', color: '#0369a1' },
+      { label: typeLabel, bg: '#f0fdf4', color: '#166534' },
+      { label: configLabel, bg: '#e0f2fe', color: '#0369a1' },
+    ];
+    if (type === 'combined') badges.push({ label: 'Water + Feeding', bg: '#ede9fe', color: '#6d28d9' });
 
-    const configHeader = `<div style="margin-bottom:8px;font-size:11px;color:#64748b">
-      Configuration: <strong>${configLabel}</strong> &nbsp;·&nbsp; Species: <strong>${speciesLabel}</strong>
-    </div>`;
+    const metaRows = [
+      ['Report Period', range.label],
+      ['Configuration', configLabel],
+      ['Species', speciesLabel],
+      ['Device', getReportDeviceLabel()],
+      ['Generated', new Date().toLocaleString()],
+      ['System Status', snap.status || '—'],
+    ];
 
-    let content = '';
-    if (type === 'water-quality') content = wqSummaryHtml(readings, snap, reportCfg, { includeRaw: false });
-    else if (type === 'feeding')  content = feedingHtml(period, range);
-    else content = wqSummaryHtml(readings, snap, reportCfg, { includeRaw: false }) + feedingHtml(period, range);
+    let sections = [];
+    if (type === 'water-quality') {
+      sections = buildWqPrintSections(readings, snap, reportCfg);
+    } else if (type === 'feeding') {
+      const dispenses = await loadFeedDispenses(range);
+      sections = buildFeedingPrintSections(dispenses, range);
+    } else {
+      const dispenses = await loadFeedDispenses(range);
+      sections = [
+        ...buildWqPrintSections(readings, snap, reportCfg),
+        ...buildFeedingPrintSections(dispenses, range),
+      ];
+    }
 
-    const body = `${configHeader}${content}`;
+    return buildPrintableHtml({
+      title,
+      badges,
+      metaRows,
+      sections,
+      autoPrint: shouldAutoPrint(),
+    });
+  }
 
-    const combinedBadge = type === 'combined' ? '<span class="badge" style="background:#ede9fe;color:#6d28d9">Water + Feeding</span>' : '';
-    const configBadge   = `<span class="badge" style="background:#e0f2fe;color:#0369a1">${configLabel}</span>`;
+  async function populatePrintableReport(target, opts) {
+    try {
+      const html = await buildReportPrintHtml(opts);
+      writeReportPrintTarget(target, html);
+      if (target?.kind === 'overlay') {
+        showAppToast('Report ready — tap Print / Save as PDF.', 'info');
+      }
+    } catch (e) {
+      closeReportPrintTarget(target);
+      showAppToast('Could not open report for printing. Try again or use CSV.', 'error');
+      throw e;
+    }
+  }
 
-    w.document.open();
-    w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${title}</title>
-<style>
-  *{box-sizing:border-box}
-  body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;padding:24px 28px;color:#0f172a;font-size:13px}
-  .badge{display:inline-block;background:#e0f2fe;color:#0369a1;font-size:10px;font-weight:700;padding:2px 8px;border-radius:99px;text-transform:uppercase;letter-spacing:.06em;vertical-align:middle;margin-right:6px}
-  h1{font-size:18px;margin:4px 0 2px}
-  h3{font-size:13px;font-weight:600;margin:20px 0 6px;color:#334155;border-bottom:1px solid #e2e8f0;padding-bottom:4px}
-  .meta{color:#64748b;font-size:11px;margin-bottom:4px}
-  .range{font-size:12px;font-weight:500;margin-bottom:18px;color:#0f172a}
-  table{border-collapse:collapse;width:100%;margin-bottom:4px}
-  td,th{border:1px solid #e2e8f0;padding:7px 10px;text-align:left;white-space:nowrap}
-  thead th{background:#f1f5f9;font-weight:600}
-  tbody tr:nth-child(even){background:#f8fafc}
-  .pond-section{margin-bottom:32px}
-  .pond-section-header{display:flex;align-items:center;gap:8px;background:#f1f5f9;border-left:3px solid #3b82f6;padding:8px 12px;border-radius:0 6px 6px 0;margin-bottom:10px;font-weight:700;font-size:13px}
-  .pond-section-name{font-size:14px;font-weight:700;color:#0f172a}
-  @media print{body{padding:12px 14px}thead{display:table-header-group}.pond-section{page-break-inside:avoid}}
-</style></head><body>
-  <div><span class="badge">${periodLabel}</span><span class="badge" style="background:#f0fdf4;color:#166534">${typeLabel}</span>${combinedBadge}${configBadge}</div>
-  <h1>${title}</h1>
-  <div class="meta">Generated: ${new Date().toLocaleString()}</div>
-  <div class="range">Period: ${range.label}</div>
-  <div class="meta" style="margin-bottom:18px">Firebase: ${snap.status||'—'}</div>
-  ${body}
-  <script>setTimeout(()=>window.print(),300);<\/script>
-</body></html>`);
-    w.document.close();
+  /** @deprecated Use openReportPrintTargetSync + populatePrintableReport from a click handler. */
+  async function openPrintableReport(opts) {
+    const target = openReportPrintTargetSync();
+    await populatePrintableReport(target, opts);
   }
 
   // ── History rendering ──────────────────────────────────────────────────────
@@ -448,7 +450,13 @@ export function init() {
         btn.disabled = true;
         try {
           if (h.format === 'pdf') {
-            await openPrintableReport({ period: h.period, type: h.type, customFrom: h.customFrom, customTo: h.customTo });
+            const target = openReportPrintTargetSync();
+            await populatePrintableReport(target, {
+              period: h.period,
+              type: h.type,
+              customFrom: h.customFrom,
+              customTo: h.customTo,
+            });
           } else {
             const rows = await buildReportRows({ period: h.period, type: h.type, customFrom: h.customFrom, customTo: h.customTo });
             const ext = h.format === 'xlsx' ? 'xls' : 'csv';
@@ -486,8 +494,13 @@ export function init() {
     const stamp  = getNowStamp();
 
     if (format === 'pdf') {
-      await openPrintableReport({ period, type });
-      recordHistory({ period, type, format: 'pdf', range });
+      const target = openReportPrintTargetSync();
+      try {
+        await populatePrintableReport(target, { period, type });
+        recordHistory({ period, type, format: 'pdf', range });
+      } catch {
+        // toast shown in populatePrintableReport
+      }
       return;
     }
     const rows = await buildReportRows({ period, type });
@@ -530,6 +543,26 @@ export function init() {
     } finally { btn.disabled = false; }
   });
 
+  // Custom Excel
+  document.getElementById('btn-custom-generate-xlsx')?.addEventListener('click', async () => {
+    const perms = window._rbacPerms;
+    if (perms && !perms.canDownloadReports) { alert('Access denied: Owner or Admin required.'); return; }
+    const from = document.getElementById('custom-from')?.value;
+    const to   = document.getElementById('custom-to')?.value;
+    if (!from || !to) { alert('Please select both a From and To date.'); return; }
+    if (new Date(from) > new Date(to)) { alert('From date must be before To date.'); return; }
+    const typeVal = document.getElementById('custom-report-type')?.value || 'water-quality';
+    const type = ['feeding', 'combined'].includes(typeVal) ? typeVal : 'water-quality';
+    const range = getDateRange('custom', from, to);
+    const btn = document.getElementById('btn-custom-generate-xlsx');
+    btn.disabled = true;
+    try {
+      const rows = await buildReportRows({ period: 'custom', type, customFrom: from, customTo: to });
+      downloadReportFile(`${type}_custom_${getNowStamp()}.xlsx`, rows, 'xlsx');
+      recordHistory({ period: 'custom', type, format: 'xlsx', range, customFrom: from, customTo: to });
+    } finally { btn.disabled = false; }
+  });
+
   // Custom PDF
   document.getElementById('btn-custom-generate-pdf')?.addEventListener('click', async () => {
     const perms = window._rbacPerms;
@@ -543,9 +576,12 @@ export function init() {
     const range = getDateRange('custom', from, to);
     const btn = document.getElementById('btn-custom-generate-pdf');
     btn.disabled = true;
+    const target = openReportPrintTargetSync();
     try {
-      await openPrintableReport({ period:'custom', type, customFrom: from, customTo: to });
-      recordHistory({ period:'custom', type, format:'pdf', range, customFrom: from, customTo: to });
+      await populatePrintableReport(target, { period: 'custom', type, customFrom: from, customTo: to });
+      recordHistory({ period: 'custom', type, format: 'pdf', range, customFrom: from, customTo: to });
+    } catch {
+      // toast shown in populatePrintableReport
     } finally { btn.disabled = false; }
   });
 

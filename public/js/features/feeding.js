@@ -19,6 +19,12 @@ import {
 } from '../firebase-client.js';
 import { log } from '../utils.js';
 import {
+  FEED_DISPENSE_MG_DEFAULT,
+  dedupeDispensesBySecond,
+  parseFeedLogEntry,
+  parseFeedTimestamp,
+} from '../feed-dispense.js';
+import {
   showAppToast,
   showAlertModal,
   showConfirmModal,
@@ -34,7 +40,7 @@ const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 let _schedules         = [];     // [{ index, time, days }] sorted by time
 let _timesByIndex      = {};
 let _daysByIndex       = {};
-let _logEntries        = [];     // [{ ts, type }] sorted descending, max 20
+let _logEntries        = [];     // [{ ts, type, amountMg }] sorted descending, max 20
 let _feedChart         = null;   // Chart.js instance
 let _manualFeedTimeout = null;   // 10-second timeout handle
 let _editingIndex      = null;   // schedule index being edited (null = new)
@@ -121,20 +127,14 @@ function _subscribe(deviceId) {
   const logRef = fbRef(db, `/devices/${deviceId}/feedLog`);
   const unsubLog = fbOnValue(logRef, (snap) => {
     const entries = [];
+    const parsed = [];
     snap.forEach((child) => {
-      const val = child.val();
-      if (!val) return;
-      // Firmware writes: { reason: "MANUAL"|"SCHED N", timestamp: "YYYY-MM-DD HH:MM:SS" }
-      // App writes:      { reason: "Manual"|"Scheduled", timestamp: "YYYY-MM-DD HH:MM:SS" }
-      if (typeof val.timestamp === 'string') {
-        const ts = _parseTimestamp(val.timestamp);
-        if (ts) {
-          const rawReason = (val.reason || '').toUpperCase();
-          const type = rawReason.startsWith('MANUAL') || rawReason === 'MANUAL' ? 'Manual' : 'Scheduled';
-          entries.push({ ts, type });
-        }
-      }
+      const entry = parseFeedLogEntry(child.val());
+      if (entry) parsed.push(entry);
     });
+    for (const d of dedupeDispensesBySecond(parsed)) {
+      entries.push({ ts: d.ts, type: d.type, amountMg: d.amountMg });
+    }
     entries.sort((a, b) => b.ts - a.ts);
     _logEntries = entries.slice(0, 20);
     _renderFeedLog();
@@ -265,10 +265,7 @@ function _setDayCheckboxes(days) {
  * Returns null if unparseable.
  */
 function _parseTimestamp(str) {
-  // "2025-05-10 14:30:00" → replace space with T for ISO parsing
-  const iso = str.replace(' ', 'T');
-  const ms  = Date.parse(iso);
-  return isNaN(ms) ? null : ms;
+  return parseFeedTimestamp(str);
 }
 
 /** Next occurrence (ms) for a recurring schedule; null if no valid days. */
@@ -747,13 +744,15 @@ function _renderFeedLog() {
     return;
   }
 
-  container.innerHTML = _logEntries.map(({ ts, type }) => {
+  container.innerHTML = _logEntries.map(({ ts, type, amountMg }) => {
     const typeClass = type === 'Manual' ? 'feed-log-type--manual'
       : type === 'Scheduled' ? 'feed-log-type--auto'
       : 'feed-log-type--unknown';
+    const mgLabel = amountMg != null ? `${amountMg} mg` : '—';
     return `<div class="feed-log-row">
       <span class="feed-log-type ${typeClass}">${type}</span>
       <span class="feed-log-time">${_fmtTimestamp(ts)}</span>
+      <span class="feed-log-amount muted">${mgLabel}</span>
     </div>`;
   }).join('');
 }
@@ -895,7 +894,11 @@ async function _writeFeedLog(deviceId, reason) {
   const db  = fbDatabase();
   const ts  = _fmtRTDBTimestamp(new Date());
   const key = _timestampToKey(ts);
-  await fbSet(fbRef(db, `/devices/${deviceId}/feedLog/${key}`), { reason, timestamp: ts });
+  await fbSet(fbRef(db, `/devices/${deviceId}/feedLog/${key}`), {
+    reason,
+    timestamp: ts,
+    amountMg: FEED_DISPENSE_MG_DEFAULT,
+  });
 }
 
 export async function triggerManualFeed() {

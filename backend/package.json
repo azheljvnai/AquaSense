@@ -13,6 +13,8 @@
     "cleanup:history:epoch": "node scripts/cleanup-rtdb-history.js --delete-keys 1970-01-01_08-00-31,1970-01-01_08-01-01",
     "seed:rtdb-day:dry": "node scripts/seed-rtdb-day.js --gap --dry-run",
     "seed:rtdb-day": "node scripts/seed-rtdb-day.js --gap",
+    "seed:may-gaps:dry": "node scripts/seed-rtdb-day.js --may-gaps --dry-run",
+    "seed:may-gaps": "node scripts/seed-rtdb-day.js --may-gaps",
     "cleanup:presets": "node scripts/cleanup-duplicate-presets.js",
     "update:crayfish": "node scripts/update-crayfish-preset.js"
   },
