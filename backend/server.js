@@ -93,21 +93,21 @@ try {
   console.warn('[Admin SDK] Init failed — /api/users endpoint will be unavailable:', e.message);
 }
 
-const app = express();
-const PORT = process.env.PORT || 3000;
+export function createApp() {
+  const app = express();
 
-// Frontend static files (parent dir / public)
-const frontendPath = path.join(__dirname, '..', 'public');
+  // Frontend static files (parent dir / public)
+  const frontendPath = path.join(__dirname, '..', 'public');
 
-// Disable caching during development so changes reflect immediately on localhost.
-app.use((_req, res, next) => {
-  res.setHeader('Cache-Control', 'no-store');
-  next();
-});
+  // Disable caching during development so changes reflect immediately on localhost.
+  app.use((_req, res, next) => {
+    res.setHeader('Cache-Control', 'no-store');
+    next();
+  });
 
-app.use(express.json());
+  app.use(express.json());
 
-const notificationsRouter = Router();
+  const notificationsRouter = Router();
 
 // ─── Auth middleware ──────────────────────────────────────────────────────────
 
@@ -1080,29 +1080,47 @@ app.post('/api/configurations/:id/deactivate', verifyToken, requireRole('admin',
   }
 });
 
-// Static files — registered after API routes so /api/* is never intercepted
-app.use(express.static(frontendPath, { etag: false, lastModified: false, maxAge: 0 }));
-// Also serve frontend assets (css, js, etc.)
-app.use(express.static(path.join(__dirname, '..', 'frontend'), { etag: false, lastModified: false, maxAge: 0 }));
+  // Static files — registered after API routes so /api/* is never intercepted
+  app.use(express.static(frontendPath, { etag: false, lastModified: false, maxAge: 0 }));
+  // Also serve frontend assets (css, js, etc.)
+  app.use(express.static(path.join(__dirname, '..', 'frontend'), { etag: false, lastModified: false, maxAge: 0 }));
 
-// SPA fallback: serve index.html for non-file routes
-app.get('*', (_req, res) => {
-  res.sendFile(path.join(frontendPath, 'index.html'));
-});
+  // SPA fallback: serve index.html for non-file routes
+  app.get('*', (_req, res) => {
+    res.sendFile(path.join(frontendPath, 'index.html'));
+  });
 
-app.listen(PORT, async () => {
-  console.log(`AquaSense backend running at http://localhost:${PORT}`);
-  console.log(`Frontend served from: ${frontendPath}`);
-  if (!process.env.FIREBASE_DATABASE_URL) {
-    console.warn('FIREBASE_DATABASE_URL not set in .env — client will need to enter it manually.');
-  }
-  
-  // Seed species presets on startup
-  try {
-    await checkAndSeedPresets();
-  } catch (e) {
-    console.error('[Server] Failed to seed presets:', e.message);
-  }
+  return app;
+}
 
-  startRtdbAlertWatcher({ deviceId: process.env.DEVICE_ID || 'device001' });
-});
+export async function startServer({ port } = {}) {
+  const app = createApp();
+  const PORT = port || process.env.PORT || 3000;
+  const frontendPath = path.join(__dirname, '..', 'public');
+
+  return new Promise((resolve) => {
+    const server = app.listen(PORT, async () => {
+      console.log(`AquaSense backend running at http://localhost:${PORT}`);
+      console.log(`Frontend served from: ${frontendPath}`);
+      if (!process.env.FIREBASE_DATABASE_URL) {
+        console.warn('FIREBASE_DATABASE_URL not set in .env — client will need to enter it manually.');
+      }
+
+      // Seed species presets on startup
+      try {
+        await checkAndSeedPresets();
+      } catch (e) {
+        console.error('[Server] Failed to seed presets:', e.message);
+      }
+
+      startRtdbAlertWatcher({ deviceId: process.env.DEVICE_ID || 'device001' });
+      resolve(server);
+    });
+  });
+}
+
+// Start server only when executed directly (not when imported by tests).
+const _isDirectRun = process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1];
+if (_isDirectRun) {
+  startServer();
+}
