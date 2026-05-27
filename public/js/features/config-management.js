@@ -21,6 +21,13 @@ import { showAppToast, showConfirmModal } from '../ui/modal-ui.js';
 let _configurations = [];
 let _activeConfigId = null;
 
+const CANONICAL_PRESET_IDS = new Set(['crayfish', 'tilapia', 'catfish', 'shrimp']);
+
+function resolveSpeciesKey(species) {
+  const key = String(species || '').toLowerCase();
+  return SPECIES_PRESETS[key] ? key : 'crayfish';
+}
+
 function canEditConfig() {
   const perms = window._rbacPerms;
   // Default to true if permissions not yet loaded (during initialization)
@@ -90,14 +97,12 @@ function renderConfigurationSelector() {
         </button>
       `;
       
-      if (!activeConfig.isPreset) {
-        html += `
-          <button class="btn btn-sm btn-danger" onclick="window.configManagement.deleteConfig('${activeConfig.id}')">
-            <svg class="icon icon-14"><use href="#icon-trash"/></svg>
-            Delete
-          </button>
-        `;
-      }
+      html += `
+        <button class="btn btn-sm btn-danger" onclick="window.configManagement.deleteConfig('${activeConfig.id}')">
+          <svg class="icon icon-14"><use href="#icon-trash"/></svg>
+          Delete
+        </button>
+      `;
       
       html += `
         <button class="btn btn-sm btn-warning" onclick="window.configManagement.deactivateConfig()">
@@ -385,7 +390,7 @@ function editConfiguration(configId) {
   // Populate form with current values
   document.getElementById('edit-config-id').value = configId;
   document.getElementById('edit-config-name').value = config.name || config.species;
-  document.getElementById('edit-config-species').value = config.species;
+  document.getElementById('edit-config-species').value = resolveSpeciesKey(config.species);
   
   // Populate threshold fields
   const t = config.thresholds;
@@ -522,6 +527,7 @@ async function saveNewConfiguration() {
 async function saveEditedConfiguration() {
   const configId = document.getElementById('edit-config-id').value;
   const name = document.getElementById('edit-config-name').value.trim();
+  const species = resolveSpeciesKey(document.getElementById('edit-config-species').value);
   
   if (!name) {
     showAppToast('Please enter a configuration name', 'error');
@@ -559,7 +565,7 @@ async function saveEditedConfiguration() {
       turb: { optimalMax: turbMax },
     };
     
-    await updateConfiguration(configId, { name, thresholds });
+    await updateConfiguration(configId, { name, species, thresholds });
     await loadConfigurations();
     renderConfigurationSelector();
     closeDialog('edit-config-dialog');
@@ -581,18 +587,34 @@ async function deleteConfig(configId) {
   const config = _configurations.find(c => c.id === configId);
   if (!config) return;
 
-  const name = config.name || config.species;
+  const name = config.name || config.species || configId;
+  const isCanonicalPreset = config.isPreset && CANONICAL_PRESET_IDS.has(configId);
+  const presetNote = isCanonicalPreset
+    ? ' This is a built-in species preset; it can be re-created on server startup when no presets exist.'
+    : '';
   showConfirmModal({
     title: 'Delete configuration',
-    subtitle: 'This permanently removes the configuration preset.',
-    message: `Delete "${name}"? Pond assignments using this configuration may be affected.`,
+    subtitle: 'This permanently removes the configuration.',
+    message: `Delete "${name}"?${presetNote}`,
     confirmLabel: 'Delete',
     destructive: true,
     onConfirm: async () => {
-      await deleteConfiguration(configId);
-      await loadConfigurations();
-      renderConfigurationSelector();
-      showAppToast('Configuration deleted successfully', 'success');
+      try {
+        if (configId === _activeConfigId || config.isActive) {
+          await deactivateConfiguration();
+          _activeConfigId = null;
+        }
+        await deleteConfiguration(configId);
+        await loadConfigurations();
+        renderConfigurationSelector();
+        showAppToast('Configuration deleted successfully', 'success');
+        window.dispatchEvent(new CustomEvent('config-changed', {
+          detail: { configId: null, species: null },
+        }));
+      } catch (e) {
+        showAppToast(`Failed to delete configuration: ${e.message}`, 'error');
+        throw e;
+      }
     },
   });
 }

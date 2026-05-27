@@ -9,6 +9,15 @@ let _openModalCount = 0;
 let _lastFocusedElement = null;
 let _toastStack = null;
 
+function raf(cb) {
+  const w = typeof window !== 'undefined' ? window : null;
+  const fn = (typeof requestAnimationFrame === 'function' && requestAnimationFrame)
+    || (w && typeof w.requestAnimationFrame === 'function' && w.requestAnimationFrame)
+    || (typeof globalThis !== 'undefined' && typeof globalThis.requestAnimationFrame === 'function' && globalThis.requestAnimationFrame);
+  if (typeof fn === 'function') return fn(cb);
+  return setTimeout(cb, 0);
+}
+
 export function escHtml(s) {
   return String(s ?? '')
     .replace(/&/g, '&amp;')
@@ -42,7 +51,7 @@ export function showAppToast(message, type = 'info') {
   toast.textContent = message;
   stack.appendChild(toast);
 
-  requestAnimationFrame(() => toast.classList.add('app-toast--visible'));
+  raf(() => toast.classList.add('app-toast--visible'));
 
   const dismiss = () => {
     toast.classList.remove('app-toast--visible');
@@ -142,7 +151,7 @@ export function wireAppDialog(dlg, {
   const focusEl = initialFocusSelector
     ? dlg.querySelector(initialFocusSelector)
     : _getFocusableElements(dlg)[0];
-  if (focusEl) requestAnimationFrame(() => focusEl.focus());
+  if (focusEl) raf(() => focusEl.focus());
 
   return { close, cleanup };
 }

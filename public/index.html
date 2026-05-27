@@ -171,28 +171,28 @@
       </div>
       <div class="dash-metrics">
         <div class="metric-card scard temp">
-          <div class="metric-icon metric-icon--temp"><svg class="icon icon-20"><use href="#icon-thermometer"/></svg></div>
+          <div class="metric-icon metric-icon--temp" style="--temp-c: var(--temp-c);"><svg class="icon icon-20"><use href="#icon-thermometer"/></svg></div>
           <div class="scard-label">Water Temperature</div>
           <div class="scard-val" id="v-temp">—</div>
           <div class="scard-badge ok" id="b-temp">Normal</div>
           <svg class="spark" id="sp-temp"></svg>
         </div>
         <div class="metric-card scard ph">
-          <div class="metric-icon metric-icon--ph"><svg class="icon icon-20"><use href="#icon-droplet"/></svg></div>
+          <div class="metric-icon metric-icon--ph" style="--ph-c: var(--ph-c);"><svg class="icon icon-20"><use href="#icon-droplet"/></svg></div>
           <div class="scard-label">pH Level</div>
           <div class="scard-val" id="v-ph">—</div>
           <div class="scard-badge ok" id="b-ph">Normal</div>
           <svg class="spark" id="sp-ph"></svg>
         </div>
         <div class="metric-card scard do">
-          <div class="metric-icon metric-icon--do"><svg class="icon icon-20"><use href="#icon-activity"/></svg></div>
+          <div class="metric-icon metric-icon--do" style="--do-c: var(--do-c);"><svg class="icon icon-20"><use href="#icon-activity"/></svg></div>
           <div class="scard-label">Dissolved Oxygen</div>
           <div class="scard-val" id="v-do">—</div>
           <div class="scard-badge ok" id="b-do">Normal</div>
           <svg class="spark" id="sp-do"></svg>
         </div>
         <div class="metric-card scard turb">
-          <div class="metric-icon metric-icon--turb"><svg class="icon icon-20"><use href="#icon-activity"/></svg></div>
+          <div class="metric-icon metric-icon--turb" style="--turb-c: var(--turb-c);"><svg class="icon icon-20"><use href="#icon-activity"/></svg></div>
           <div class="scard-label">Turbidity (NTU)</div>
           <div class="scard-val" id="v-turb">—</div>
           <div class="scard-badge ok" id="b-turb">Normal</div>
@@ -300,28 +300,28 @@
       <!-- Summary stat cards -->
       <div class="hist-stat-row">
         <div class="metric-card scard temp">
-          <div class="metric-icon metric-icon--temp"><svg class="icon icon-20"><use href="#icon-thermometer"/></svg></div>
+          <div class="metric-icon metric-icon--temp" style="--temp-c: var(--temp-c);"><svg class="icon icon-20"><use href="#icon-thermometer"/></svg></div>
           <div class="scard-label">Water Temperature</div>
           <div class="scard-val" id="hist-v-temp">—</div>
           <div class="scard-badge ok" id="hist-b-temp">Normal</div>
           <svg class="spark" id="hist-sp-temp"></svg>
         </div>
         <div class="metric-card scard ph">
-          <div class="metric-icon metric-icon--ph"><svg class="icon icon-20"><use href="#icon-droplet"/></svg></div>
+          <div class="metric-icon metric-icon--ph" style="--ph-c: var(--ph-c);"><svg class="icon icon-20"><use href="#icon-droplet"/></svg></div>
           <div class="scard-label">pH Level</div>
           <div class="scard-val" id="hist-v-ph">—</div>
           <div class="scard-badge ok" id="hist-b-ph">Normal</div>
           <svg class="spark" id="hist-sp-ph"></svg>
         </div>
         <div class="metric-card scard do">
-          <div class="metric-icon metric-icon--do"><svg class="icon icon-20"><use href="#icon-activity"/></svg></div>
+          <div class="metric-icon metric-icon--do" style="--do-c: var(--do-c);"><svg class="icon icon-20"><use href="#icon-activity"/></svg></div>
           <div class="scard-label">Dissolved Oxygen</div>
           <div class="scard-val" id="hist-v-do">—</div>
           <div class="scard-badge ok" id="hist-b-do">Normal</div>
           <svg class="spark" id="hist-sp-do"></svg>
         </div>
         <div class="metric-card scard turb">
-          <div class="metric-icon metric-icon--turb"><svg class="icon icon-20"><use href="#icon-activity"/></svg></div>
+          <div class="metric-icon metric-icon--turb" style="--turb-c: var(--turb-c);"><svg class="icon icon-20"><use href="#icon-activity"/></svg></div>
           <div class="scard-label">Turbidity (NTU)</div>
           <div class="scard-val" id="hist-v-turb">—</div>
           <div class="scard-badge ok" id="hist-b-turb">Normal</div>
@@ -919,55 +919,7 @@
         <!-- Configuration selector rendered by config-management.js -->
       </div>
 
-      <!-- Pond Selector (Deprecated - hidden) -->
-      <div class="card cfg-topcard" id="pond-mgmt-section" style="display:none;">
-        <div class="pm-head">
-          <div class="pm-head-left">
-            <div class="pm-title">
-              <svg class="icon icon-16"><use href="#icon-droplet"/></svg>
-              <div>
-                <div class="pm-h">Pond Management</div>
-                <div class="pm-sub">Manage pond configurations and thresholds. Changes apply instantly across monitoring.</div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div class="pm-toolbar">
-          <div class="pm-pond">
-            <label for="pond-selector" class="pm-label">Active Pond</label>
-            <select id="pond-selector" class="pm-select"></select>
-          </div>
-
-          <div class="pm-actions" aria-label="Pond actions">
-            <button type="button" class="btn btn-outline btn-sm" id="btn-add-pond">
-              <svg class="icon icon-14"><use href="#icon-plus"/></svg> Add Pond
-            </button>
-            <button type="button" class="btn btn-outline btn-sm" id="btn-edit-pond">
-              <svg class="icon icon-14"><use href="#icon-edit"/></svg> Edit Pond
-            </button>
-          </div>
-        </div>
-
-        <div class="pm-status">
-          <div class="pm-status-main">
-            <div class="pm-status-label">Active Configuration</div>
-            <div class="pm-status-value">
-              <span id="pond-active-config-label" class="pm-active-name">—</span>
-              <span id="pond-active-species" class="badge-pill species-badge" style="display:none">—</span>
-            </div>
-          </div>
-          <div class="pm-status-actions">
-            <button type="button" class="btn btn-sm btn-primary" id="btn-create-custom-config">
-              <svg class="icon icon-14"><use href="#icon-plus"/></svg> Create Custom Config
-            </button>
-          </div>
-        </div>
-
-        <div id="pond-config-list" class="pm-configs" aria-label="Pond configurations">
-          <div class="pond-cfg-empty">Select a pond to view its configurations.</div>
-        </div>
-      </div>
+      <!-- Pond Management removed (configuration-only system) -->
     </section>
 
     <!-- User Management -->

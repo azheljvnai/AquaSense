@@ -8,7 +8,6 @@
  * - Notification preferences (email/SMS/push) persisted to localStorage
  */
 import { getBadgeForSpecies, getActiveThresholds, getActiveSpecies, getActiveConfigId } from '../pond-config.js';
-import { getActivePond } from '../pond-context.js';
 import { handleAlert } from './notifications.js';
 import {
   fbAuth,
@@ -29,6 +28,19 @@ import {
 } from '../firebase-client.js';
 import { alertPondFilterButton, alertEmptyListRow, escapeHtml } from '../ui/templates.js';
 import { showAppToast, showConfirmModal } from '../ui/modal-ui.js';
+
+const SPECIES_DISPLAY_NAMES = {
+  crayfish: 'Crayfish',
+  tilapia: 'Tilapia',
+  catfish: 'Catfish',
+  shrimp: 'Shrimp',
+};
+
+function alertLocationLabel() {
+  const species = getActiveSpecies();
+  if (!species) return 'Unknown';
+  return SPECIES_DISPLAY_NAMES[species] || species.charAt(0).toUpperCase() + species.slice(1);
+}
 
 /** Set in init() so module-level helpers can refresh the alerts tab UI. */
 let rerenderAlertsTab = () => {};
@@ -526,7 +538,6 @@ export function init() {
   renderThresholds();
   window.addEventListener('thresholds-changed',   renderThresholds);
   window.addEventListener('config-changed', renderThresholds);
-  window.addEventListener('pond-config-changed', renderThresholds);
 
   // ── Pond filter state ──────────────────────────────────────────────────────
   let _activePondFilter = 'all'; // 'all' or a pond name string
@@ -670,17 +681,7 @@ export function init() {
 
   // ── React to new sensor readings ───────────────────────────────────────────
   window.addEventListener('sensor-data-updated', (e) => {
-    // Determine pond name for dual setup support:
-    // Try new setup first (configuration-based): getActiveSpecies() || 'Unknown'
-    // Fall back to legacy setup (pond management): getActivePond()?.name
-    // Legacy setup takes precedence when both are present
-    let pondName = getActiveSpecies() || 'Unknown';
-    
-    const activePond = getActivePond();
-    if (activePond?.name) {
-      pondName = activePond.name;
-    }
-    
+    const pondName = alertLocationLabel();
     // Skip if no valid pond identifier
     if (!pondName || pondName === 'Unknown') {
       return;
@@ -728,8 +729,6 @@ export function init() {
     renderAlertList();
   }
   window.addEventListener('config-changed', onActiveConfigChanged);
-  window.addEventListener('pond-config-changed', onActiveConfigChanged);
-  window.addEventListener('active-pond-changed', renderAlertList);
 }
 
 // ─── Alert Management Functions ───────────────────────────────────────────────

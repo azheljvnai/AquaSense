@@ -172,16 +172,8 @@ export function init() {
   syncActiveConfigToUtils();
   populateThresholdInputs();
 
-  // Re-populate whenever the active pond config changes
-  window.addEventListener('pond-config-changed', () => {
-    syncActiveConfigToUtils();
-    populateThresholdInputs();
-  });
-
-  // Also re-populate when the active pond itself changes (e.g. topbar switch)
-  // This covers the case where pond-config-changed fires before configuration.js
-  // has finished initialising, or when switching to a pond with no active config.
-  window.addEventListener('active-pond-changed', () => {
+  // Re-populate whenever the active configuration changes
+  window.addEventListener('config-changed', () => {
     syncActiveConfigToUtils();
     populateThresholdInputs();
   });

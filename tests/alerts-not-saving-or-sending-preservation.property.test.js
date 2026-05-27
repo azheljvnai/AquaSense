@@ -84,12 +84,8 @@ vi.mock('../public/js/pond-config.js', () => ({
     temp: { optimalMin: 25, optimalMax: 32 },
   })),
   getActiveSpecies: vi.fn(() => 'tilapia'),
+  getActiveConfigId: vi.fn(() => 'test-config-001'),
   getActivePondId: vi.fn(() => 'test-pond-001'),
-}));
-
-// Mock pond-context.js
-vi.mock('../public/js/pond-context.js', () => ({
-  getActivePond: vi.fn(() => ({ id: 'test-pond-001', name: 'Test Pond' })),
 }));
 
 // Mock notifications.js
@@ -138,7 +134,15 @@ describe('Alerts Not Saving or Sending — Preservation Properties', () => {
     // Stub window.dispatchEvent
     const originalDispatchEvent = window.dispatchEvent.bind(window);
     window.dispatchEvent = vi.fn((event) => {
-      if (event && (event.type === 'sensor-data-updated' || event.type === 'pond-config-changed')) {
+      if (
+        event &&
+        (
+          event.type === 'sensor-data-updated' ||
+          event.type === 'config-changed' ||
+          event.type === 'thresholds-changed' ||
+          event.type === 'alerts-updated'
+        )
+      ) {
         return originalDispatchEvent(event);
       }
       return true;

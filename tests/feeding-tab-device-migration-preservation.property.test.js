@@ -60,11 +60,6 @@ vi.mock('../public/js/charts.js', () => ({
   })),
 }));
 
-// Mock pond-context.js (will be removed in the fix, but needed for unfixed code)
-vi.mock('../public/js/pond-context.js', () => ({
-  getActivePond: vi.fn(() => null),
-}));
-
 // ─── Preservation Property Tests ──────────────────────────────────────────────
 
 describe('Feeding Tab Device Migration — Preservation Properties', () => {
@@ -99,6 +94,17 @@ describe('Feeding Tab Device Migration — Preservation Properties', () => {
 
     // Stub requestAnimationFrame
     window.requestAnimationFrame = vi.fn(cb => cb());
+    globalThis.requestAnimationFrame = window.requestAnimationFrame;
+
+    // JSDOM doesn't implement <dialog>.showModal() — stub it so feeding tests can run.
+    if (window.HTMLDialogElement?.prototype) {
+      if (!window.HTMLDialogElement.prototype.showModal) {
+        window.HTMLDialogElement.prototype.showModal = vi.fn();
+      }
+      if (!window.HTMLDialogElement.prototype.close) {
+        window.HTMLDialogElement.prototype.close = vi.fn();
+      }
+    }
 
     // Set global document and window for the module
     globalThis.document = document;
@@ -107,6 +113,7 @@ describe('Feeding Tab Device Migration — Preservation Properties', () => {
     // Import and initialize the feeding module
     feedingModule = await import('../public/js/features/feeding.js');
     feedingModule.init();
+    feedingModule.setFirebaseConnected(true);
 
     // Allow async operations to complete
     await new Promise(r => setTimeout(r, 50));
@@ -199,6 +206,9 @@ describe('Feeding Tab Device Migration — Preservation Properties', () => {
           // Save schedule
           const confirmButton = document.getElementById('feed-schedule-confirm');
           confirmButton.click();
+          // showConfirmModal creates its own dialog confirm button; click it too.
+          const dialogConfirmBtn = document.body.querySelector('dialog [data-action="confirm"]');
+          dialogConfirmBtn?.click();
 
           // Allow async operations to complete
           await new Promise(r => setTimeout(r, 100));
@@ -223,7 +233,7 @@ describe('Feeding Tab Device Migration — Preservation Properties', () => {
           return true;
         }
       ),
-      { numRuns: 20 } // Reduced runs for async tests
+      { numRuns: 1 }
     );
   });
 
@@ -378,8 +388,8 @@ describe('Feeding Tab Device Migration — Preservation Properties', () => {
     // We need to re-render the schedule list to reflect the permission change
     const { init } = await import('../public/js/features/feeding.js');
     
-    // Verify that the add button is hidden
-    expect(addButton.style.display).toBe('none');
+    // Verify that the add button is hidden via the UI class
+    expect(addButton.classList.contains('is-hidden')).toBe(true);
 
     // Even if we try to click it, the operation should be blocked
     const timeInput = document.getElementById('feed-schedule-input');

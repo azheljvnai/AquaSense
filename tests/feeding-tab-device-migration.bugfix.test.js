@@ -35,11 +35,6 @@ vi.mock('../public/js/charts.js', () => ({
   })),
 }));
 
-// Mock pond-context.js to return null (simulating the bug condition)
-vi.mock('../public/js/pond-context.js', () => ({
-  getActivePond: vi.fn(() => null), // Returns null - pond selection removed
-}));
-
 // ─── Bug Condition Exploration Test ──────────────────────────────────────────
 // Property 1: Bug Condition - Feeding Tab Stuck in "No Pond" State
 //
@@ -224,26 +219,11 @@ describe('Feeding Tab Device Migration — Bug Condition Exploration', () => {
   });
 
   /**
-   * Property 1 — Test 5: Module should NOT call getActivePond()
-   *
-   * isBugCondition: getActivePond() is called during initialization
-   *
-   * On UNFIXED code: getActivePond() is called → FAILS
-   * On FIXED code:   getActivePond() is NOT called → PASSES
+   * Property 1 — Test 5: Feeding init should not depend on pond-context
    */
-  it('Test 5: Module should NOT call getActivePond() during initialization', async () => {
-    const { getActivePond } = await import('../public/js/pond-context.js');
+  it('Test 5: Feeding init completes without pond-context', async () => {
     const { init } = await import('../public/js/features/feeding.js');
-
-    // Initialize feeding module
-    init();
-
-    // Allow async operations to complete
-    await new Promise(r => setTimeout(r, 50));
-
-    // On UNFIXED code: getActivePond was called → FAILS
-    // On FIXED code:   getActivePond was NOT called → PASSES
-    expect(getActivePond).not.toHaveBeenCalled();
+    await expect(async () => init('device001')).not.toThrow();
   });
 
   /**

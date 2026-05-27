@@ -41,9 +41,7 @@ import {
   setActivityLogUser,
   clearActivityLog,
 } from './utils.js';
-import { getBadgeForSpecies, recordPondSensorReading } from './pond-config.js';
-import { init as initPondManagement } from './features/pond-management.js';
-import { setPondList, setActivePond, getActivePond, onActivePondChange } from './pond-context.js';
+import { getBadgeForSpecies } from './pond-config.js';
 import { pushChart } from './charts.js';
 import { init as initDashboard } from './features/dashboard.js';
 import { init as initWaterQuality } from './features/water-quality.js';
@@ -405,81 +403,6 @@ function setupNavigation() {
       if (page) activatePage(page);
     });
   });
-}
-
-// ── Topbar Pond Selector ──────────────────────────────────────────────────────
-
-function setupTopbarPondSelector() {
-  const select = document.getElementById('topbar-pond-select');
-  if (!select) return;
-
-  function renderOptions(ponds) {
-    const current = getActivePond();
-    select.innerHTML = ponds.length
-      ? ponds.map(p => `<option value="${p.id}"${p.id === current?.id ? ' selected' : ''}>${p.name || p.id}</option>`).join('')
-      : '<option value="">No ponds configured</option>';
-  }
-
-  // Populate when pond list is loaded
-  window.addEventListener('pond-list-updated', (e) => {
-    renderOptions(e.detail.ponds || []);
-  });
-
-  // Keep in sync when active pond changes externally (e.g. from Configuration page)
-  window.addEventListener('active-pond-changed', (e) => {
-    const pond = e.detail.pond;
-    if (pond && select.value !== pond.id) select.value = pond.id;
-    updateDashboardPondBadge(pond);
-  });
-
-  // User picks a pond in the topbar
-  select.addEventListener('change', () => {
-    const id = select.value;
-    if (!id) return;
-    // Load the config first, then enrich and set — avoids "Not Configured" flash
-    import('./pond-config.js').then(async ({ loadActivePondConfig }) => {
-      try {
-        const active = await loadActivePondConfig(id);
-        const ponds  = getPondList();
-        const pond   = ponds.find(p => p.id === id);
-        if (pond) {
-          const isConfigured = !!(active?.isActive);
-          setActivePond({ ...pond, species: isConfigured ? (active.species || '') : null });
-        } else {
-          setActivePond(id);
-        }
-      } catch {
-        setActivePond(id);
-      }
-    });
-  });
-}
-
-function updateDashboardPondBadge(pond) {
-  const badge   = document.getElementById('dash-pond-badge');
-  const nameEl  = document.getElementById('dash-pond-name');
-  const specEl  = document.getElementById('dash-pond-species');
-  if (!badge) return;
-  if (!pond) { badge.style.display = 'none'; return; }
-  badge.style.display = '';
-  if (nameEl) nameEl.textContent = pond.name || pond.id;
-  if (specEl) {
-    const species = pond.species;
-    if (species) {
-      // Has a configured species
-      specEl.textContent   = species.charAt(0).toUpperCase() + species.slice(1);
-      specEl.style.display = '';
-      specEl.className     = 'species-chip';
-    } else if (species === null) {
-      // Explicitly marked as unconfigured by _propagatePondState
-      specEl.textContent   = 'Not Configured';
-      specEl.style.display = '';
-      specEl.className     = 'species-chip species-chip--unconfigured';
-    } else {
-      // species is undefined or '' — config not yet loaded, hide chip
-      specEl.style.display = 'none';
-    }
-  }
 }
 
 function setupHamburger() {
@@ -853,13 +776,8 @@ function init() {
   // Register species-aware badge classifier
   window._pondGetBadge = getBadgeForSpecies;
 
-  // Expose pond context globally so pond-management and other modules can update it
-  window._pondContext = { setPondList, setActivePond, getActivePond };
-
   // Expose navigateTo for dashboard "Configure Now" button and other features
   window.navigateTo = (page) => activatePage(page);
-
-  // pond-management loads via window._pondMgmtOnUser after auth confirms
 
   // Re-evaluate sensor badges whenever thresholds change
   window.addEventListener('thresholds-changed', () => {
@@ -903,7 +821,6 @@ function init() {
     initConfiguration();
     initConfigManagement();
     initUserManagement();
-    initPondManagement();
     setStatus('OFFLINE', false);
 
     // Wire sign-in AFTER Firebase is initialized
@@ -984,11 +901,6 @@ function init() {
       // Notify farm-profile feature that a user is signed in
       if (typeof window._farmProfileOnUser === 'function') {
         window._farmProfileOnUser(user);
-      }
-
-      // Load ponds now that we have a valid auth token
-      if (typeof window._pondMgmtOnUser === 'function') {
-        window._pondMgmtOnUser().catch(() => {/* offline */});
       }
 
       // Load configurations now that we have a valid auth token

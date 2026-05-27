@@ -86,12 +86,8 @@ vi.mock('../public/js/pond-config.js', () => ({
     temp: { optimalMin: 25, optimalMax: 32 },
   })),
   getActiveSpecies: vi.fn(() => 'tilapia'),
+  getActiveConfigId: vi.fn(() => 'test-config-001'),
   getActivePondId: vi.fn(() => 'test-pond-001'),
-}));
-
-// Mock pond-context.js
-vi.mock('../public/js/pond-context.js', () => ({
-  getActivePond: vi.fn(() => ({ id: 'test-pond-001', name: 'Test Pond' })),
 }));
 
 // ─── Bug Condition Exploration Test ──────────────────────────────────────────
@@ -266,7 +262,7 @@ describe('Alerts Not Saving or Sending — Bug Condition Exploration', () => {
       badge: 'danger',
       label: expect.stringContaining('pH'),
       description: expect.stringContaining('9.5'),
-      pond: 'Test Pond',
+      pond: 'Tilapia',
       resolved: false,
       createdAt: expect.objectContaining({ _serverTimestamp: true }),
     });
@@ -306,7 +302,7 @@ describe('Alerts Not Saving or Sending — Bug Condition Exploration', () => {
       val: 9.5,
       severity: 'critical',
       badge: 'danger',
-      pond: 'Test Pond',
+      pond: 'Tilapia',
       resolved: false,
     });
   });
@@ -344,7 +340,7 @@ describe('Alerts Not Saving or Sending — Bug Condition Exploration', () => {
       key: 'ph',
       val: 9.5,
       severity: 'critical',
-      pond: 'Test Pond',
+      pond: 'Tilapia',
     });
   });
 
@@ -380,7 +376,7 @@ describe('Alerts Not Saving or Sending — Bug Condition Exploration', () => {
       key: 'ph',
       val: 9.5,
       severity: 'critical',
-      pond: 'Test Pond',
+      pond: 'Tilapia',
     });
   });
 
@@ -456,13 +452,13 @@ describe('Alerts Not Saving or Sending — Bug Condition Exploration', () => {
 
     if (alertsCollectionCalls.length > 0) {
       const alertData = alertsCollectionCalls[0].data;
-      expect(alertData.pond).toBe('Test Pond');
+      expect(alertData.pond).toBe('Tilapia');
     }
 
     // Also verify localStorage alert
     const storedAlerts = JSON.parse(localStorage.getItem('aquasense.alerts.v1') || '[]');
     const phAlert = storedAlerts.find(a => a.key === 'ph');
-    expect(phAlert?.pond).toBe('Test Pond');
+    expect(phAlert?.pond).toBe('Tilapia');
   });
 
   /**

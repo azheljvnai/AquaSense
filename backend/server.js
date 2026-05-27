@@ -935,6 +935,11 @@ app.post('/api/migrate/execute', verifyToken, requireRole('admin'), async (req, 
 
 // ─── Configuration Management API ─────────────────────────────────────────────
 
+/** Omit undefined values so Firestore merge updates do not fail. */
+function pickDefined(obj) {
+  return Object.fromEntries(Object.entries(obj).filter(([, v]) => v !== undefined));
+}
+
 /** GET /api/configurations — list all configurations */
 app.get('/api/configurations', verifyToken, async (req, res) => {
   try {
@@ -981,9 +986,13 @@ app.post('/api/configurations', verifyToken, requireRole('admin', 'owner'), asyn
 /** PATCH /api/configurations/:id — update a configuration. Requires admin or owner. */
 app.patch('/api/configurations/:id', verifyToken, requireRole('admin', 'owner'), async (req, res) => {
   const { name, species, thresholds } = req.body || {};
+  const updates = pickDefined({ name, species, thresholds });
+  if (Object.keys(updates).length === 0) {
+    return res.status(400).json({ error: 'No updatable fields provided.' });
+  }
   try {
     await admin.firestore().collection('configurations').doc(req.params.id).set(
-      { name, species, thresholds, updatedAt: admin.firestore.FieldValue.serverTimestamp() },
+      { ...updates, updatedAt: admin.firestore.FieldValue.serverTimestamp() },
       { merge: true },
     );
     return res.json({ success: true });
@@ -996,15 +1005,16 @@ app.patch('/api/configurations/:id', verifyToken, requireRole('admin', 'owner'),
 app.delete('/api/configurations/:id', verifyToken, requireRole('admin', 'owner'), async (req, res) => {
   try {
     const fs = admin.firestore();
-    const configSnap = await fs.collection('configurations').doc(req.params.id).get();
+    const ref = fs.collection('configurations').doc(req.params.id);
+    const configSnap = await ref.get();
     if (!configSnap.exists) {
       return res.status(404).json({ error: 'Configuration not found.' });
     }
     if (configSnap.data().isActive) {
-      return res.status(400).json({ error: 'Cannot delete active configuration. Deactivate it first.' });
+      await ref.update({ isActive: false });
     }
-    await fs.collection('configurations').doc(req.params.id).delete();
-    return res.json({ success: true });
+    await ref.delete();
+    return res.json({ success: true, message: 'Configuration deleted.' });
   } catch (e) {
     console.error('[DELETE /api/configurations]', e.message);
     return res.status(400).json({ error: e.message });

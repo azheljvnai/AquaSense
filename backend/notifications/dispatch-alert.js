@@ -193,6 +193,10 @@ export async function dispatchAlertToAllUsers(alert) {
     throw new Error(validationError);
   }
 
+  // Cooldown key inputs (used for both email + SMS)
+  const pondName = alert.pond;
+  const parameter = alert.key;
+
   const fs = admin.firestore();
 
   let processed = 0;
