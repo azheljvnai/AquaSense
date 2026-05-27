@@ -13,6 +13,7 @@ import {
   getActiveConfigId,
   getActiveSpecies,
   onConfigChange,
+  applyConfig,
   SPECIES_PRESETS,
 } from '../pond-config.js';
 import { flexModalHtml, escapeHtml } from '../ui/templates.js';
@@ -129,7 +130,7 @@ function renderConfigurationSelector() {
 
   // Active configuration details
   if (activeConfig) {
-    const t = activeConfig.thresholds;
+    const t = mergeConfigThresholdsForForm(activeConfig);
     const speciesKey = String(activeConfig.species || 'crayfish').toLowerCase();
     const speciesPresetName = escapeHtml(SPECIES_PRESETS[speciesKey]?.name || speciesKey);
     const configTitle = escapeHtml(activeConfig.name || speciesPresetName);
@@ -473,13 +474,17 @@ async function saveEditedConfiguration() {
   }
 
   try {
+    if (configId === _activeConfigId) {
+      applyConfig({ id: configId, name, species, thresholds });
+    }
+
     await updateConfiguration(configId, { name, species, thresholds });
     await loadConfigurations();
     renderConfigurationSelector();
     closeDialog('edit-config-dialog');
     showAppToast('Configuration updated successfully', 'success');
     
-    // If this was the active config, reload it
+    // If this was the active config, reload from server to stay in sync
     if (configId === _activeConfigId) {
       await loadActiveConfiguration();
       window.dispatchEvent(new CustomEvent('config-changed'));

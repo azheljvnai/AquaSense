@@ -7,7 +7,13 @@
  * - Renders live summary counters and a scrollable alert list
  * - Notification preferences (email/SMS/push) persisted to localStorage
  */
-import { getBadgeForSpecies, getActiveThresholds, getActiveSpecies, getActiveConfigId } from '../pond-config.js';
+import {
+  getBadgeForSpecies,
+  getActiveThresholds,
+  getActiveSpecies,
+  getActiveConfigId,
+  isActiveConfigReady,
+} from '../pond-config.js';
 import { handleAlerts } from './notifications.js';
 import {
   fbAuth,
@@ -45,6 +51,9 @@ function alertLocationLabel() {
 
 /** Set in init() so module-level helpers can refresh the alerts tab UI. */
 let rerenderAlertsTab = () => {};
+
+/** Re-evaluate unresolved alerts against current thresholds (assigned in init). */
+let reconcileUnresolvedAlerts = () => {};
 
 /** Human-readable optimal range for notification emails (mirrors server email template). */
 function thresholdSummaryForKey(key) {
@@ -237,6 +246,7 @@ function subscribeAlertsRealtime() {
         if (isFirstSnapshot) {
           isFirstSnapshot = false;
           saveAlerts(mergeFirestoreSnapshotDocs(snapshot.docs));
+          reconcileUnresolvedAlerts();
         } else {
           const byId = new Map();
           for (const a of loadAlerts()) {
@@ -721,6 +731,10 @@ export function init() {
 
   // ── React to new sensor readings ───────────────────────────────────────────
   window.addEventListener('sensor-data-updated', (e) => {
+    if (!isActiveConfigReady() || !getActiveConfigId()) {
+      return;
+    }
+
     const pondName = alertLocationLabel();
     // Skip if no valid pond identifier
     if (!pondName || pondName === 'Unknown') {
@@ -771,7 +785,9 @@ export function init() {
   });
 
   // Re-render when pond/config changes (thresholds may reclassify existing state)
-  function reconcileUnresolvedAlerts() {
+  reconcileUnresolvedAlerts = function reconcileUnresolvedAlertsImpl() {
+    if (!isActiveConfigReady()) return;
+
     const all = loadAlerts();
     const toResolve = [];
     let changed = false;
@@ -813,7 +829,7 @@ export function init() {
         toResolve.forEach((id) => updateAlertResolvedInFirestore(id).catch(() => {}));
       }
     }
-  }
+  };
 
   function onActiveConfigChanged(e) {
     const configId = e.detail?.configId || e.detail?.pondId || getActiveConfigId() || 'default';
@@ -822,6 +838,8 @@ export function init() {
     renderAlertList();
   }
   window.addEventListener('config-changed', onActiveConfigChanged);
+  window.addEventListener('thresholds-changed', onActiveConfigChanged);
+  window.addEventListener('active-config-ready', onActiveConfigChanged);
 
   // Clean up any stale unresolved alerts on first load too.
   reconcileUnresolvedAlerts();

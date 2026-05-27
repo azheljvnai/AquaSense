@@ -127,15 +127,17 @@ async function api(method, path, body) {
 
 // ─── Active Configuration State ───────────────────────────────────────────────
 
-let _activeConfigId   = null;
-let _activeSpecies    = null;
-let _activeThresholds = null;
+let _activeConfigId    = null;
+let _activeSpecies     = null;
+let _activeThresholds  = null;
+let _activeConfigReady = false;
 
 const _listeners = new Set();
 
-export function getActiveConfigId()   { return _activeConfigId; }
-export function getActiveSpecies()    { return _activeSpecies; }
-export function getActiveThresholds() { return _activeThresholds; }
+export function getActiveConfigId()    { return _activeConfigId; }
+export function getActiveSpecies()     { return _activeSpecies; }
+export function getActiveThresholds()  { return _activeThresholds; }
+export function isActiveConfigReady()  { return _activeConfigReady; }
 
 export function onConfigChange(fn) {
   _listeners.add(fn);
@@ -153,21 +155,35 @@ function _notify() {
   window.dispatchEvent(new CustomEvent('thresholds-changed'));
 }
 
+function _finishApplyConfig(cfg) {
+  if (cfg?.id) _activeConfigId = cfg.id;
+  _activeConfigReady = !!(_activeConfigId && _activeThresholds);
+  _notify();
+  if (_activeConfigReady) {
+    window.dispatchEvent(new CustomEvent('active-config-ready', {
+      detail: { configId: _activeConfigId, species: _activeSpecies },
+    }));
+  }
+}
+
 export function applyConfig(cfg) {
-  if (!cfg) return;
+  if (!cfg) {
+    _activeConfigReady = false;
+    return;
+  }
   const species = cfg.species || null;
   const preset  = species ? (SPECIES_PRESETS[species] || null) : null;
-  _activeSpecies    = species;
+  _activeSpecies = species;
   if (!preset) {
     _activeThresholds = cfg.thresholds || null;
-    _notify();
+    _finishApplyConfig(cfg);
     return;
   }
 
   const stored = cfg.thresholds || null;
   if (!stored) {
     _activeThresholds = preset.thresholds;
-    _notify();
+    _finishApplyConfig(cfg);
     return;
   }
 
@@ -177,7 +193,7 @@ export function applyConfig(cfg) {
     do:   { ...preset.thresholds.do,   ...stored.do },
     turb: { ...preset.thresholds.turb, ...stored.turb },
   };
-  _notify();
+  _finishApplyConfig(cfg);
 }
 
 // ─── getBadge — species-aware ─────────────────────────────────────────────────
@@ -256,12 +272,12 @@ export async function deleteConfiguration(configId) {
 // ─── Active Configuration Management ──────────────────────────────────────────
 
 export async function setActiveConfiguration(configId) {
+  _activeConfigReady = false;
   await api('POST', `/api/configurations/${configId}/activate`);
   // Load and apply the newly active config
   const configs = await getConfigurations();
   const active  = configs.find(c => c.id === configId);
   if (active) {
-    _activeConfigId = configId;
     applyConfig(active);
     // Persist to localStorage
     localStorage.setItem('activeConfigId', configId);
@@ -270,6 +286,7 @@ export async function setActiveConfiguration(configId) {
 
 export async function deactivateConfiguration() {
   if (!_activeConfigId) return;
+  _activeConfigReady = false;
   await api('POST', `/api/configurations/${_activeConfigId}/deactivate`);
   // Clear active state
   _activeConfigId   = null;
@@ -280,6 +297,7 @@ export async function deactivateConfiguration() {
 }
 
 export async function loadActiveConfiguration() {
+  _activeConfigReady = false;
   // Try to restore from localStorage first
   const storedConfigId = localStorage.getItem('activeConfigId');
   
@@ -292,14 +310,12 @@ export async function loadActiveConfiguration() {
     
     // If stored config exists and matches server, use it
     if (storedConfigId && serverActive && serverActive.id === storedConfigId) {
-      _activeConfigId = serverActive.id;
       applyConfig(serverActive);
       return serverActive;
     }
     
     // If server has active config, use it and update localStorage
     if (serverActive) {
-      _activeConfigId = serverActive.id;
       applyConfig(serverActive);
       localStorage.setItem('activeConfigId', serverActive.id);
       return serverActive;
@@ -315,9 +331,10 @@ export async function loadActiveConfiguration() {
     }
     
     // No active configuration
-    _activeConfigId   = null;
-    _activeSpecies    = null;
-    _activeThresholds = null;
+    _activeConfigId    = null;
+    _activeSpecies     = null;
+    _activeThresholds  = null;
+    _activeConfigReady = false;
     _notify();
     return null;
   } catch (e) {
