@@ -447,22 +447,21 @@ These routes exist in the current `server.js`; include them if your deployment s
 
 ## Feature: Operational scripts (staging)
 
-### TC-BE-OPS-001 — Preset seeding and cleanup scripts
+### TC-BE-OPS-001 — Preset seeding on startup
 
-**Title:** `backend/scripts/*`
+**Title:** `backend/scripts/seed-presets.js`
 
-**Test Case Description:** P2 — Idempotent preset seed and maintenance scripts.
+**Test Case Description:** P2 — Server startup checks Firestore for species presets and seeds only when none exist.
 
-**Verify the** scripts run without error against staging credentials.
+**Verify the** `checkAndSeedPresets` path runs without error (or `npm run update:presets` in `backend/` for a manual re-seed).
 
-**Pre-condition:** Firebase Admin credentials with rights to Firestore/RTDB as required by each script.
+**Pre-condition:** Firebase Admin credentials with Firestore access.
 
-**Test Scenario:** Verify operational tooling for data hygiene.
+**Test Scenario:** Verify preset tooling for empty or existing databases.
 
 | Step No. | Step Details | Expected Result | Actual Result | Status |
 |----------|--------------|-----------------|---------------|--------|
-| 1 | Start server or run `seed-presets.js` per project docs; observe logs. | `checkAndSeedPresets` completes; no duplicate corruption. | Not run | Not run |
-| 2 | Run `cleanup-duplicate-presets.js` / `cleanup-rtdb-history.js` on copies of data only. | Intended cleanup per script. | Not run | Not run |
+| 1 | Start server or run `npm run update:presets` in `backend/`; observe logs. | Presets seeded when missing, or “already exist” when present. | Not run | Not run |
 
 ---
 
@@ -470,12 +469,11 @@ These routes exist in the current `server.js`; include them if your deployment s
 
 | Area | Test files |
 |------|------------|
-| Alert dispatch / cooldown / validation / SMS ASCII | `tests/dispatch-alert-*.test.js`, `tests/alerts-not-saving-or-sending*.test.js` |
-| Notifications parameters | `tests/notifications*.test.js` |
+| Alert dispatch / cooldown / validation / SMS ASCII / watcher | `tests/dispatch-alert-*.test.js`, `tests/rtdb-alert-watcher-interval.test.js`, `tests/alert-sensitivity.test.js` |
+| Notifications dispatch | `tests/notifications-dispatch.test.js` |
 | UniSMS | `tests/unisms-send.test.js` |
 | EmailJS env | `tests/emailjs-env.test.js` |
-| Mark resolved | `tests/task-3.3-mark-resolved-firestore.test.js` |
-| Feeding / history / RTDB / UI (not backend-only) | `tests/feeding*.test.js`, `tests/historical-data*.test.js`, `tests/realtime-db-persistent-storage*.test.js`, `tests/utils-history-rtdb-preservation*.test.js`, `tests/updateNavigatorUI.test.js`, `tests/configuration-ui-cleanup*.test.js` |
+| Feeding / history / UI (not backend-only) | `tests/feeding*.test.js`, `tests/feed-dispense.test.js`, `tests/reports-feeding.test.js`, `tests/historical-data-navigation.test.js`, `tests/updateNavigatorUI.test.js`, `tests/router.test.js`, `tests/password-rules.test.js` |
 
 ---
 

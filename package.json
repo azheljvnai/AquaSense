@@ -8,12 +8,6 @@
     "build": "echo No build step required. public/ is the frontend.",
     "dev": "npm --prefix backend run dev",
     "install:backend": "npm --prefix backend install",
-    "seed:rtdb-day:dry": "npm --prefix backend run seed:rtdb-day:dry",
-    "seed:rtdb-day": "npm --prefix backend run seed:rtdb-day",
-    "seed:may-gaps:dry": "npm --prefix backend run seed:may-gaps:dry",
-    "seed:may-gaps": "npm --prefix backend run seed:may-gaps",
-    "cleanup:history:inspect": "npm --prefix backend run cleanup:history:inspect",
-    "cleanup:history:epoch": "npm --prefix backend run cleanup:history:epoch",
     "deploy:firestore": "firebase deploy --only firestore:rules,firestore:indexes",
     "test": "vitest --run"
   },

@@ -28,7 +28,7 @@ AquaSense/
 │   ├── server.js        # Express: static public/ + APIs + RTDB alert watcher
 │   ├── lib/             # Threshold eval, alert sensitivity, species presets
 │   ├── notifications/   # dispatch-alert, rtdb-alert-watcher
-│   └── scripts/         # Ops scripts (seed, cleanup)
+│   └── scripts/         # seed-presets.js (startup + manual update:presets)
 ├── public/              # SPA (served at /)
 │   ├── index.html
 │   ├── css/app.css
