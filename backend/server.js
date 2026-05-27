@@ -26,7 +26,7 @@ if (_emailJsAlertEnv.configured) {
 
 import express, { Router } from 'express';
 import admin from 'firebase-admin';
-import { checkAndSeedPresets } from './scripts/seed-presets.js';
+import { checkAndSeedPresets, seedSpeciesPresets } from './scripts/seed-presets.js';
 import { sendUniSms } from './lib/unisms.js';
 import { getEmailJsServerEnv } from './lib/emailjs-env.js';
 import { postDispatchAlert } from './notifications/dispatch-alert.js';
@@ -947,6 +947,19 @@ app.get('/api/configurations', verifyToken, async (req, res) => {
   try {
     const snap = await admin.firestore().collection('configurations').get();
     return res.json(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+  } catch (e) {
+    return res.status(500).json({ error: e.message });
+  }
+});
+
+/**
+ * POST /api/configurations/update-presets — update built-in species presets in Firestore.
+ * Requires admin role. Safe to call repeatedly (upserts preset docs).
+ */
+app.post('/api/configurations/update-presets', verifyToken, requireRole('admin'), async (_req, res) => {
+  try {
+    await seedSpeciesPresets();
+    return res.json({ success: true });
   } catch (e) {
     return res.status(500).json({ error: e.message });
   }

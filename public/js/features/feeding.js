@@ -42,6 +42,7 @@ let _timesByIndex      = {};
 let _daysByIndex       = {};
 let _logEntries        = [];     // [{ ts, type, amountMg }] sorted descending, max 20
 let _feedChart         = null;   // Chart.js instance
+let _feedWeekOffset    = 0;      // 0 = current week, -1 = previous, etc.
 let _manualFeedTimeout = null;   // 10-second timeout handle
 let _editingIndex      = null;   // schedule index being edited (null = new)
 let _formSnapshot      = null;   // { time, days } when add/edit form is open
@@ -81,6 +82,19 @@ export function init(deviceId = 'device001') {
     document.getElementById(`feed-day-${d}`)?.addEventListener('change', _clearScheduleFieldError);
   }
 
+  document.getElementById('feed-week-prev')?.addEventListener('click', () => {
+    _feedWeekOffset -= 1;
+    _updateFeedWeekNavigatorUI();
+    _updateWeeklyChart();
+  });
+  document.getElementById('feed-week-next')?.addEventListener('click', () => {
+    if (_feedWeekOffset < 0) {
+      _feedWeekOffset += 1;
+      _updateFeedWeekNavigatorUI();
+      _updateWeeklyChart();
+    }
+  });
+
   const noPondEl = document.getElementById('feed-no-pond');
   if (noPondEl) noPondEl.classList.add('is-hidden');
   const contentEl = document.getElementById('feed-content');
@@ -88,7 +102,9 @@ export function init(deviceId = 'device001') {
 
   _deviceId = deviceId || 'device001';
   if (_listeners.length) _teardown();
+  _feedWeekOffset = 0;
   _subscribe(_deviceId);
+  _updateFeedWeekNavigatorUI();
   _migrateLegacySchedules(_deviceId);
 
   window.addEventListener('config-changed', _updateConfigDisplay);
@@ -158,6 +174,7 @@ function _teardown() {
   _timesByIndex = {};
   _daysByIndex = {};
   _logEntries = [];
+  _feedWeekOffset = 0;
 
   // Clear timeout
   if (_manualFeedTimeout) { clearTimeout(_manualFeedTimeout); _manualFeedTimeout = null; }
@@ -832,20 +849,54 @@ function _updateMetricCards() {
 
 // ── Weekly Chart ──────────────────────────────────────────────────────────────
 
+function _getFeedWeekRange(weekOffset) {
+  const validOffset = Number.isFinite(weekOffset) ? weekOffset : 0;
+  const now = new Date();
+  const day = now.getDay();
+  const monday = new Date(now);
+  monday.setDate(now.getDate() + (day === 0 ? -6 : 1 - day));
+  monday.setHours(0, 0, 0, 0);
+  monday.setDate(monday.getDate() + validOffset * 7);
+
+  const days = [];
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(monday);
+    d.setDate(monday.getDate() + i);
+    const start = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+    days.push({
+      label: d.toLocaleDateString(undefined, { weekday: 'short' }),
+      start,
+      end: start + 86400000,
+    });
+  }
+
+  const sunday = new Date(monday);
+  sunday.setDate(monday.getDate() + 6);
+  sunday.setHours(23, 59, 59, 999);
+  return { from: monday, to: sunday, days };
+}
+
+function _updateFeedWeekNavigatorUI() {
+  const labelEl = document.getElementById('feed-week-label');
+  const nextBtn = document.getElementById('feed-week-next');
+  const { from, to } = _getFeedWeekRange(_feedWeekOffset);
+
+  if (labelEl) {
+    const monDay = from.getDate();
+    const monMonth = from.toLocaleString(undefined, { month: 'short' });
+    const sunDay = to.getDate();
+    const sunMonth = to.toLocaleString(undefined, { month: 'short' });
+    const year = to.getFullYear();
+    labelEl.textContent = `Mon ${monDay} ${monMonth} – Sun ${sunDay} ${sunMonth} ${year}`;
+  }
+  if (nextBtn) nextBtn.disabled = _feedWeekOffset >= 0;
+}
+
 async function _updateWeeklyChart() {
   if (!_feedChart || !_deviceId) return;
 
-  const DAY_MS = 86400000;
-  const now    = new Date();
-  const days   = [];
-  for (let i = 6; i >= 0; i--) {
-    const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i);
-    days.push({
-      label: d.toLocaleDateString(undefined, { weekday: 'short' }),
-      start: d.getTime(),
-      end:   d.getTime() + DAY_MS,
-    });
-  }
+  _updateFeedWeekNavigatorUI();
+  const { days } = _getFeedWeekRange(_feedWeekOffset);
 
   let allEntries = [];
   try {
@@ -853,11 +904,8 @@ async function _updateWeeklyChart() {
     const logRef = fbRef(db, `/devices/${_deviceId}/feedLog`);
     const snap   = await fbGet(logRef);
     snap.forEach((child) => {
-      const val = child.val();
-      if (val && typeof val.timestamp === 'string') {
-        const ts = _parseTimestamp(val.timestamp);
-        if (ts) allEntries.push(ts);
-      }
+      const entry = parseFeedLogEntry(child.val());
+      if (entry) allEntries.push(entry.ts);
     });
   } catch (err) {
     console.error('[feeding] weekly chart fetch error', err);
@@ -868,7 +916,7 @@ async function _updateWeeklyChart() {
     allEntries.filter((ts) => ts >= start && ts < end).length
   );
 
-  _feedChart.data.labels          = days.map((d) => d.label);
+  _feedChart.data.labels           = days.map((d) => d.label);
   _feedChart.data.datasets[0].data = counts;
   _feedChart.update('active');
 }

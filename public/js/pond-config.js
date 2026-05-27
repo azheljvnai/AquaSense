@@ -158,9 +158,25 @@ export function applyConfig(cfg) {
   const species = cfg.species || null;
   const preset  = species ? (SPECIES_PRESETS[species] || null) : null;
   _activeSpecies    = species;
-  _activeThresholds = preset
-    ? (cfg.thresholds ? { ...preset.thresholds, ...cfg.thresholds } : preset.thresholds)
-    : (cfg.thresholds || null);
+  if (!preset) {
+    _activeThresholds = cfg.thresholds || null;
+    _notify();
+    return;
+  }
+
+  const stored = cfg.thresholds || null;
+  if (!stored) {
+    _activeThresholds = preset.thresholds;
+    _notify();
+    return;
+  }
+
+  _activeThresholds = {
+    ph:   { ...preset.thresholds.ph,   ...stored.ph },
+    temp: { ...preset.thresholds.temp, ...stored.temp },
+    do:   { ...preset.thresholds.do,   ...stored.do },
+    turb: { ...preset.thresholds.turb, ...stored.turb },
+  };
   _notify();
 }
 

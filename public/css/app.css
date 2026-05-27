@@ -1102,44 +1102,96 @@ body.theme-dark .recent-alerts .alert-item.neutral {
 .feed-summary .icon-wrap--feed-active { background: var(--purple); color: white; }
 .feed-summary .icon-wrap--feed-next { background: var(--yellow-dark); color: white; }
 .feed-summary .feed-metric-next { font-size: 1.35rem; }
+.feed-summary.alert-summary {
+  margin-bottom: var(--space-4);
+  gap: var(--space-3);
+}
+.feed-summary .card {
+  padding: var(--space-4) var(--space-3);
+}
+.feed-summary .icon-wrap {
+  width: 40px;
+  height: 40px;
+  margin-bottom: var(--space-2);
+}
+.feed-summary .count {
+  font-size: 1.6rem;
+}
+#page-feeding .page-title-row {
+  margin-bottom: var(--space-2);
+}
 .feed-layout {
   display: grid;
-  grid-template-columns: 1fr 360px;
-  grid-template-rows: auto auto;
-  gap: 24px;
-  align-items: start;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  gap: var(--space-4);
+  align-items: stretch;
 }
-.feed-layout > .card {
+.feed-col {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-height: 0;
+}
+.feed-col-main {
+  flex: 1;
+  min-width: 0;
+}
+.feed-col-side {
+  min-width: 0;
+}
+.feed-layout .card {
   display: flex;
   flex-direction: column;
   min-height: 0;
 }
-.feed-card-schedule { grid-column: 1; grid-row: 1; }
-.feed-card-chart { grid-column: 2; grid-row: 1; }
-.feed-card-log { grid-column: 1; grid-row: 2; }
-.feed-card-manual {
-  grid-column: 2;
-  grid-row: 2;
-  align-self: start;
+#page-feeding .feed-layout .card {
   padding: var(--space-4);
 }
-.feed-card-chart .feed-chart-wrap {
-  min-height: 200px;
-  height: 220px;
+#page-feeding .feed-layout .card-title,
+#page-feeding .feed-layout .card-header {
+  margin-bottom: var(--space-3);
 }
-.feed-card-log .feed-log-scroll {
-  min-height: 140px;
-  max-height: 320px;
+.feed-col-main .feed-card-log {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.feed-card-chart .feed-week-nav {
+  margin-bottom: var(--space-2);
+  gap: var(--space-2);
+}
+.feed-card-chart .feed-week-label {
+  min-width: 0;
+  flex: 1;
+  font-size: 0.72rem;
+  line-height: 1.3;
+}
+.feed-card-chart .feed-chart-wrap {
+  min-height: 180px;
+  height: 200px;
+}
+#page-feeding .feed-card-log .feed-log-scroll {
+  --feed-log-row-h: 2.25rem;
+  flex: none;
+  overflow-y: auto;
+  max-height: calc(var(--feed-log-row-h) * 6);
+}
+.feed-sidebar-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  flex: 1;
+  min-height: 0;
 }
 .feed-manual-body {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
 }
-.feed-card-manual .card-title {
-  margin-bottom: var(--space-3);
+#page-feeding .feed-card-status .card-title {
+  margin-bottom: var(--space-2);
 }
-.feed-card-manual .feed-note {
+.feed-card-status .feed-note {
   margin-top: 0;
 }
 .feed-schedule-form {
@@ -1253,7 +1305,15 @@ body.theme-dark .recent-alerts .alert-item.neutral {
 .feed-chart-wrap canvas { width: 100% !important; height: 100% !important; }
 
 /* Feed log */
-.feed-log-row { display: flex; align-items: center; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--border); }
+.feed-log-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: var(--feed-log-row-h, 2.25rem);
+  padding: 8px 0;
+  box-sizing: border-box;
+  border-bottom: 1px solid var(--border);
+}
 .feed-log-row:last-child { border-bottom: none; }
 .feed-log-type { display: inline-flex; align-items: center; padding: 2px 9px; border-radius: 9999px; font-size: 0.68rem; font-weight: 700; text-transform: capitalize; letter-spacing: 0.02em; }
 .feed-log-type--manual { background: var(--blue-light); color: var(--blue-dark); border: 1px solid rgba(59,130,246,0.2); }
@@ -1563,6 +1623,8 @@ body.theme-dark .recent-alerts .alert-item.neutral {
   padding: 0;
 }
 #report-print-overlay.is-open { display: block; }
+/* Overlay toolbar already has Print / Save as PDF — hide duplicate inline print-bar in preview */
+#report-print-overlay .print-bar { display: none !important; }
 body.report-print-open { overflow: hidden; }
 .report-print-shell {
   display: flex;
@@ -1821,14 +1883,6 @@ body.report-print-open { overflow: hidden; }
   .layout-two-col,
   .feed-layout {
     grid-template-columns: 1fr !important;
-    grid-template-rows: auto;
-  }
-  .feed-card-schedule,
-  .feed-card-chart,
-  .feed-card-log,
-  .feed-card-manual {
-    grid-column: 1;
-    grid-row: auto;
   }
   #page-reports .custom-report-actions .btn {
     flex: 1 1 100%;

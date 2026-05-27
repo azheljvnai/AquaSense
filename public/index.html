@@ -439,91 +439,113 @@
         </div>
 
         <div class="feed-layout">
-          <div class="card feed-card-schedule">
-            <div class="card-header">
-              <h3 class="card-title">
-                <svg class="icon icon-16"><use href="#icon-clock"/></svg>
-                Today's Feeding Schedule
-              </h3>
-              <button id="feed-add-schedule-btn" class="btn btn-primary btn-sm is-hidden" type="button">
-                <svg class="icon icon-16"><use href="#icon-plus"/></svg> Add Schedule
-              </button>
-            </div>
-            <div id="feed-schedule-form" class="feed-schedule-form is-hidden">
-              <div class="sched">
-                <label for="feed-schedule-input">Time</label>
-                <input id="feed-schedule-input" type="time" required aria-describedby="feed-schedule-error" />
+          <div class="feed-col feed-col-main">
+            <div class="card feed-card-schedule">
+              <div class="card-header">
+                <h3 class="card-title">
+                  <svg class="icon icon-16"><use href="#icon-clock"/></svg>
+                  Today's Feeding Schedule
+                </h3>
+                <button id="feed-add-schedule-btn" class="btn btn-primary btn-sm is-hidden" type="button">
+                  <svg class="icon icon-16"><use href="#icon-plus"/></svg> Add Schedule
+                </button>
               </div>
-              <div class="feed-field-block--days">
-                <label class="feed-field-label feed-field-label--days" for="feed-day-0">Repeat on</label>
-                <div class="feed-day-selector">
-                  <label class="feed-day-checkbox">
-                    <input type="checkbox" id="feed-day-0" value="0" />
-                    <span>Sun</span>
-                  </label>
-                  <label class="feed-day-checkbox">
-                    <input type="checkbox" id="feed-day-1" value="1" />
-                    <span>Mon</span>
-                  </label>
-                  <label class="feed-day-checkbox">
-                    <input type="checkbox" id="feed-day-2" value="2" />
-                    <span>Tue</span>
-                  </label>
-                  <label class="feed-day-checkbox">
-                    <input type="checkbox" id="feed-day-3" value="3" />
-                    <span>Wed</span>
-                  </label>
-                  <label class="feed-day-checkbox">
-                    <input type="checkbox" id="feed-day-4" value="4" />
-                    <span>Thu</span>
-                  </label>
-                  <label class="feed-day-checkbox">
-                    <input type="checkbox" id="feed-day-5" value="5" />
-                    <span>Fri</span>
-                  </label>
-                  <label class="feed-day-checkbox">
-                    <input type="checkbox" id="feed-day-6" value="6" />
-                    <span>Sat</span>
-                  </label>
+              <div id="feed-schedule-form" class="feed-schedule-form is-hidden">
+                <div class="sched">
+                  <label for="feed-schedule-input">Time</label>
+                  <input id="feed-schedule-input" type="time" required aria-describedby="feed-schedule-error" />
+                </div>
+                <div class="feed-field-block--days">
+                  <label class="feed-field-label feed-field-label--days" for="feed-day-0">Repeat on</label>
+                  <div class="feed-day-selector">
+                    <label class="feed-day-checkbox">
+                      <input type="checkbox" id="feed-day-0" value="0" />
+                      <span>Sun</span>
+                    </label>
+                    <label class="feed-day-checkbox">
+                      <input type="checkbox" id="feed-day-1" value="1" />
+                      <span>Mon</span>
+                    </label>
+                    <label class="feed-day-checkbox">
+                      <input type="checkbox" id="feed-day-2" value="2" />
+                      <span>Tue</span>
+                    </label>
+                    <label class="feed-day-checkbox">
+                      <input type="checkbox" id="feed-day-3" value="3" />
+                      <span>Wed</span>
+                    </label>
+                    <label class="feed-day-checkbox">
+                      <input type="checkbox" id="feed-day-4" value="4" />
+                      <span>Thu</span>
+                    </label>
+                    <label class="feed-day-checkbox">
+                      <input type="checkbox" id="feed-day-5" value="5" />
+                      <span>Fri</span>
+                    </label>
+                    <label class="feed-day-checkbox">
+                      <input type="checkbox" id="feed-day-6" value="6" />
+                      <span>Sat</span>
+                    </label>
+                  </div>
+                </div>
+                <div class="feed-actions-row">
+                  <button id="feed-schedule-confirm" class="btn btn-primary btn-sm" type="button">Save</button>
+                  <button id="feed-schedule-cancel" class="btn btn-outline btn-sm" type="button">Cancel</button>
+                </div>
+                <div id="feed-schedule-error" class="feed-schedule-error"></div>
+              </div>
+              <ul id="feed-schedule-list" class="feed-schedule-list"></ul>
+            </div>
+
+            <div class="card feed-card-log">
+              <h3 class="card-title">
+                <svg class="icon icon-16"><use href="#icon-document"/></svg>
+                Feed Log
+              </h3>
+              <div id="feed-log-list" class="card-body--scroll feed-log-scroll"></div>
+            </div>
+          </div>
+
+          <div class="feed-col feed-col-side">
+            <div class="card feed-card-chart">
+              <h3 class="card-title">
+                <svg class="icon icon-16"><use href="#icon-activity"/></svg>
+                Weekly Feed Activity
+              </h3>
+              <div class="feed-week-nav hist-navigator">
+                <button type="button" id="feed-week-prev" class="btn btn-outline btn-sm" aria-label="Previous week">
+                  <svg class="icon icon-14"><use href="#icon-chevron-left"/></svg>
+                </button>
+                <span id="feed-week-label" class="hist-period-label feed-week-label" role="status">—</span>
+                <button type="button" id="feed-week-next" class="btn btn-outline btn-sm" aria-label="Next week">
+                  <svg class="icon icon-14"><use href="#icon-chevron-right"/></svg>
+                </button>
+              </div>
+              <div class="feed-chart-wrap"><canvas id="feed-chart"></canvas></div>
+            </div>
+
+            <div class="feed-sidebar-stack">
+              <div class="card feed-card-manual">
+                <h3 class="card-title">
+                  <svg class="icon icon-16"><use href="#icon-feeding"/></svg>
+                  Manual Feed
+                </h3>
+                <div class="feed-manual-body">
+                  <button id="feed-manual-btn" class="btn btn-feed btn-block" type="button" disabled>
+                    ▶ Manual Feed
+                  </button>
                 </div>
               </div>
-              <div class="feed-actions-row">
-                <button id="feed-schedule-confirm" class="btn btn-primary btn-sm" type="button">Save</button>
-                <button id="feed-schedule-cancel" class="btn btn-outline btn-sm" type="button">Cancel</button>
-              </div>
-              <div id="feed-schedule-error" class="feed-schedule-error"></div>
-            </div>
-            <ul id="feed-schedule-list" class="feed-schedule-list"></ul>
-          </div>
 
-          <div class="card feed-card-chart">
-            <h3 class="card-title">
-              <svg class="icon icon-16"><use href="#icon-activity"/></svg>
-              Weekly Feed Activity
-            </h3>
-            <div class="feed-chart-wrap"><canvas id="feed-chart"></canvas></div>
-          </div>
-
-          <div class="card feed-card-log">
-            <h3 class="card-title">
-              <svg class="icon icon-16"><use href="#icon-document"/></svg>
-              Feed Log
-            </h3>
-            <div id="feed-log-list" class="card-body--scroll feed-log-scroll"></div>
-          </div>
-
-          <div class="card feed-card-manual">
-            <h3 class="card-title">
-              <svg class="icon icon-16"><use href="#icon-feeding"/></svg>
-              Manual Feed
-            </h3>
-            <div class="feed-manual-body">
-              <button id="feed-manual-btn" class="btn btn-feed btn-block" type="button" disabled>
-                ▶ Manual Feed
-              </button>
-              <div class="feed-note">
-                <div class="dot off" id="feed-manual-dot"></div>
-                <span id="feed-manual-status">Connect to Firebase to enable feed button</span>
+              <div class="card feed-card-status">
+                <h3 class="card-title">
+                  <svg class="icon icon-16"><use href="#icon-settings"/></svg>
+                  Device Status
+                </h3>
+                <div class="feed-note">
+                  <div class="dot off" id="feed-manual-dot"></div>
+                  <span id="feed-manual-status">Connect to Firebase to enable feed button</span>
+                </div>
               </div>
             </div>
           </div>

@@ -336,17 +336,13 @@ function severityFromBadge(badgeClass) {
   return null; // ok — not at risk, no alert
 }
 
-/**
- * Evaluate a single sensor reading and return an alert object if it breaches
- * a threshold, or null if the value is optimal.
- */
-function evaluateSensor(key, val, pondName) {
-  const badge = getBadgeForSpecies(key, val);
-  const severity = severityFromBadge(badge.c);
-  if (!severity) return null;
-
-  const unit  = SENSOR_UNITS[key] || '';
+function labelFor(key, badgeClass, pondName) {
   const label = SENSOR_LABELS[key] || key.toUpperCase();
+  const prefix = badgeClass === 'danger' ? 'Critical' : badgeClass === 'warn' ? 'Warning' : 'Notice';
+  return `${prefix}: ${label} in ${pondName}`;
+}
+
+function descriptionForCurrentThresholds(key, val) {
   const species = getActiveSpecies();
   const t = getActiveThresholds();
 
@@ -375,6 +371,24 @@ function evaluateSensor(key, val, pondName) {
   }
 
   if (species) description += ` (${species.charAt(0).toUpperCase() + species.slice(1)} config)`;
+  return description;
+}
+
+/**
+ * Evaluate a single sensor reading and return an alert object if it breaches
+ * a threshold, or null if the value is optimal.
+ */
+function evaluateSensor(key, val, pondName) {
+  const badge = getBadgeForSpecies(key, val);
+  const severity = severityFromBadge(badge.c);
+  if (!severity) return null;
+
+  const unit  = SENSOR_UNITS[key] || '';
+  const label = SENSOR_LABELS[key] || key.toUpperCase();
+  const species = getActiveSpecies();
+  const t = getActiveThresholds();
+
+  const description = descriptionForCurrentThresholds(key, val);
 
   return {
     id:       `${key}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
@@ -383,7 +397,7 @@ function evaluateSensor(key, val, pondName) {
     val,
     severity,   // 'critical' | 'warning' | 'info'
     badge:      badge.c,
-    label:      `${badge.c === 'danger' ? 'Critical' : badge.c === 'warn' ? 'Warning' : 'Notice'}: ${label} in ${pondName}`,
+    label:      labelFor(key, badge.c, pondName),
     description,
     pond:       pondName,
     resolved:   false,
@@ -757,12 +771,60 @@ export function init() {
   });
 
   // Re-render when pond/config changes (thresholds may reclassify existing state)
+  function reconcileUnresolvedAlerts() {
+    const all = loadAlerts();
+    const toResolve = [];
+    let changed = false;
+
+    for (const a of all) {
+      if (!a || typeof a !== 'object') continue;
+      if (a.resolved) continue;
+      if (a.val == null || !Number.isFinite(Number(a.val))) continue;
+      if (!a.key || typeof a.key !== 'string') continue;
+
+      const val = Number(a.val);
+      const badge = getBadgeForSpecies(a.key, val);
+      const severity = severityFromBadge(badge.c);
+
+      // If the reading is now within optimal range, keep history but remove from active view.
+      if (!severity) {
+        a.resolved = true;
+        toResolve.push(a.id);
+        changed = true;
+        continue;
+      }
+
+      // Otherwise, refresh display fields so the alert matches the currently active thresholds.
+      a.badge = badge.c;
+      a.severity = severity;
+      a.label = labelFor(a.key, badge.c, a.pond || 'Unknown');
+      a.description = descriptionForCurrentThresholds(a.key, val);
+      a.thresholdSummary = thresholdSummaryForKey(a.key);
+      changed = true;
+    }
+
+    if (changed) {
+      saveAlerts(pruneAlerts(all));
+      rerenderAlertsTab();
+      window.dispatchEvent(new Event('alerts-updated'));
+
+      if (fbAuth().currentUser) {
+        // Non-blocking; localStorage is the source of truth for UI.
+        toResolve.forEach((id) => updateAlertResolvedInFirestore(id).catch(() => {}));
+      }
+    }
+  }
+
   function onActiveConfigChanged(e) {
     const configId = e.detail?.configId || e.detail?.pondId || getActiveConfigId() || 'default';
     resetCooldownsForPond(configId);
+    reconcileUnresolvedAlerts();
     renderAlertList();
   }
   window.addEventListener('config-changed', onActiveConfigChanged);
+
+  // Clean up any stale unresolved alerts on first load too.
+  reconcileUnresolvedAlerts();
 }
 
 // ─── Alert Management Functions ───────────────────────────────────────────────
