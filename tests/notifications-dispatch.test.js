@@ -1,4 +1,4 @@
-// tests/notifications-all-parameters-bugfix.test.js
+// tests/notifications-dispatch.test.js
 // Validates that handleAlert delegates fan-out to POST /api/notifications/dispatch-alert
 // (server notifies all active users) for every sensor parameter.
 
@@ -8,7 +8,7 @@ vi.mock('../public/js/firebase-client.js', () => ({
   fbGetIdToken: vi.fn(() => Promise.resolve('mock-token')),
 }));
 
-describe('Notification Alerts All Parameters — dispatch-alert integration', () => {
+describe('notifications dispatch — handleAlert API', () => {
   let handleAlert;
 
   beforeAll(async () => {

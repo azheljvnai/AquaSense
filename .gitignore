@@ -15,6 +15,9 @@ Thumbs.db
 .idea
 .vscode
 
+# Firebase CLI deploy cache (regenerated on deploy)
+.firebase/
+
 # Optional
 dist/
 build/

@@ -12,7 +12,7 @@ Aquaculture monitoring dashboard (CrayFarm) with real-time water quality metrics
 - **Frontend** (HTML + CSS + JS modules): Single-page app with sidebar navigation (Dashboard, Water Quality, Historical Data, Feeding, Alerts, Farm & Profile, Reports, Configuration). On load it:
   1. Fetches `/api/config` (if running behind the backend) and pre-fills the Firebase URL input.
   2. When you click **Connect**, it initializes the Firebase client with that URL and subscribes to the same paths as the original app.
-- **Firebase** (unchanged): The frontend still talks directly to Firebase Realtime Database using the same paths and logic as the original `dashboard.html`:
+- **Firebase** (unchanged): The frontend talks directly to Firebase Realtime Database using the same paths as the original app:
   - ` /devices/<deviceId>/sensors` — ph, do, turb, temp
   - ` /devices/<deviceId>/feeding` — `schedules/times/{0..n}`, `manualFeed`
   - ` /devices/<deviceId>/feedLog` — feed event log (manual + scheduled)
@@ -23,43 +23,19 @@ No existing API endpoints or Firebase logic were changed; only the URL (and opti
 
 ```
 AquaSense/
-├── .env                 # Private config (create from .env.example; do not commit)
-├── .env.example         # Template for .env
-├── .gitignore
-├── README.md            # This file
+├── .env                 # Private config (do not commit)
 ├── backend/
-│   ├── package.json
-│   └── server.js        # Express: static frontend + GET /api/config
-├── frontend/
-│   ├── index.html       # Single-page app (all views)
-│   ├── css/
-│   │   ├── shared.css   # Layout, sidebar, cards, buttons, tabs, icons, WQ status
-│   │   ├── dashboard.css
-│   │   ├── water-quality.css
-│   │   ├── historical-data.css
-│   │   ├── feeding.css
-│   │   ├── alerts.css
-│   │   ├── farm-profile.css
-│   │   ├── reports.css
-│   │   └── configuration.css
-│   ├── js/
-│   │   ├── app.js       # Entry: nav, clock, config, Firebase wiring, feature inits
-│   │   ├── config.js    # Fetches /api/config
-│   │   ├── firebase.js  # Firebase connect, sensor stream, history fetch
-│   │   ├── features/feeding.js  # Unified feeding schedules, manual feed, feed log
-│   │   ├── charts.js    # Chart helpers (dashboard, historical, feeding)
-│   │   ├── utils.js     # log, getBadge, thresholds, sparklines
-│   │   └── features/
-│   │       ├── dashboard.js
-│   │       ├── water-quality.js
-│   │       ├── historical-data.js
-│   │       ├── feeding.js
-│   │       ├── alerts.js
-│   │       ├── farm-profile.js
-│   │       ├── reports.js
-│   │       └── configuration.js
-│   └── icons.svg        # SVG symbol definitions (optional reference)
-└── dashboard.html       # Legacy single-file app (uses frontend/css/shared.css)
+│   ├── server.js        # Express: static public/ + APIs + RTDB alert watcher
+│   ├── lib/             # Threshold eval, alert sensitivity, species presets
+│   ├── notifications/   # dispatch-alert, rtdb-alert-watcher
+│   └── scripts/         # Ops scripts (seed, cleanup)
+├── public/              # SPA (served at /)
+│   ├── index.html
+│   ├── css/app.css
+│   ├── js/app.js        # Entry + feature modules under js/features/
+│   └── vendor/          # chart.umd.min.js, email.min.js
+├── tests/               # Vitest suite (npm test)
+└── vitest.config.js
 ```
 
 ### Water Quality Indicators
@@ -70,7 +46,7 @@ Three status levels with clear styling (in `shared.css` and inline badges):
 - **Warning** — yellow/amber (`status-warning`, `.scard-badge.warn`)
 - **Critical** — red (`status-critical`, `.scard-badge.danger`)
 
-Thresholds are defined in `frontend/js/utils.js` (`thresh`) and used by `getBadge()` and the dashboard cards.
+Thresholds are defined in `public/js/pond-config.js` and used for badges and alerts.
 
 ---
 
@@ -116,7 +92,7 @@ npm start
 You should see something like:
 
 - `AquaSense backend running at http://localhost:3000`
-- Frontend is served from the `frontend/` folder.
+- Frontend is served from the `public/` folder.
 
 ### 3. Open the App
 
@@ -124,11 +100,29 @@ In the browser go to:
 
 - **http://localhost:3000**
 
-The app will load `frontend/index.html`. If `FIREBASE_DATABASE_URL` is set in `.env`, the Firebase URL field will be pre-filled. Click **Connect** to attach to your Firebase project. Dashboard metrics, charts, feeding panel, and activity log will work as in the original design.
+The app will load `public/index.html`. If `FIREBASE_DATABASE_URL` is set in `.env`, the Firebase URL field will be pre-filled. Click **Connect** to attach to your Firebase project.
 
 ---
 
 ## How to Test
+
+### Automated (Vitest)
+
+From the repo root:
+
+```bash
+npm install
+npm run install:backend
+npm test
+```
+
+Alert-focused subset:
+
+```bash
+npx vitest run tests/alert-sensitivity.test.js tests/dispatch-alert-*.test.js tests/rtdb-alert-watcher-interval.test.js
+```
+
+See `TEST_CASES.md` for manual backend acceptance cases.
 
 ### With backend (recommended)
 
@@ -144,13 +138,13 @@ The app will load `frontend/index.html`. If `FIREBASE_DATABASE_URL` is set in `.
 5. **Navigation**: Use the sidebar to open Water Quality, Historical Data, Feeding, Alerts, Farm & Profile, Reports, Configuration. No “ML & Analytics”; Reports has Daily/Weekly/Monthly Water Quality Report and Feeding Report tabs.
 6. **Firebase**: Ensure your Realtime Database has the expected structure under `/devices/device001/` (or your `DEVICE_ID`): e.g. `sensors` (ph, do, turb, temp), `feeding/schedules/times` (HH:MM strings at indices 0, 1, …), `feeding/manualFeed`, and `feedLog`. Legacy `schedule1`/`schedule2` keys are migrated automatically on first load.
 
-### Notes about `dashboard.html` (legacy)
+### Legacy URL redirect
 
-`dashboard.html` is a legacy single-file version kept for reference. When running the backend, visiting `dashboard.html` will redirect to the SPA entry (`/`) to prevent outdated UI from showing.
+Old bookmarks to `/dashboard.html` redirect to `/` (handled in `backend/server.js`).
 
-If you want a standalone run without the backend, serve `frontend/` using any static server (e.g. `npx serve frontend`). `GET /api/config` will fail (e.g. 404), so the Firebase URL will not be pre-filled; paste it manually and connect.
+If you want a standalone run without the backend, serve `public/` using any static server (e.g. `npx serve public`). `GET /api/config` will fail (e.g. 404), so paste the Firebase URL manually and connect.
 
-**Note:** Do not open `frontend/index.html` as a file (`file://`) in the browser. ES modules and `fetch('/api/config')` require a real origin; use the backend or a static server.
+**Note:** Do not open `public/index.html` as a file (`file://`) in the browser. ES modules and `fetch('/api/config')` require a real origin; use the backend or a static server.
 
 ### Quick checks
 
