@@ -5,7 +5,7 @@ import fc from 'fast-check';
 
 // ─── Pure logic extracted from notifications.js for testing ──────────────────
 
-const COOLDOWN_MS = 15 * 60 * 1000;
+const COOLDOWN_MS = 5 * 60 * 1000;
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 // Cooldown map (reset between tests)
@@ -43,24 +43,24 @@ describe('NotificationService — Property-Based Tests', () => {
     _cooldownMap = new Map();
   });
 
-  // Property 1: Cooldown prevents duplicate emails within 15 minutes
+  // Property 1: Cooldown prevents duplicate emails within 5 minutes
   // Feature: notifications, Property 1: For any pond/sensor combo, if an email was dispatched at T,
-  // no further email SHALL be dispatched before T + 15 minutes.
+  // no further email SHALL be dispatched before T + 5 minutes.
   // Validates: Requirements 2.4
-  it('Property 1: cooldown — emailjs.send called at most once within 15 minutes', () => {
+  it('Property 1: cooldown — emailjs.send called at most once within 5 minutes', () => {
     fc.assert(
       fc.property(
         fc.string({ minLength: 1, maxLength: 20 }),   // pondId
         fc.constantFrom('ph', 'do', 'turb', 'temp'),  // sensorKey
-        fc.integer({ min: 2, max: 10 }),               // alertCount
+        fc.integer({ min: 2, max: 5 }),                // alertCount (all within 5-min window)
         (pondId, sensorKey, alertCount) => {
           _cooldownMap = new Map();
           const sendCallCount = { n: 0 };
           const baseTime = Date.now();
 
           for (let i = 0; i < alertCount; i++) {
-            // All alerts within 15-minute window (0 to 14 min 59 sec after base)
-            const now = baseTime + i * 60_000; // 1 minute apart, all within 15 min
+            // All alerts within 5-minute window (0 to 4 min 59 sec after base)
+            const now = baseTime + i * 60_000; // 1 minute apart, all within 5 min
             if (!isCooledDownChannel('email', pondId, sensorKey, now)) {
               sendCallCount.n++;
               markSentChannel('email', pondId, sensorKey, now);

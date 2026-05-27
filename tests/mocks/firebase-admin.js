@@ -7,6 +7,7 @@ export const mockState = {
   prefsGet: async () => ({ exists: false }),
   notificationLogGet: async () => ({ docs: [] }),
   notificationLogAdd: async () => ({ id: 'log-1' }),
+  configurationsGet: async () => ({ empty: true, docs: [] }),
 };
 
 const FieldValue = { serverTimestamp: () => ({ _serverTimestamp: true }) };
@@ -31,6 +32,15 @@ function firestore() {
             }),
           }),
           add: (data) => mockState.notificationLogAdd(data),
+        };
+      }
+      if (name === 'configurations') {
+        return {
+          where: () => ({
+            limit: () => ({
+              get: () => mockState.configurationsGet(),
+            }),
+          }),
         };
       }
       return {};

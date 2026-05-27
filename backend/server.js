@@ -31,6 +31,7 @@ import { sendUniSms } from './lib/unisms.js';
 import { getEmailJsServerEnv } from './lib/emailjs-env.js';
 import { postDispatchAlert } from './notifications/dispatch-alert.js';
 import { startRtdbAlertWatcher } from './notifications/rtdb-alert-watcher.js';
+import { NOTIFY_INTERVAL_MS } from './lib/alert-notify-interval.js';
 
 // Initialise Firebase Admin SDK once
 function initAdmin() {
@@ -180,6 +181,7 @@ app.get('/api/config', (_req, res) => {
     serverDispatchesAlerts: !!process.env.FIREBASE_DATABASE_URL &&
       process.env.RTDB_ALERT_WATCHER !== '0' &&
       String(process.env.RTDB_ALERT_WATCHER || '').toLowerCase() !== 'false',
+    alertNotifyIntervalMs: NOTIFY_INTERVAL_MS,
     emailjsPublicKey: process.env.EMAILJS_PUBLIC_KEY || '',
     emailjsServiceId: process.env.EMAILJS_SERVICE_ID || '',
     emailjsTemplateId: process.env.EMAILJS_TEMPLATE_ID || '',

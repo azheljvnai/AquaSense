@@ -28,8 +28,15 @@ export function getBadgeForThresholds(key, val, thresholds) {
 
   if (key === 'do') {
     const db = t.do;
-    if (val >= db.optimalMin) return { c: 'ok', l: 'Normal' };
-    if (db.acceptableMin && val >= db.acceptableMin) return { c: 'warn', l: 'Warning' };
+    const optimalMax = db.optimalMax ?? Infinity;
+    if (val >= db.optimalMin && val <= optimalMax) return { c: 'ok', l: 'Normal' };
+    if (db.acceptable1Min !== null && db.acceptable1Max !== null && val >= db.acceptable1Min && val <= db.acceptable1Max) {
+      return { c: 'warn', l: 'Warning' };
+    }
+    if (db.acceptable2Min !== null && db.acceptable2Max !== null && val >= db.acceptable2Min && val <= db.acceptable2Max) {
+      return { c: 'warn', l: 'Warning' };
+    }
+    if (db.acceptableMin != null && val >= db.acceptableMin) return { c: 'warn', l: 'Warning' };
     return { c: 'danger', l: 'Critical' };
   }
 
@@ -48,6 +55,12 @@ export function getBadgeForThresholds(key, val, thresholds) {
   if (key === 'ph') {
     const pb = t.ph;
     if (val >= pb.optimalMin && val <= pb.optimalMax) return { c: 'ok', l: 'Normal' };
+    if (pb.acceptable1Min !== null && pb.acceptable1Max !== null && val >= pb.acceptable1Min && val <= pb.acceptable1Max) {
+      return { c: 'warn', l: 'Warning' };
+    }
+    if (pb.acceptable2Min !== null && pb.acceptable2Max !== null && val >= pb.acceptable2Min && val <= pb.acceptable2Max) {
+      return { c: 'warn', l: 'Warning' };
+    }
     return { c: 'danger', l: 'Critical' };
   }
 
@@ -64,7 +77,11 @@ function thresholdSummaryForKey(key, thresholds) {
   const t = thresholds;
   if (!t) return '';
   if (key === 'ph' && t.ph) return `${t.ph.optimalMin}–${t.ph.optimalMax}`;
-  if (key === 'do' && t.do) return `≥ ${t.do.optimalMin} mg/L`;
+  if (key === 'do' && t.do) {
+    return t.do.optimalMax != null
+      ? `${t.do.optimalMin}–${t.do.optimalMax} mg/L`
+      : `≥ ${t.do.optimalMin} mg/L`;
+  }
   if (key === 'turb' && t.turb) return `≤ ${t.turb.optimalMax} NTU`;
   if (key === 'temp' && t.temp) return `${t.temp.optimalMin}–${t.temp.optimalMax}°C`;
   return '';
@@ -89,7 +106,10 @@ export function buildAlertFromReading(key, val, { configId, species, thresholds,
     const pb = thresholds.ph;
     description = `pH ${val.toFixed(2)} is outside the optimal range (${pb.optimalMin}–${pb.optimalMax}).`;
   } else if (key === 'do' && thresholds?.do) {
-    description = `Dissolved O₂ ${val.toFixed(1)} mg/L is below optimal (≥${thresholds.do.optimalMin} mg/L).`;
+    const db = thresholds.do;
+    description = db.optimalMax != null
+      ? `Dissolved O₂ ${val.toFixed(1)} mg/L is outside the optimal range (${db.optimalMin}–${db.optimalMax} mg/L).`
+      : `Dissolved O₂ ${val.toFixed(1)} mg/L is below optimal (≥${db.optimalMin} mg/L).`;
   } else if (key === 'turb' && thresholds?.turb) {
     description = `Turbidity ${val.toFixed(1)} NTU exceeds optimal (≤${thresholds.turb.optimalMax} NTU).`;
   } else if (key === 'temp' && thresholds?.temp) {

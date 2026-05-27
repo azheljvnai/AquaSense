@@ -30,6 +30,9 @@ export async function getConfig() {
         appId: data.firebase?.appId || '',
         databaseURL: data.firebase?.databaseURL || data.firebaseDatabaseUrl || '',
       },
+      serverDispatchesAlerts: data.serverDispatchesAlerts === true,
+      alertNotifyIntervalMs:
+        Number(data.alertNotifyIntervalMs) > 0 ? Number(data.alertNotifyIntervalMs) : 5 * 60 * 1000,
       emailjsPublicKey: data.emailjsPublicKey || '',
       emailjsServiceId: data.emailjsServiceId || '',
       emailjsTemplateId: data.emailjsTemplateId || '',

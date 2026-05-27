@@ -3,173 +3,51 @@
  * Seeds the configurations collection with default species presets
  */
 import admin from 'firebase-admin';
+import { createRequire } from 'module';
+import { fileURLToPath } from 'url';
+import path from 'path';
+import fs from 'fs';
+import { SPECIES_PRESETS } from '../lib/species-presets.js';
 
-const SPECIES_PRESETS = {
-  crayfish: {
-    name: 'Crayfish',
-    species: 'crayfish',
-    thresholds: {
-      ph: {
-        optimalMin: 6.5,
-        optimalMax: 8.5,
-        acceptable1Min: null,
-        acceptable1Max: 6.49,
-        acceptable2Min: 8.51,
-        acceptable2Max: null,
-        stress1Min: null,
-        stress1Max: null,
-        stress2Min: null,
-        stress2Max: null,
-      },
-      temp: {
-        optimalMin: 24,
-        optimalMax: 30,
-        acceptable1Min: 20,
-        acceptable1Max: 23.99,
-        acceptable2Min: 30.01,
-        acceptable2Max: 33,
-        stress1Min: null,
-        stress1Max: 19.99,
-        stress2Min: 33.01,
-        stress2Max: null,
-      },
-      do: {
-        optimalMin: 5,
-        acceptableMin: null,
-        stressMin: null,
-      },
-      turb: {
-        optimalMax: 40,
-        acceptableMax: 80,
-        stressMax: null,
-        warnMax: null,
-      },
-    },
-  },
-  tilapia: {
-    name: 'Tilapia',
-    species: 'tilapia',
-    thresholds: {
-      ph: {
-        optimalMin: 6.5,
-        optimalMax: 8.5,
-        acceptable1Min: null,
-        acceptable1Max: 6.49,
-        acceptable2Min: 8.51,
-        acceptable2Max: null,
-        stress1Min: null,
-        stress1Max: null,
-        stress2Min: null,
-        stress2Max: null,
-      },
-      temp: {
-        optimalMin: 25,
-        optimalMax: 32,
-        acceptable1Min: null,
-        acceptable1Max: 24.99,
-        acceptable2Min: 32.01,
-        acceptable2Max: null,
-        stress1Min: null,
-        stress1Max: null,
-        stress2Min: null,
-        stress2Max: null,
-      },
-      do: {
-        optimalMin: 5,
-        acceptableMin: null,
-        stressMin: null,
-      },
-      turb: {
-        optimalMax: 50,
-        acceptableMax: 75,
-        stressMax: 100,
-        warnMax: null,
-      },
-    },
-  },
-  catfish: {
-    name: 'Catfish',
-    species: 'catfish',
-    thresholds: {
-      ph: {
-        optimalMin: 6.5,
-        optimalMax: 9.0,
-        acceptable1Min: null,
-        acceptable1Max: 6.49,
-        acceptable2Min: 9.01,
-        acceptable2Max: null,
-        stress1Min: null,
-        stress1Max: null,
-        stress2Min: null,
-        stress2Max: null,
-      },
-      temp: {
-        optimalMin: 25,
-        optimalMax: 32,
-        acceptable1Min: null,
-        acceptable1Max: 24.99,
-        acceptable2Min: 32.01,
-        acceptable2Max: null,
-        stress1Min: null,
-        stress1Max: null,
-        stress2Min: null,
-        stress2Max: null,
-      },
-      do: {
-        optimalMin: 5,
-        acceptableMin: 3,
-        stressMin: null,
-      },
-      turb: {
-        optimalMax: 70,
-        acceptableMax: 100,
-        stressMax: null,
-        warnMax: null,
-      },
-    },
-  },
-  shrimp: {
-    name: 'Shrimp',
-    species: 'shrimp',
-    thresholds: {
-      ph: {
-        optimalMin: 7.2,
-        optimalMax: 8.5,
-        acceptable1Min: null,
-        acceptable1Max: 7.19,
-        acceptable2Min: 8.51,
-        acceptable2Max: null,
-        stress1Min: null,
-        stress1Max: null,
-        stress2Min: null,
-        stress2Max: null,
-      },
-      temp: {
-        optimalMin: 28,
-        optimalMax: 31,
-        acceptable1Min: null,
-        acceptable1Max: 27.99,
-        acceptable2Min: 31.01,
-        acceptable2Max: null,
-        stress1Min: null,
-        stress1Max: null,
-        stress2Min: null,
-        stress2Max: null,
-      },
-      do: {
-        optimalMin: 3,
-        acceptableMin: null,
-        stressMin: null,
-      },
-      turb: {
-        optimalMax: 25,
-        acceptableMax: 50,
-        stressMax: 100,
-        warnMax: null,
-      },
-    },
-  },
-};
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+function initAdminFromEnv() {
+  if (admin.apps.length) return;
+
+  const { config: dotenvConfig } = createRequire(import.meta.url)('dotenv');
+  dotenvConfig({ path: path.join(__dirname, '..', '..', '.env') });
+  dotenvConfig({ path: path.join(__dirname, '..', '.env') });
+
+  const saJson = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
+  if (saJson) {
+    admin.initializeApp({
+      credential: admin.credential.cert(JSON.parse(saJson)),
+      databaseURL: process.env.FIREBASE_DATABASE_URL,
+    });
+    return;
+  }
+
+  const candidates = [];
+  if (process.env.FIREBASE_SERVICE_ACCOUNT_PATH) {
+    const p = process.env.FIREBASE_SERVICE_ACCOUNT_PATH;
+    candidates.push(path.isAbsolute(p) ? p : path.resolve(__dirname, '..', '..', p));
+  }
+  if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
+    candidates.push(process.env.GOOGLE_APPLICATION_CREDENTIALS);
+  }
+  candidates.push(path.join(path.sep, 'etc', 'secrets', 'serviceAccountKey.json'));
+  candidates.push(path.resolve(__dirname, '..', '..', 'serviceAccountKey.json'));
+
+  const saPath = candidates.find(p => p && fs.existsSync(p)) || null;
+  if (!saPath) {
+    throw new Error('Firebase Admin credentials not found. Set FIREBASE_SERVICE_ACCOUNT_JSON or place serviceAccountKey.json.');
+  }
+
+  admin.initializeApp({
+    credential: admin.credential.cert(JSON.parse(fs.readFileSync(saPath, 'utf8'))),
+    databaseURL: process.env.FIREBASE_DATABASE_URL,
+  });
+}
 
 /**
  * Seed species presets to Firestore configurations collection
@@ -181,7 +59,7 @@ export async function seedSpeciesPresets() {
     return;
   }
 
-  const fs = admin.firestore();
+  const fsDb = admin.firestore();
   let seededCount = 0;
   let updatedCount = 0;
   let skippedCount = 0;
@@ -190,11 +68,10 @@ export async function seedSpeciesPresets() {
 
   for (const [species, preset] of Object.entries(SPECIES_PRESETS)) {
     try {
-      const docRef = fs.collection('configurations').doc(species);
+      const docRef = fsDb.collection('configurations').doc(species);
       const docSnap = await docRef.get();
 
       if (docSnap.exists) {
-        // Update existing preset with new thresholds
         await docRef.set(
           {
             name: preset.name,
@@ -203,12 +80,11 @@ export async function seedSpeciesPresets() {
             isPreset: true,
             updatedAt: admin.firestore.FieldValue.serverTimestamp(),
           },
-          { merge: true }
+          { merge: true },
         );
         updatedCount++;
         console.log(`[Preset Seeding] Updated preset: ${preset.name}`);
       } else {
-        // Create new preset
         await docRef.set({
           name: preset.name,
           species: preset.species,
@@ -239,8 +115,8 @@ export async function checkAndSeedPresets() {
   }
 
   try {
-    const fs = admin.firestore();
-    const presetsSnap = await fs
+    const fsDb = admin.firestore();
+    const presetsSnap = await fsDb
       .collection('configurations')
       .where('isPreset', '==', true)
       .limit(1)
@@ -258,4 +134,16 @@ export async function checkAndSeedPresets() {
     console.error('[Preset Seeding] Error checking presets:', e.message);
     return false;
   }
+}
+
+const isMain = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+
+if (isMain) {
+  initAdminFromEnv();
+  seedSpeciesPresets()
+    .then(() => process.exit(0))
+    .catch((err) => {
+      console.error('[Preset Seeding] Failed:', err);
+      process.exit(1);
+    });
 }

@@ -94,8 +94,9 @@ function _crayfishBadge(key, val) {
     return                                { c: 'danger', l: 'Critical' };
   }
   if (key === 'do') {
-    if (val >= 5) return { c: 'ok',     l: 'Normal' };
-    return               { c: 'danger', l: 'Critical' };
+    if (val >= 5 && val <= 8) return { c: 'ok',     l: 'Normal' };
+    if (val >= 4.5 && val <= 8.5) return { c: 'warn',   l: 'Warning' };
+    return                            { c: 'danger', l: 'Critical' };
   }
   const t = thresh[key];
   if (!t) return { c: 'ok', l: 'Normal' };

@@ -3007,6 +3007,32 @@ body.theme-dark .modal-body {
   margin-top: 16px;
 }
 
+.threshold-band-section {
+  margin-top: 20px;
+  padding-top: 4px;
+  border-top: 1px solid var(--border);
+}
+
+.threshold-band-section:first-of-type {
+  border-top: none;
+  margin-top: 12px;
+}
+
+.threshold-band-title {
+  margin: 0 0 8px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.threshold-form-hint {
+  margin: 4px 0 0;
+}
+
+.threshold-grid--bands {
+  margin-top: 8px;
+}
+
 .modal-body .threshold-grid .form-group {
   margin: 0;
   padding: 14px 14px 12px;

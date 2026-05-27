@@ -128,28 +128,22 @@ export async function savePrefs(uid, prefs) {
  * Fan-out to all active users runs on the server (Firebase Admin); this calls
  * POST /api/notifications/dispatch-alert. If offline, enqueues alert for retry.
  */
-export async function handleAlert(alert) {
-  // 1. Skip resolved alerts
-  if (alert?.resolved) {
-    console.log('[NotificationService] Skipping resolved alert:', alert?.id);
-    return;
-  }
+/**
+ * Dispatch one combined email/SMS for multiple alerts (single API call).
+ */
+export async function handleAlerts(alerts) {
+  const list = Array.isArray(alerts) ? alerts.filter((a) => a && a.key && !a.resolved) : [];
+  if (!list.length) return;
 
-  // 2. Skip null/undefined alerts
-  if (!alert || !alert.key) {
-    console.warn('[NotificationService] handleAlert called with invalid alert:', alert);
-    return;
-  }
-
-  console.log('[NotificationService] handleAlert called for alert:', alert.id, 'key:', alert.key, 'pond:', alert.pond);
+  console.log('[NotificationService] handleAlerts batch:', list.map((a) => a.key).join(', '));
 
   if (!navigator.onLine) {
-    enqueueRetry(alert);
+    for (const alert of list) enqueueRetry(alert);
     return;
   }
 
   try {
-    const data = await dispatchAlertViaApi(alert);
+    const data = await dispatchAlertViaApi(list);
     if (data?.errors?.length && _currentUser?.uid) {
       const mine = data.errors.filter((e) => e.uid === _currentUser.uid);
       if (mine.length) {
@@ -165,15 +159,33 @@ export async function handleAlert(alert) {
   }
 }
 
-async function dispatchAlertViaApi(alert) {
+export async function handleAlert(alert) {
+  // 1. Skip resolved alerts
+  if (alert?.resolved) {
+    console.log('[NotificationService] Skipping resolved alert:', alert?.id);
+    return;
+  }
+
+  // 2. Skip null/undefined alerts
+  if (!alert || !alert.key) {
+    console.warn('[NotificationService] handleAlert called with invalid alert:', alert);
+    return;
+  }
+
+  return handleAlerts([alert]);
+}
+
+async function dispatchAlertViaApi(alertOrAlerts) {
   const token = await fbGetIdToken();
+  const alerts = Array.isArray(alertOrAlerts) ? alertOrAlerts : [alertOrAlerts];
+  const body = alerts.length === 1 ? { alert: alerts[0] } : { alerts };
   const resp = await fetch('/api/notifications/dispatch-alert', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${token}`,
     },
-    body: JSON.stringify({ alert }),
+    body: JSON.stringify(body),
   });
   const data = await resp.json().catch(() => ({}));
   if (!resp.ok) {

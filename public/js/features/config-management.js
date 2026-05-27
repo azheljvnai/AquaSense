@@ -17,6 +17,13 @@ import {
 } from '../pond-config.js';
 import { flexModalHtml, escapeHtml } from '../ui/templates.js';
 import { showAppToast, showConfirmModal } from '../ui/modal-ui.js';
+import {
+  thresholdBandsFormHtml,
+  fillThresholdForm,
+  readThresholdsFromForm,
+  validateThresholds,
+  mergeConfigThresholdsForForm,
+} from '../threshold-form.js';
 
 let _configurations = [];
 let _activeConfigId = null;
@@ -150,7 +157,7 @@ function renderConfigurationSelector() {
           </div>
           <div class="threshold-item threshold-tile threshold-tile--do">
             <div class="threshold-label">Dissolved O₂ (mg/L)</div>
-            <div class="threshold-value">≥ ${t.do?.optimalMin ?? '—'}</div>
+            <div class="threshold-value">${t.do?.optimalMax != null ? `${t.do.optimalMin} - ${t.do.optimalMax}` : `≥ ${t.do?.optimalMin ?? '—'}`}</div>
           </div>
           <div class="threshold-item threshold-tile threshold-tile--turb">
             <div class="threshold-label">Turbidity (NTU)</div>
@@ -235,6 +242,9 @@ async function deactivateConfig() {
 // ─── Show Create Configuration Dialog ─────────────────────────────────────────
 
 function showCreateDialog() {
+  if (!document.getElementById('config-ph-opt-min')) {
+    createDialogHTML();
+  }
   const dialog = document.getElementById('create-config-dialog');
   if (!dialog) {
     createDialogHTML();
@@ -252,6 +262,7 @@ function showCreateDialog() {
 }
 
 function createDialogHTML() {
+  document.getElementById('create-config-dialog')?.remove();
   const close = "window.configManagement.closeDialog('create-config-dialog')";
   const bodyHtml = `
           <div class="form-group">
@@ -270,36 +281,8 @@ function createDialogHTML() {
           </div>
           
           <h3>Threshold Settings</h3>
-          
-          <div class="threshold-grid">
-            <div class="form-group">
-              <label for="config-ph-min">pH Min</label>
-              <input type="number" id="config-ph-min" class="form-control" step="0.1" required>
-            </div>
-            <div class="form-group">
-              <label for="config-ph-max">pH Max</label>
-              <input type="number" id="config-ph-max" class="form-control" step="0.1" required>
-            </div>
-            
-            <div class="form-group">
-              <label for="config-temp-min">Temperature Min (°C)</label>
-              <input type="number" id="config-temp-min" class="form-control" step="0.1" required>
-            </div>
-            <div class="form-group">
-              <label for="config-temp-max">Temperature Max (°C)</label>
-              <input type="number" id="config-temp-max" class="form-control" step="0.1" required>
-            </div>
-            
-            <div class="form-group">
-              <label for="config-do-min">DO Min (mg/L)</label>
-              <input type="number" id="config-do-min" class="form-control" step="0.1" required>
-            </div>
-            
-            <div class="form-group">
-              <label for="config-turb-max">Turbidity Max (NTU)</label>
-              <input type="number" id="config-turb-max" class="form-control" step="1" required>
-            </div>
-          </div>`;
+          <p class="muted text-sm threshold-form-hint">Set normal, warning, and critical bands. Leave optional fields empty if not used.</p>
+          ${thresholdBandsFormHtml('config')}`;
   const footerHtml = `
           <button type="button" class="btn btn-secondary" onclick="${close}">Cancel</button>
           <button type="button" class="btn btn-primary" onclick="window.configManagement.saveNewConfiguration()">Create</button>`;
@@ -380,7 +363,11 @@ async function assignPreset(species) {
 function editConfiguration(configId) {
   const config = _configurations.find(c => c.id === configId);
   if (!config) return;
-  
+
+  if (!document.getElementById('edit-ph-opt-min')) {
+    createEditDialogHTML();
+  }
+
   const dialog = document.getElementById('edit-config-dialog');
   if (!dialog) {
     createEditDialogHTML();
@@ -392,19 +379,14 @@ function editConfiguration(configId) {
   document.getElementById('edit-config-name').value = config.name || config.species;
   document.getElementById('edit-config-species').value = resolveSpeciesKey(config.species);
   
-  // Populate threshold fields
-  const t = config.thresholds;
-  document.getElementById('edit-ph-min').value = t.ph?.optimalMin ?? 6.5;
-  document.getElementById('edit-ph-max').value = t.ph?.optimalMax ?? 8.5;
-  document.getElementById('edit-temp-min').value = t.temp?.optimalMin ?? 20;
-  document.getElementById('edit-temp-max').value = t.temp?.optimalMax ?? 30;
-  document.getElementById('edit-do-min').value = t.do?.optimalMin ?? 5;
-  document.getElementById('edit-turb-max').value = t.turb?.optimalMax ?? 40;
+  // Populate threshold fields (merged with species preset)
+  fillThresholdForm('edit', mergeConfigThresholdsForForm(config));
   
   dialog.style.display = 'flex';
 }
 
 function createEditDialogHTML() {
+  document.getElementById('edit-config-dialog')?.remove();
   const close = "window.configManagement.closeDialog('edit-config-dialog')";
   const bodyHtml = `
           <input type="hidden" id="edit-config-id">
@@ -425,36 +407,8 @@ function createEditDialogHTML() {
           </div>
           
           <h3>Threshold Settings</h3>
-          
-          <div class="threshold-grid">
-            <div class="form-group">
-              <label for="edit-ph-min">pH Min</label>
-              <input type="number" id="edit-ph-min" class="form-control" step="0.1" required>
-            </div>
-            <div class="form-group">
-              <label for="edit-ph-max">pH Max</label>
-              <input type="number" id="edit-ph-max" class="form-control" step="0.1" required>
-            </div>
-            
-            <div class="form-group">
-              <label for="edit-temp-min">Temperature Min (°C)</label>
-              <input type="number" id="edit-temp-min" class="form-control" step="0.1" required>
-            </div>
-            <div class="form-group">
-              <label for="edit-temp-max">Temperature Max (°C)</label>
-              <input type="number" id="edit-temp-max" class="form-control" step="0.1" required>
-            </div>
-            
-            <div class="form-group">
-              <label for="edit-do-min">DO Min (mg/L)</label>
-              <input type="number" id="edit-do-min" class="form-control" step="0.1" required>
-            </div>
-            
-            <div class="form-group">
-              <label for="edit-turb-max">Turbidity Max (NTU)</label>
-              <input type="number" id="edit-turb-max" class="form-control" step="1" required>
-            </div>
-          </div>`;
+          <p class="muted text-sm threshold-form-hint">Set normal, warning, and critical bands. Leave optional fields empty if not used.</p>
+          ${thresholdBandsFormHtml('edit')}`;
   const footerHtml = `
           <button type="button" class="btn btn-secondary" onclick="${close}">Cancel</button>
           <button type="button" class="btn btn-primary" onclick="window.configManagement.saveEditedConfiguration()">Save Changes</button>`;
@@ -475,43 +429,20 @@ function createEditDialogHTML() {
 async function saveNewConfiguration() {
   const name = document.getElementById('config-name').value.trim();
   const species = document.getElementById('config-species').value;
-  
+
   if (!name) {
     showAppToast('Please enter a configuration name', 'error');
     return;
   }
-  
-  // Validate thresholds
-  const phMin = parseFloat(document.getElementById('config-ph-min').value);
-  const phMax = parseFloat(document.getElementById('config-ph-max').value);
-  const tempMin = parseFloat(document.getElementById('config-temp-min').value);
-  const tempMax = parseFloat(document.getElementById('config-temp-max').value);
-  const doMin = parseFloat(document.getElementById('config-do-min').value);
-  const turbMax = parseFloat(document.getElementById('config-turb-max').value);
-  
-  if (phMin >= phMax) {
-    showAppToast('pH Min must be less than pH Max', 'error');
+
+  const thresholds = readThresholdsFromForm('config');
+  const validationError = validateThresholds(thresholds);
+  if (validationError) {
+    showAppToast(validationError, 'error');
     return;
   }
-  
-  if (tempMin >= tempMax) {
-    showAppToast('Temperature Min must be less than Temperature Max', 'error');
-    return;
-  }
-  
-  if (doMin < 0 || turbMax < 0) {
-    showAppToast('Threshold values cannot be negative', 'error');
-    return;
-  }
-  
+
   try {
-    const thresholds = {
-      ph: { optimalMin: phMin, optimalMax: phMax },
-      temp: { optimalMin: tempMin, optimalMax: tempMax },
-      do: { optimalMin: doMin },
-      turb: { optimalMax: turbMax },
-    };
-    
     await createConfiguration({ name, species, thresholds, isPreset: false });
     await loadConfigurations();
     renderConfigurationSelector();
@@ -528,43 +459,20 @@ async function saveEditedConfiguration() {
   const configId = document.getElementById('edit-config-id').value;
   const name = document.getElementById('edit-config-name').value.trim();
   const species = resolveSpeciesKey(document.getElementById('edit-config-species').value);
-  
+
   if (!name) {
     showAppToast('Please enter a configuration name', 'error');
     return;
   }
-  
-  // Validate thresholds
-  const phMin = parseFloat(document.getElementById('edit-ph-min').value);
-  const phMax = parseFloat(document.getElementById('edit-ph-max').value);
-  const tempMin = parseFloat(document.getElementById('edit-temp-min').value);
-  const tempMax = parseFloat(document.getElementById('edit-temp-max').value);
-  const doMin = parseFloat(document.getElementById('edit-do-min').value);
-  const turbMax = parseFloat(document.getElementById('edit-turb-max').value);
-  
-  if (phMin >= phMax) {
-    showAppToast('pH Min must be less than pH Max', 'error');
+
+  const thresholds = readThresholdsFromForm('edit');
+  const validationError = validateThresholds(thresholds);
+  if (validationError) {
+    showAppToast(validationError, 'error');
     return;
   }
-  
-  if (tempMin >= tempMax) {
-    showAppToast('Temperature Min must be less than Temperature Max', 'error');
-    return;
-  }
-  
-  if (doMin < 0 || turbMax < 0) {
-    showAppToast('Threshold values cannot be negative', 'error');
-    return;
-  }
-  
+
   try {
-    const thresholds = {
-      ph: { optimalMin: phMin, optimalMax: phMax },
-      temp: { optimalMin: tempMin, optimalMax: tempMax },
-      do: { optimalMin: doMin },
-      turb: { optimalMax: turbMax },
-    };
-    
     await updateConfiguration(configId, { name, species, thresholds });
     await loadConfigurations();
     renderConfigurationSelector();
@@ -624,14 +532,7 @@ async function deleteConfig(configId) {
 function populateThresholdFields(species) {
   const preset = SPECIES_PRESETS[species];
   if (!preset) return;
-  
-  const t = preset.thresholds;
-  document.getElementById('config-ph-min').value = t.ph.optimalMin;
-  document.getElementById('config-ph-max').value = t.ph.optimalMax;
-  document.getElementById('config-temp-min').value = t.temp.optimalMin;
-  document.getElementById('config-temp-max').value = t.temp.optimalMax;
-  document.getElementById('config-do-min').value = t.do.optimalMin;
-  document.getElementById('config-turb-max').value = t.turb.optimalMax;
+  fillThresholdForm('config', preset.thresholds);
 }
 
 function closeDialog(dialogId) {

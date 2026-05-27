@@ -4,8 +4,16 @@
 import admin from 'firebase-admin';
 import { sendUniSms, normalizePhPhoneToE164 } from '../lib/unisms.js';
 import { getEmailJsServerEnv } from '../lib/emailjs-env.js';
+import { NOTIFY_INTERVAL_MS } from '../lib/alert-notify-interval.js';
 
-const COOLDOWN_MS = 15 * 60 * 1000; // match client alerts.js notification cooldown
+/** Same predicate as /api/config serverDispatchesAlerts — RTDB watcher owns dispatch when true. */
+export function isServerWatcherEnabled() {
+  if (!process.env.FIREBASE_DATABASE_URL) return false;
+  const disabled =
+    process.env.RTDB_ALERT_WATCHER === '0' ||
+    String(process.env.RTDB_ALERT_WATCHER || '').toLowerCase() === 'false';
+  return !disabled;
+}
 
 const SENSOR_LABELS = { ph: 'pH', do: 'Dissolved O₂', turb: 'Turbidity', temp: 'Temperature' };
 const SENSOR_UNITS = { ph: '', do: ' mg/L', turb: ' NTU', temp: '°C' };
@@ -52,6 +60,34 @@ export function buildSmsContent(alert) {
   return content;
 }
 
+/** Combined SMS for multiple parameters (ASCII, max 160 chars). */
+export function buildBatchedSmsContent(alerts) {
+  const list = Array.isArray(alerts) ? alerts.filter(Boolean) : [];
+  if (!list.length) return '';
+  if (list.length === 1) return buildSmsContent(list[0]);
+
+  const pondRaw = String(list[0]?.pond || 'Pond').trim() || 'Pond';
+  const pond = pondRaw.replace(/[^\x00-\x7F]+/g, ' ').replace(/\s+/g, ' ').trim() || 'Pond';
+  const hasCritical = list.some((a) => a.severity === 'critical');
+  const severity = hasCritical ? 'Critical' : 'Warning';
+  const parts = list.map((a) => {
+    const sensor = SMS_SENSOR_LABELS[a.key] || String(a.key || '').replace(/[^\x00-\x7F]/g, '');
+    return `${sensor} ${formatSmsValue(a.key, a.val)}`;
+  });
+  let content = `AquaSenseAlert: ${severity} - ${parts.join('; ')}. Check ${pond}`;
+  if (content.length > 160) {
+    content = `AquaSenseAlert: ${severity} - ${parts.slice(0, 2).join('; ')} +${list.length - 2} more. Check ${pond}`;
+  }
+  if (content.length > 160) {
+    content = content.slice(0, 160);
+  }
+  return content;
+}
+
+function highestSeverity(alerts) {
+  return alerts.some((a) => a.severity === 'critical') ? 'critical' : 'warning';
+}
+
 /**
  * Pure cooldown check for tests and Firestore-backed dispatch.
  * Rows without `severity` are ignored so legacy notificationLog docs do not block sends.
@@ -96,7 +132,7 @@ async function isCooledDown(fs, uid, pondName, parameter, channel, severity) {
     parameter,
     channel,
     severity,
-    cooldownMs: COOLDOWN_MS,
+    cooldownMs: NOTIFY_INTERVAL_MS,
   });
 }
 
@@ -114,7 +150,7 @@ async function writeLog(fs, uid, channel, alert, status, errorDetail) {
   });
 }
 
-async function sendEmailJsServer(prefs, alert) {
+async function sendEmailJsServer(prefs, alertOrAlerts) {
   const { privateKey, publicKey, serviceId, templateId, configured, missing } = getEmailJsServerEnv();
   if (!configured) {
     return {
@@ -123,21 +159,40 @@ async function sendEmailJsServer(prefs, alert) {
     };
   }
 
+  const alerts = Array.isArray(alertOrAlerts) ? alertOrAlerts : [alertOrAlerts];
+  const primary = alerts[0];
+  const sev = highestSeverity(alerts);
+  const parameter =
+    alerts.length === 1
+      ? SENSOR_LABELS[primary.key] || primary.key
+      : alerts.map((a) => SENSOR_LABELS[a.key] || a.key).join(', ');
+  const value =
+    alerts.length === 1
+      ? formatValue(primary.key, primary.val)
+      : alerts.map((a) => `${SENSOR_LABELS[a.key] || a.key}: ${formatValue(a.key, a.val)}`).join('; ');
   const threshold =
-    typeof alert.thresholdSummary === 'string' && alert.thresholdSummary.trim()
-      ? alert.thresholdSummary.trim()
-      : '—';
+    alerts.length === 1 && typeof primary.thresholdSummary === 'string' && primary.thresholdSummary.trim()
+      ? primary.thresholdSummary.trim()
+      : alerts
+          .map((a) => {
+            const t =
+              typeof a.thresholdSummary === 'string' && a.thresholdSummary.trim()
+                ? a.thresholdSummary.trim()
+                : '—';
+            return `${SENSOR_LABELS[a.key] || a.key}: ${t}`;
+          })
+          .join('; ');
 
   const template_params = {
     to_email: prefs.email.address,
     to_name: prefs.email.address.split('@')[0],
     reply_to: prefs.email.address,
-    pond_name: alert.pond || '',
-    parameter: SENSOR_LABELS[alert.key] || alert.key,
-    value: formatValue(alert.key, alert.val),
-    severity: alert.severity === 'critical' ? 'Critical' : 'Warning',
+    pond_name: primary.pond || '',
+    parameter,
+    value,
+    severity: sev === 'critical' ? 'Critical' : 'Warning',
     threshold,
-    timestamp: new Date(Number(alert.ts) || Date.now()).toISOString(),
+    timestamp: new Date(Number(primary.ts) || Date.now()).toISOString(),
   };
 
   const resp = await fetch('https://api.emailjs.com/api/v1.0/email/send', {
@@ -180,30 +235,79 @@ export function validateDispatchAlertBody(alert) {
 }
 
 /**
- * Fan out email/SMS for one alert to all active users with enabled notification prefs.
- * Used by POST /api/notifications/dispatch-alert and the RTDB alert watcher.
+ * Persist alert records for the Alerts tab (server watcher path).
  */
-export async function dispatchAlertToAllUsers(alert) {
+export async function persistAlertsToFirestore(alerts) {
+  if (!admin.apps.length || !Array.isArray(alerts) || !alerts.length) {
+    return { written: 0, skipped: 0 };
+  }
+  const fs = admin.firestore();
+  const batch = fs.batch();
+  let written = 0;
+  let skipped = 0;
+  for (const alert of alerts) {
+    if (validateDispatchAlertBody(alert)) {
+      skipped += 1;
+      continue;
+    }
+    const ref = fs.collection('alerts').doc(String(alert.id));
+    batch.set(
+      ref,
+      {
+        id: alert.id,
+        ts: alert.ts,
+        key: alert.key,
+        val: alert.val,
+        severity: alert.severity,
+        badge: alert.badge || '',
+        label: alert.label || '',
+        description: alert.description || '',
+        pond: alert.pond || '',
+        resolved: false,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      },
+      { merge: true }
+    );
+    written += 1;
+  }
+  if (written) await batch.commit();
+  return { written, skipped };
+}
+
+/**
+ * Fan out one email + one SMS per user for all due alerts in a snapshot.
+ * Per-parameter cooldown still applies; only parameters outside cooldown are included.
+ */
+export async function dispatchAlertsBatchToAllUsers(alerts) {
   if (!admin.apps.length) {
     throw new Error('Admin SDK not initialised.');
   }
 
-  const validationError = validateDispatchAlertBody(alert);
-  if (validationError) {
-    throw new Error(validationError);
+  const list = Array.isArray(alerts) ? alerts.filter(Boolean) : [];
+  if (!list.length) {
+    return {
+      ok: true,
+      processed: 0,
+      smsSent: 0,
+      emailSent: 0,
+      skipped: 0,
+      errors: [],
+      notified: [],
+    };
   }
 
-  // Cooldown key inputs (used for both email + SMS)
-  const pondName = alert.pond;
-  const parameter = alert.key;
+  for (const alert of list) {
+    const validationError = validateDispatchAlertBody(alert);
+    if (validationError) throw new Error(validationError);
+  }
 
   const fs = admin.firestore();
-
   let processed = 0;
   let smsSent = 0;
   let emailSent = 0;
   let skipped = 0;
   const errors = [];
+  const notified = [];
 
   let activeSnap;
   try {
@@ -221,6 +325,7 @@ export async function dispatchAlertToAllUsers(alert) {
       emailSent: 0,
       skipped: 0,
       errors: [],
+      notified: [],
       message: 'No active users.',
     };
   }
@@ -232,8 +337,6 @@ export async function dispatchAlertToAllUsers(alert) {
     const uid = userDoc.id;
     processed += 1;
 
-    // Opt-in only (matches public/js/features/notifications.js loadPrefs): no prefs doc or
-    // non-boolean enabled => channel off; do not send until the user explicitly enables it.
     let prefs = { email: { enabled: false, address: '' }, sms: { enabled: false } };
     try {
       const prefSnap = await fs.doc(`users/${uid}/notificationPrefs/settings`).get();
@@ -262,78 +365,97 @@ export async function dispatchAlertToAllUsers(alert) {
     const normalizedPhone = rawPhone ? normalizePhPhoneToE164(rawPhone) : '';
     const smsCapable = normalizedPhone.startsWith('+');
 
-    const channels = [];
-    if (prefs.email.enabled === true && resolvedEmail) {
-      if (emailJsConfigured) channels.push('email');
-      else {
-        console.warn(
-          `[dispatch-alert] Would email user ${uid} but EmailJS server env is incomplete — missing: ${emailJsEnv.missing.join('; ')}. Add to repo root .env or backend/.env, then restart the server.`
-        );
+    const emailAlerts = [];
+    const smsAlerts = [];
+
+    for (const alert of list) {
+      const pondName = alert.pond;
+      const parameter = alert.key;
+      if (prefs.email.enabled === true && resolvedEmail && emailJsConfigured) {
+        if (!(await isCooledDown(fs, uid, pondName, parameter, 'email', alert.severity))) {
+          emailAlerts.push(alert);
+        }
+      }
+      if (prefs.sms.enabled === true && smsCapable) {
+        if (!(await isCooledDown(fs, uid, pondName, parameter, 'sms', alert.severity))) {
+          smsAlerts.push(alert);
+        }
       }
     }
-    if (prefs.sms.enabled === true && smsCapable) channels.push('sms');
 
-    if (!channels.length) {
-      if (!emailJsConfigured && prefs.email.enabled === true && resolvedEmail) {
-        /* already warned above */
-      }
+    if (!emailAlerts.length && !smsAlerts.length) {
       skipped += 1;
       continue;
     }
 
-    for (const channel of channels) {
+    const markNotifiedFor = (alert) => {
+      const tag = `${alert.key}:${alert.severity}`;
+      if (!notified.includes(tag)) notified.push(tag);
+    };
+
+    if (emailAlerts.length) {
       try {
-        if (await isCooledDown(fs, uid, pondName, parameter, channel, alert.severity)) {
-          skipped += 1;
-          continue;
-        }
-
-        if (channel === 'email') {
-          if (!resolvedEmail) {
-            await writeLog(fs, uid, channel, alert, 'failed', 'No email address on profile or notification prefs.');
-            errors.push({ uid, channel, message: 'missing email address' });
-            continue;
+        const r = await sendEmailJsServer({ email: { address: resolvedEmail } }, emailAlerts);
+        if (r.ok) {
+          emailSent += 1;
+          for (const alert of emailAlerts) {
+            await writeLog(fs, uid, 'email', alert, 'sent', null);
+            markNotifiedFor(alert);
           }
-          const r = await sendEmailJsServer({ email: { address: resolvedEmail } }, alert);
-          if (r.ok) {
-            await writeLog(fs, uid, channel, alert, 'sent', null);
-            emailSent += 1;
-          } else {
-            await writeLog(fs, uid, channel, alert, 'failed', r.error || 'email failed');
-            errors.push({ uid, channel, message: r.error });
-          }
-          continue;
-        }
-
-        // SMS (channel only added when phone is E.164-capable)
-        const phone = normalizedPhone;
-        const content = buildSmsContent(alert);
-        const smsResult = await sendUniSms({
-          recipient: phone,
-          content,
-          metadata: {
-            source: 'aquasense',
-            alertId: alert?.id || '',
-            pond: alert?.pond || '',
-            key: alert?.key || '',
-            severity: alert?.severity || '',
-          },
-        });
-
-        if (smsResult.ok) {
-          await writeLog(fs, uid, channel, alert, 'sent', null);
-          smsSent += 1;
         } else {
-          await writeLog(fs, uid, channel, alert, 'failed', smsResult.error || 'SMS failed');
-          errors.push({ uid, channel, message: smsResult.error });
+          for (const alert of emailAlerts) {
+            await writeLog(fs, uid, 'email', alert, 'failed', r.error || 'email failed');
+          }
+          errors.push({ uid, channel: 'email', message: r.error });
         }
       } catch (e) {
         const msg = e?.message || String(e);
-        errors.push({ uid, channel, message: msg });
-        try {
-          await writeLog(fs, uid, channel, alert, 'failed', msg);
-        } catch (logErr) {
-          console.error('[dispatch-alert] writeLog failed:', logErr);
+        errors.push({ uid, channel: 'email', message: msg });
+        for (const alert of emailAlerts) {
+          try {
+            await writeLog(fs, uid, 'email', alert, 'failed', msg);
+          } catch (logErr) {
+            console.error('[dispatch-alert] writeLog failed:', logErr);
+          }
+        }
+      }
+    }
+
+    if (smsAlerts.length) {
+      try {
+        const content = buildBatchedSmsContent(smsAlerts);
+        const smsResult = await sendUniSms({
+          recipient: normalizedPhone,
+          content,
+          metadata: {
+            source: 'aquasense',
+            alertId: smsAlerts.map((a) => a.id).join(','),
+            pond: smsAlerts[0]?.pond || '',
+            keys: smsAlerts.map((a) => a.key).join(','),
+            severity: highestSeverity(smsAlerts),
+          },
+        });
+        if (smsResult.ok) {
+          smsSent += 1;
+          for (const alert of smsAlerts) {
+            await writeLog(fs, uid, 'sms', alert, 'sent', null);
+            markNotifiedFor(alert);
+          }
+        } else {
+          for (const alert of smsAlerts) {
+            await writeLog(fs, uid, 'sms', alert, 'failed', smsResult.error || 'SMS failed');
+          }
+          errors.push({ uid, channel: 'sms', message: smsResult.error });
+        }
+      } catch (e) {
+        const msg = e?.message || String(e);
+        errors.push({ uid, channel: 'sms', message: msg });
+        for (const alert of smsAlerts) {
+          try {
+            await writeLog(fs, uid, 'sms', alert, 'failed', msg);
+          } catch (logErr) {
+            console.error('[dispatch-alert] writeLog failed:', logErr);
+          }
         }
       }
     }
@@ -346,7 +468,13 @@ export async function dispatchAlertToAllUsers(alert) {
     emailSent,
     skipped,
     errors,
+    notified,
   };
+}
+
+/** @deprecated Use dispatchAlertsBatchToAllUsers — single-alert wrapper. */
+export async function dispatchAlertToAllUsers(alert) {
+  return dispatchAlertsBatchToAllUsers([alert]);
 }
 
 /**
@@ -357,14 +485,34 @@ export async function postDispatchAlert(req, res) {
     return res.status(503).json({ error: 'Admin SDK not initialised.' });
   }
 
-  const { alert } = req.body || {};
-  const validationError = validateDispatchAlertBody(alert);
-  if (validationError) {
-    return res.status(400).json({ error: validationError });
+  if (isServerWatcherEnabled()) {
+    return res.status(202).json({
+      ok: true,
+      skipped: true,
+      reason: 'server_watcher_enabled',
+      message: 'Notifications are dispatched by the RTDB alert watcher; client dispatch skipped.',
+      processed: 0,
+      smsSent: 0,
+      emailSent: 0,
+      errors: [],
+      notified: [],
+    });
+  }
+
+  const { alert, alerts } = req.body || {};
+  const batch = Array.isArray(alerts) && alerts.length ? alerts : alert ? [alert] : [];
+  if (!batch.length) {
+    return res.status(400).json({ error: 'alert or alerts array required' });
+  }
+  for (const a of batch) {
+    const validationError = validateDispatchAlertBody(a);
+    if (validationError) {
+      return res.status(400).json({ error: validationError });
+    }
   }
 
   try {
-    const result = await dispatchAlertToAllUsers(alert);
+    const result = await dispatchAlertsBatchToAllUsers(batch);
     return res.status(200).json(result);
   } catch (e) {
     const msg = e?.message || String(e);

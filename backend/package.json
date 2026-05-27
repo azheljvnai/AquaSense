@@ -16,7 +16,7 @@
     "seed:may-gaps:dry": "node scripts/seed-rtdb-day.js --may-gaps --dry-run",
     "seed:may-gaps": "node scripts/seed-rtdb-day.js --may-gaps",
     "cleanup:presets": "node scripts/cleanup-duplicate-presets.js",
-    "update:crayfish": "node scripts/update-crayfish-preset.js"
+    "update:presets": "node scripts/seed-presets.js"
   },
   "dependencies": {
     "dotenv": "^16.3.1",

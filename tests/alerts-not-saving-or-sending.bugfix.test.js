@@ -121,6 +121,8 @@ describe('Alerts Not Saving or Sending — Bug Condition Exploration', () => {
   beforeEach(async () => {
     vi.resetModules();
     vi.clearAllMocks();
+    const { setSensitivityMs } = await import('../public/js/alert-sensitivity.js');
+    setSensitivityMs(0);
     mockFirestoreOps.addDocCalls = [];
     mockFirestoreOps.updateDocCalls = [];
     mockFirestoreOps.getDocsCalls = [];

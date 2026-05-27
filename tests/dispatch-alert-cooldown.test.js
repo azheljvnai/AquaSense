@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { isCooledDownFromLogRows } from '../backend/notifications/dispatch-alert.js';
+import { NOTIFY_INTERVAL_MS } from '../backend/lib/alert-notify-interval.js';
 
-const COOLDOWN_MS = 15 * 60 * 1000;
+const COOLDOWN_MS = NOTIFY_INTERVAL_MS;
 const baseCtx = {
   pondName: 'PondA',
   parameter: 'ph',

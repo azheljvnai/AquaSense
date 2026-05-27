@@ -8,7 +8,7 @@
  * - Notification preferences (email/SMS/push) persisted to localStorage
  */
 import { getBadgeForSpecies, getActiveThresholds, getActiveSpecies, getActiveConfigId } from '../pond-config.js';
-import { handleAlert } from './notifications.js';
+import { handleAlerts } from './notifications.js';
 import {
   fbAuth,
   fbFirestore,
@@ -28,6 +28,7 @@ import {
 } from '../firebase-client.js';
 import { alertPondFilterButton, alertEmptyListRow, escapeHtml } from '../ui/templates.js';
 import { showAppToast, showConfirmModal } from '../ui/modal-ui.js';
+import { createBreachTracker, getSensitivityMs } from '../alert-sensitivity.js';
 
 const SPECIES_DISPLAY_NAMES = {
   crayfish: 'Crayfish',
@@ -56,7 +57,11 @@ function thresholdSummaryForKey(key) {
     }
     if (key === 'do') {
       const db = t.do;
-      if (db) return `≥ ${db.optimalMin} mg/L`;
+      if (db) {
+        return db.optimalMax != null
+          ? `${db.optimalMin}–${db.optimalMax} mg/L`
+          : `≥ ${db.optimalMin} mg/L`;
+      }
     }
     if (key === 'turb') {
       const tb = t.turb;
@@ -253,7 +258,10 @@ function subscribeAlertsRealtime() {
         window.dispatchEvent(new Event('alerts-updated'));
       },
       (err) => {
-        console.error('[subscribeAlertsRealtime]', err);
+        console.error(
+          '[subscribeAlertsRealtime] Failed — Alerts tab may stay empty. Check Firestore index for alerts(ts desc):',
+          err
+        );
         _alertsSubscribedForUid = null;
       }
     );
@@ -349,8 +357,13 @@ function evaluateSensor(key, val, pondName) {
     else    description = `pH ${val.toFixed(2)} is outside the optimal range.`;
   } else if (key === 'do') {
     const db = t?.do;
-    if (db) description = `Dissolved O₂ ${val.toFixed(1)} mg/L is below optimal (≥${db.optimalMin} mg/L).`;
-    else    description = `Dissolved O₂ ${val.toFixed(1)} mg/L is below optimal.`;
+    if (db?.optimalMax != null) {
+      description = `Dissolved O₂ ${val.toFixed(1)} mg/L is outside the optimal range (${db.optimalMin}–${db.optimalMax} mg/L).`;
+    } else if (db) {
+      description = `Dissolved O₂ ${val.toFixed(1)} mg/L is below optimal (≥${db.optimalMin} mg/L).`;
+    } else {
+      description = `Dissolved O₂ ${val.toFixed(1)} mg/L is outside the optimal range.`;
+    }
   } else if (key === 'turb') {
     const tb = t?.turb;
     if (tb) description = `Turbidity ${val.toFixed(1)} NTU exceeds optimal (≤${tb.optimalMax} NTU).`;
@@ -378,12 +391,20 @@ function evaluateSensor(key, val, pondName) {
   };
 }
 
-// ─── Deduplication — suppress repeat alerts within a cooldown window ──────────
-// Keyed by `${pondId}:${sensorKey}:${severity}` so switching ponds never inherits stale cooldowns,
+// ─── Deduplication — suppress repeat alerts within a notify interval ──────────
+// Keyed by `${pondId}:${sensorKey}:${severity}` so switching ponds never inherits stale timers,
 // and warning vs critical are independent (escalation still notifies).
 
-const COOLDOWN_MS = 15 * 60 * 1000; // match server dispatch-alert.js
+const DEFAULT_NOTIFY_INTERVAL_MS = 5 * 60 * 1000;
+
+function getNotifyIntervalMs() {
+  const n = Number(window._alertNotifyIntervalMs);
+  return Number.isFinite(n) && n > 0 ? n : DEFAULT_NOTIFY_INTERVAL_MS;
+}
+
+/** Breach must persist this long before an alert is created (see alert-sensitivity.js). */
 const _lastAlertTs = {};
+const _breachTracker = createBreachTracker(getSensitivityMs);
 
 function cooldownKey(key, severity) {
   const configId = getActiveConfigId() || 'default';
@@ -391,20 +412,23 @@ function cooldownKey(key, severity) {
 }
 
 function shouldSuppress(key, severity) {
-  const last = _lastAlertTs[cooldownKey(key, severity)] || 0;
-  return Date.now() - last < COOLDOWN_MS;
+  const last = _lastAlertTs[cooldownKey(key, severity)];
+  if (last == null) return false;
+  return Date.now() - last < getNotifyIntervalMs();
 }
 
 function markAlerted(key, severity) {
   _lastAlertTs[cooldownKey(key, severity)] = Date.now();
 }
 
-/** Clear cooldowns for all keys on the current pond so the first reading after a switch is always evaluated. */
+/** Clear cooldowns and breach timers when the active config changes. */
 function resetCooldownsForPond(pondId) {
-  const prefix = `${pondId || 'default'}:`;
+  const scopeId = pondId || 'default';
+  const prefix = `${scopeId}:`;
   for (const k of Object.keys(_lastAlertTs)) {
     if (k.startsWith(prefix)) delete _lastAlertTs[k];
   }
+  _breachTracker.clearForScope(scopeId);
 }
 
 // ─── Auth-gated Firestore sync (called from app.js after sign-in) ─────────────
@@ -520,7 +544,9 @@ export function init() {
     if (t) {
       if (phEl)   phEl.textContent   = `Optimal: ${t.ph?.optimalMin ?? '—'} – ${t.ph?.optimalMax ?? '—'}`;
       if (tempEl) tempEl.textContent = `Optimal: ${t.temp?.optimalMin ?? '—'} – ${t.temp?.optimalMax ?? '—'} °C`;
-      if (doEl)   doEl.textContent   = `Optimal: ≥ ${t.do?.optimalMin ?? '—'} mg/L`;
+      if (doEl)   doEl.textContent   = t.do?.optimalMax != null
+        ? `Optimal: ${t.do.optimalMin} – ${t.do.optimalMax} mg/L`
+        : `Optimal: ≥ ${t.do?.optimalMin ?? '—'} mg/L`;
       if (turbEl) turbEl.textContent = `Optimal: ≤ ${t.turb?.optimalMax ?? '—'} NTU`;
     } else {
       if (phEl)   phEl.textContent   = 'Not configured';
@@ -691,10 +717,16 @@ export function init() {
     const readings = { ph, do: doV, turb, temp };
     const newAlerts = [];
 
+    const configId = getActiveConfigId() || 'default';
+
     for (const [key, val] of Object.entries(readings)) {
       if (val == null || !Number.isFinite(val)) continue;
       const alert = evaluateSensor(key, val, pondName);
-      if (!alert) continue;
+      if (!alert) {
+        _breachTracker.hasPersisted(configId, key, null);
+        continue;
+      }
+      if (!_breachTracker.hasPersisted(configId, key, alert.severity)) continue;
       if (shouldSuppress(key, alert.severity)) continue;
       markAlerted(key, alert.severity);
       newAlerts.push(alert);
@@ -708,14 +740,16 @@ export function init() {
       window.dispatchEvent(new Event('alerts-updated'));
 
       (async () => {
-        for (const alert of newAlerts) {
-          await persistAlertToFirestore(alert);
-          if (!window._serverDispatchesAlerts) {
-            try {
-              await handleAlert(alert);
-            } catch {
-              /* notification errors are non-fatal */
-            }
+        if (!window._serverDispatchesAlerts) {
+          for (const alert of newAlerts) {
+            await persistAlertToFirestore(alert);
+          }
+        }
+        if (!window._serverDispatchesAlerts && newAlerts.length) {
+          try {
+            await handleAlerts(newAlerts);
+          } catch {
+            /* notification errors are non-fatal */
           }
         }
       })().catch(() => {/* ignore */});

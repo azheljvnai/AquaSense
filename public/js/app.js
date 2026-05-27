@@ -441,6 +441,8 @@ async function loadConfigAndPrefill() {
   }
   if (config.deviceId) deviceId = config.deviceId;
   window._serverDispatchesAlerts = config.serverDispatchesAlerts === true;
+  window._alertNotifyIntervalMs =
+    Number(config.alertNotifyIntervalMs) > 0 ? Number(config.alertNotifyIntervalMs) : 5 * 60 * 1000;
 
   if (config.firebase && (config.firebase.apiKey || config.firebase.projectId || config.firebase.databaseURL)) {
     initFirebase(config.firebase);

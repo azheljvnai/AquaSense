@@ -101,6 +101,9 @@ describe('Alerts Not Saving or Sending — Preservation Properties', () => {
   let document;
 
   beforeEach(async () => {
+    vi.resetModules();
+    const { setSensitivityMs } = await import('../public/js/alert-sensitivity.js');
+    setSensitivityMs(0);
     // Reset all mocks
     vi.clearAllMocks();
     mockFirestoreOps.addDocCalls = [];
