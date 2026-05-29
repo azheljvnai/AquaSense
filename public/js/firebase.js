@@ -246,7 +246,7 @@ export async function fetchHistoryFromRTDB(deviceId, fromMs, toMs) {
 
 /**
  * Fetch feed log dispenses from RTDB for a given time range.
- * Returns array of { ts, type, amountMg, timestampDisplay, reason } sorted by ts ascending.
+ * Returns array of { ts, type, amountDisplay, amountMgEstimate, timestampDisplay, reason } sorted by ts ascending.
  */
 export async function fetchFeedLogFromRTDB(deviceId, fromMs, toMs) {
   if (!fbDb) {

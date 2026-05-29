@@ -12,6 +12,7 @@
     "perf": "node scripts/perf/run-perf-smoke.js",
     "security": "node scripts/security/run-security-checks.js",
     "accuracy": "node scripts/accuracy/evaluate-accuracy.js",
+    "feedlog:patch-device001": "node scripts/feeding/patch-feedlog-device001.js",
     "test": "vitest --run"
   },
   "dependencies": {

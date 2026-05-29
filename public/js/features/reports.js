@@ -12,7 +12,11 @@ import {
   SPECIES_PRESETS,
 } from '../pond-config.js';
 import { showAppToast, showConfirmModal } from '../ui/modal-ui.js';
-import { FEED_DISPENSE_MG_RANGE_LABEL } from '../feed-dispense.js';
+import {
+  FEED_DISPENSE_MG_RANGE_LABEL,
+  formatFeedAmountDisplay,
+  formatFeedAmountTotalDisplay,
+} from '../feed-dispense.js';
 import { buildFeedingCsvRows } from './report-feeding-rows.js';
 import { rowsToStyledExcelBlob, buildPrintableHtml } from './report-format.js';
 import {
@@ -298,7 +302,7 @@ export function init() {
   }
 
   function buildFeedingPrintSections(dispenses, range) {
-    const totalMg = dispenses.reduce((sum, d) => sum + (d.amountMg || 0), 0);
+    const totalAmount = formatFeedAmountTotalDisplay(dispenses.length);
     return [
       {
         title: 'Feeding Summary',
@@ -306,19 +310,23 @@ export function init() {
         rows: [
           ['Period', range.label],
           ['Total Dispenses', String(dispenses.length)],
-          ['Total Amount Dispensed', `${totalMg} mg`],
-          ['Expected per Dispense', `${FEED_DISPENSE_MG_RANGE_LABEL} mg`],
+          ['Total Amount', totalAmount],
+          ['Expected per Dispense', FEED_DISPENSE_MG_RANGE_LABEL],
         ],
       },
       {
         title: 'Dispense Log',
         subtitle: dispenses.length ? `${dispenses.length} events` : 'No events',
         kind: 'table',
-        columns: ['Dispense Time', 'Type', 'Amount (mg)', 'Reason'],
+        columns: ['Dispense Time', 'Type', 'Amount', 'Reason'],
         rows: dispenses.length
-          ? dispenses.map((d) => [d.timestampDisplay, d.type, String(d.amountMg), d.reason])
+          ? dispenses.map((d) => [
+            d.timestampDisplay,
+            d.type,
+            d.amountDisplay ?? formatFeedAmountDisplay(d.amountMg),
+            d.reason,
+          ])
           : [],
-        tableOpts: { numericCols: [2] },
       },
     ];
   }

@@ -1,5 +1,109 @@
 // tests/feeding-unified.test.js
 import { describe, it, expect } from 'vitest';
+import { parseFeedTimestamp } from '../public/js/feed-dispense.js';
+
+// Pure holdMs helpers mirrored from feeding.js (avoid Chart.js / CDN imports)
+const HOLD_MS_DEFAULT = 1000;
+const HOLD_MS_MAX = 60000;
+const HOLD_MS_PRESETS = [500, 1000, 1500, 2000, 2500, 3000, 3500, 4000, 4500, 5000];
+
+function parseHoldMs(val) {
+  const n = typeof val === 'number' ? val : parseInt(String(val ?? '').trim(), 10);
+  if (!Number.isInteger(n) || n < 1 || n > HOLD_MS_MAX) return null;
+  return n;
+}
+
+function formatHoldMsLabel(ms) {
+  const parsed = parseHoldMs(ms);
+  if (parsed === null) return '—';
+  return `${parsed} ms`;
+}
+
+function formatHoldMsSummary(ms) {
+  const parsed = parseHoldMs(ms) ?? HOLD_MS_DEFAULT;
+  return `Feed duration: ${formatHoldMsLabel(parsed)}`;
+}
+
+function resolveHoldMsFromForm(selectValue, customValue) {
+  const sel = String(selectValue ?? '').trim();
+  if (sel !== 'custom') {
+    const ms = parseInt(sel, 10);
+    if (HOLD_MS_PRESETS.includes(ms)) return { ok: true, ms };
+    return { ok: false, error: 'Select a valid feed duration.' };
+  }
+  const raw = String(customValue ?? '').trim();
+  if (!raw) return { ok: false, error: 'Enter a duration in milliseconds.' };
+  const ms = parseHoldMs(raw);
+  if (ms === null) {
+    return { ok: false, error: `Duration must be a whole number from 1 to ${HOLD_MS_MAX} ms.` };
+  }
+  return { ok: true, ms };
+}
+
+function holdMsToSelectState(ms) {
+  const parsed = parseHoldMs(ms) ?? HOLD_MS_DEFAULT;
+  if (HOLD_MS_PRESETS.includes(parsed)) return { mode: 'preset', preset: parsed };
+  return { mode: 'custom', ms: parsed };
+}
+
+function formatTime12hFrom24h(hhmm) {
+  const parts = String(hhmm ?? '').trim().split(':');
+  const h = parseInt(parts[0], 10);
+  const m = parseInt(parts[1], 10);
+  if (!Number.isFinite(h) || !Number.isFinite(m)) return '—';
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  const h12 = h % 12 || 12;
+  return `${String(h12).padStart(2, '0')}:${String(m).padStart(2, '0')} ${ampm}`;
+}
+
+function parseDaysVal(val) {
+  if (Array.isArray(val)) return normalizeDays(val.map((n) => Number(n)));
+  if (typeof val === 'string' && val.trim()) {
+    return normalizeDays(val.split(',').map((n) => Number(n.trim())));
+  }
+  if (val && typeof val === 'object') {
+    const fromTruthy = Object.entries(val)
+      .filter(([, v]) => v === true || v === 1 || v === '1' || String(v).toLowerCase() === 'true')
+      .map(([k]) => Number(k))
+      .filter((n) => Number.isInteger(n) && n >= 0 && n <= 6);
+    if (fromTruthy.length > 0) return normalizeDays(fromTruthy);
+    const keyNums = Object.keys(val)
+      .map((k) => Number(k))
+      .filter((n) => Number.isInteger(n) && n >= 0 && n <= 6);
+    if (keyNums.length > 0) return normalizeDays(keyNums);
+    return [];
+  }
+  return [...ALL_DAYS];
+}
+
+function isScheduleActiveToday(days, nowMs = Date.now()) {
+  const normalized = normalizeDays(days);
+  if (normalized.length === 0) return false;
+  return normalized.includes(new Date(nowMs).getDay());
+}
+
+function matchesActiveSchedule(ts, schedules, toleranceMin = 2) {
+  if (!schedules?.length) return false;
+  const d = new Date(ts);
+  const day = d.getDay();
+  const logMin = d.getHours() * 60 + d.getMinutes();
+  for (const s of schedules) {
+    const days = normalizeDays(s.days ?? []);
+    if (days.length === 0 || !days.includes(day)) continue;
+    const [sh, sm] = s.time.split(':').map(Number);
+    if (!Number.isFinite(sh) || !Number.isFinite(sm)) continue;
+    const schedMin = sh * 60 + sm;
+    if (Math.abs(logMin - schedMin) <= toleranceMin) return true;
+  }
+  return false;
+}
+
+function shouldKeepFeedLogEntry(entry, schedules) {
+  if (!entry) return false;
+  if (entry.type === 'Manual') return true;
+  if (!schedules?.length) return true;
+  return matchesActiveSchedule(entry.ts, schedules);
+}
 
 // Pure helpers mirrored from feeding.js (avoid importing module with Chart.js CDN deps)
 function _nextScheduleIndex(existingIndices) {
@@ -81,11 +185,14 @@ function _nextScheduleTime(schedules, nowMs = Date.now()) {
   return Math.min(...candidates);
 }
 
-function _feedsTodayCount(logEntries) {
+function _feedsTodayCount(logEntries, schedules = []) {
   const now = new Date();
   const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
   const endOfDay = startOfDay + 86400000;
-  return logEntries.filter((e) => e.ts >= startOfDay && e.ts < endOfDay).length;
+  return logEntries.filter((e) => {
+    if (e.ts < startOfDay || e.ts >= endOfDay) return false;
+    return shouldKeepFeedLogEntry(e, schedules);
+  }).length;
 }
 
 function compactDashboardSlots(schedules, t0, t1) {
@@ -194,5 +301,98 @@ describe('feeding unified — feeds today count', () => {
       { ts: start.getTime() - 86400000, type: 'Manual' },
     ];
     expect(_feedsTodayCount(entries)).toBe(1);
+  });
+});
+
+describe('feeding unified — holdMs helpers', () => {
+  it('parseHoldMs accepts positive integers up to HOLD_MS_MAX', () => {
+    expect(parseHoldMs(1500)).toBe(1500);
+    expect(parseHoldMs('2000')).toBe(2000);
+    expect(parseHoldMs(HOLD_MS_MAX)).toBe(HOLD_MS_MAX);
+    expect(parseHoldMs(0)).toBeNull();
+    expect(parseHoldMs(HOLD_MS_MAX + 1)).toBeNull();
+    expect(parseHoldMs('abc')).toBeNull();
+  });
+
+  it('formatHoldMsLabel uses ms only', () => {
+    expect(formatHoldMsLabel(1000)).toBe('1000 ms');
+    expect(formatHoldMsLabel(1500)).toBe('1500 ms');
+    expect(formatHoldMsLabel(null)).toBe('—');
+  });
+
+  it('formatHoldMsSummary prefixes feed duration', () => {
+    expect(formatHoldMsSummary(2000)).toBe('Feed duration: 2000 ms');
+  });
+
+  it('resolveHoldMsFromForm resolves presets', () => {
+    expect(resolveHoldMsFromForm('3000', '')).toEqual({ ok: true, ms: 3000 });
+    expect(resolveHoldMsFromForm('999', '')).toEqual({ ok: false, error: 'Select a valid feed duration.' });
+  });
+
+  it('resolveHoldMsFromForm resolves custom values', () => {
+    expect(resolveHoldMsFromForm('custom', '750')).toEqual({ ok: true, ms: 750 });
+    expect(resolveHoldMsFromForm('custom', '')).toEqual({ ok: false, error: 'Enter a duration in milliseconds.' });
+    expect(resolveHoldMsFromForm('custom', '0')).toMatchObject({ ok: false });
+    expect(resolveHoldMsFromForm('custom', String(HOLD_MS_MAX + 1))).toMatchObject({ ok: false });
+  });
+
+  it('holdMsToSelectState maps presets and custom', () => {
+    expect(holdMsToSelectState(2500)).toEqual({ mode: 'preset', preset: 2500 });
+    expect(holdMsToSelectState(750)).toEqual({ mode: 'custom', ms: 750 });
+    expect(holdMsToSelectState(null)).toEqual({ mode: 'preset', preset: HOLD_MS_DEFAULT });
+  });
+
+  it('HOLD_MS_PRESETS spans 500–5000 in 500 ms steps', () => {
+    expect(HOLD_MS_PRESETS).toEqual([500, 1000, 1500, 2000, 2500, 3000, 3500, 4000, 4500, 5000]);
+  });
+});
+
+describe('feeding unified — schedule day parsing and matching', () => {
+  const schedules = [{ index: 0, time: '19:00', days: [0, 2, 4, 6] }];
+
+  it('parseDaysVal reads Firebase-style day maps', () => {
+    expect(parseDaysVal({ 0: true, 2: true, 4: true, 6: true })).toEqual([0, 2, 4, 6]);
+    expect(parseDaysVal({})).toEqual([]);
+  });
+
+  it('formatTime12hFrom24h converts 19:00 to 7:00 PM', () => {
+    expect(formatTime12hFrom24h('19:00')).toBe('07:00 PM');
+    expect(formatTime12hFrom24h('07:00')).toBe('07:00 AM');
+  });
+
+  it('isScheduleActiveToday respects weekday', () => {
+    const thu = new Date(2026, 4, 28, 12, 0, 0).getTime();
+    const wed = new Date(2026, 4, 27, 12, 0, 0).getTime();
+    expect(isScheduleActiveToday([0, 2, 4, 6], thu)).toBe(true);
+    expect(isScheduleActiveToday([0, 2, 4, 6], wed)).toBe(false);
+  });
+
+  it('matchesActiveSchedule requires day and time slot', () => {
+    const thu1900 = new Date(2026, 4, 28, 19, 0, 0).getTime();
+    const thu2105 = new Date(2026, 4, 28, 21, 5, 0).getTime();
+    const wed1900 = new Date(2026, 4, 27, 19, 0, 0).getTime();
+    expect(matchesActiveSchedule(thu1900, schedules)).toBe(true);
+    expect(matchesActiveSchedule(thu2105, schedules)).toBe(false);
+    expect(matchesActiveSchedule(wed1900, schedules)).toBe(false);
+  });
+
+  it('shouldKeepFeedLogEntry keeps manual and matching scheduled', () => {
+    const thu1900 = new Date(2026, 4, 28, 19, 0, 0).getTime();
+    const wed1900 = new Date(2026, 4, 27, 19, 0, 0).getTime();
+    expect(shouldKeepFeedLogEntry({ type: 'Manual', ts: wed1900 }, schedules)).toBe(true);
+    expect(shouldKeepFeedLogEntry({ type: 'Scheduled', ts: thu1900 }, schedules)).toBe(true);
+    expect(shouldKeepFeedLogEntry({ type: 'Scheduled', ts: wed1900 }, schedules)).toBe(false);
+  });
+});
+
+describe('feeding unified — parseFeedTimestamp', () => {
+  it('parses YYYY-MM-DD HH:MM:SS as local time', () => {
+    const ts = parseFeedTimestamp('2026-05-28 19:00:00');
+    const d = new Date(ts);
+    expect(d.getFullYear()).toBe(2026);
+    expect(d.getMonth()).toBe(4);
+    expect(d.getDate()).toBe(28);
+    expect(d.getHours()).toBe(19);
+    expect(d.getMinutes()).toBe(0);
   });
 });

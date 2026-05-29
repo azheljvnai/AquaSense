@@ -3,28 +3,68 @@
  */
 
 export const FEED_DISPENSE_MG_MIN = 200;
-export const FEED_DISPENSE_MG_MAX = 400;
-export const FEED_DISPENSE_MG_DEFAULT = 300;
-export const FEED_DISPENSE_MG_RANGE_LABEL = '200-400';
+export const FEED_DISPENSE_MG_MAX = 300;
+export const FEED_DISPENSE_MG_DEFAULT = 250;
+export const FEED_DISPENSE_MG_ESTIMATE = 250;
+export const FEED_DISPENSE_AMOUNT_LABEL = '~200-300mg';
+export const FEED_DISPENSE_MG_RANGE_LABEL = '~200-300mg';
 
 /**
- * Parse RTDB timestamp string "YYYY-MM-DD HH:MM:SS" to epoch ms.
+ * Parse RTDB timestamp string "YYYY-MM-DD HH:MM:SS" as local wall-clock time.
  */
 export function parseFeedTimestamp(str) {
   if (typeof str !== 'string' || !str.trim()) return null;
-  const iso = str.trim().replace(' ', 'T');
+  const trimmed = str.trim();
+  const local = trimmed.match(
+    /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2}):(\d{2})$/,
+  );
+  if (local) {
+    const y = Number(local[1]);
+    const mo = Number(local[2]);
+    const d = Number(local[3]);
+    const h = Number(local[4]);
+    const mi = Number(local[5]);
+    const s = Number(local[6]);
+    const ms = new Date(y, mo - 1, d, h, mi, s).getTime();
+    return Number.isFinite(ms) ? ms : null;
+  }
+  const iso = trimmed.replace(' ', 'T');
   const ms = Date.parse(iso);
   return Number.isFinite(ms) ? ms : null;
 }
 
+/** Total amount label for N dispenses, e.g. 2 → "~400-600mg". */
+export function formatFeedAmountTotalDisplay(dispenseCount) {
+  const n = Math.max(0, Math.floor(Number(dispenseCount) || 0));
+  if (n === 0) return '—';
+  const min = n * FEED_DISPENSE_MG_MIN;
+  const max = n * FEED_DISPENSE_MG_MAX;
+  return `~${min}-${max}mg`;
+}
+
+/** Display label for RTDB amountMg (string estimate or legacy number). */
+export function formatFeedAmountDisplay(value) {
+  if (value == null || value === '') return FEED_DISPENSE_AMOUNT_LABEL;
+  const s = String(value).trim();
+  if (s.includes('~')) return s.includes('mg') ? s : `${s}mg`;
+  return FEED_DISPENSE_AMOUNT_LABEL;
+}
+
+/** Numeric estimate for report totals (legacy numbers clamped; label uses midpoint). */
+export function amountMgEstimateFromStored(value) {
+  if (value == null || value === '') return FEED_DISPENSE_MG_ESTIMATE;
+  const s = String(value).trim();
+  if (s.includes('~')) return FEED_DISPENSE_MG_ESTIMATE;
+  const n = Number(value);
+  if (!Number.isFinite(n)) return FEED_DISPENSE_MG_ESTIMATE;
+  return Math.min(FEED_DISPENSE_MG_MAX, Math.max(FEED_DISPENSE_MG_MIN, Math.round(n)));
+}
+
 /**
- * Normalize amount in mg: use default when missing; clamp to [MIN, MAX].
+ * Normalize legacy numeric amount in mg; new entries use FEED_DISPENSE_AMOUNT_LABEL string.
  */
 export function normalizeAmountMg(value) {
-  if (value == null || value === '') return FEED_DISPENSE_MG_DEFAULT;
-  const n = Number(value);
-  if (!Number.isFinite(n)) return FEED_DISPENSE_MG_DEFAULT;
-  return Math.min(FEED_DISPENSE_MG_MAX, Math.max(FEED_DISPENSE_MG_MIN, Math.round(n)));
+  return amountMgEstimateFromStored(value);
 }
 
 /** True when reason indicates a real manual or scheduled feed trigger. */
@@ -44,7 +84,7 @@ function dispenseTypeFromReason(reason) {
 /**
  * Parse a feedLog child value into a dispense record (manual/scheduled only).
  * @param {object} raw - { reason, timestamp, amountMg? }
- * @returns {{ ts: number, type: string, amountMg: number, timestampDisplay: string, reason: string } | null}
+ * @returns {{ ts: number, type: string, amountDisplay: string, amountMgEstimate: number, timestampDisplay: string, reason: string } | null}
  */
 export function parseFeedLogEntry(raw) {
   if (!raw || typeof raw !== 'object') return null;
@@ -56,7 +96,8 @@ export function parseFeedLogEntry(raw) {
   return {
     ts,
     type: dispenseTypeFromReason(rawReason),
-    amountMg: normalizeAmountMg(raw.amountMg),
+    amountDisplay: formatFeedAmountDisplay(raw.amountMg),
+    amountMgEstimate: amountMgEstimateFromStored(raw.amountMg),
     timestampDisplay: raw.timestamp.trim(),
     reason: rawReason,
   };

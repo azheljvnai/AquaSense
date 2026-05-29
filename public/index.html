@@ -444,7 +444,7 @@
               <div class="card-header">
                 <h3 class="card-title">
                   <svg class="icon icon-16"><use href="#icon-clock"/></svg>
-                  Today's Feeding Schedule
+                  Feeding Schedule
                 </h3>
                 <button id="feed-add-schedule-btn" class="btn btn-primary btn-sm is-hidden" type="button">
                   <svg class="icon icon-16"><use href="#icon-plus"/></svg> Add Schedule
@@ -454,6 +454,27 @@
                 <div class="sched">
                   <label for="feed-schedule-input">Time</label>
                   <input id="feed-schedule-input" type="time" required aria-describedby="feed-schedule-error" />
+                  <p class="muted text-sm feed-time-hint"></p>
+                </div>
+                <div class="feed-field-block feed-field-block--hold">
+                  <label for="feed-hold-select" class="feed-field-label">Feed duration</label>
+                  <select id="feed-hold-select" class="feed-hold-select" aria-describedby="feed-schedule-error">
+                    <option value="500">500 ms</option>
+                    <option value="1000">1000 ms</option>
+                    <option value="1500">1500 ms</option>
+                    <option value="2000">2000 ms</option>
+                    <option value="2500">2500 ms</option>
+                    <option value="3000">3000 ms</option>
+                    <option value="3500">3500 ms</option>
+                    <option value="4000">4000 ms</option>
+                    <option value="4500">4500 ms</option>
+                    <option value="5000">5000 ms</option>
+                    <option value="custom">Custom…</option>
+                  </select>
+                  <div id="feed-hold-custom-wrap" class="feed-hold-custom-wrap is-hidden">
+                    <input id="feed-hold-custom" type="number" min="1" max="60000" step="1" placeholder="Duration (ms)" />
+                  </div>
+                  <p class="muted text-sm feed-hold-hint"></p>
                 </div>
                 <div class="feed-field-block--days">
                   <label class="feed-field-label feed-field-label--days" for="feed-day-0">Repeat on</label>
@@ -494,6 +515,7 @@
                 </div>
                 <div id="feed-schedule-error" class="feed-schedule-error"></div>
               </div>
+              <p id="feed-hold-current" class="feed-hold-current muted text-sm" role="status">Feed duration: —</p>
               <ul id="feed-schedule-list" class="feed-schedule-list"></ul>
             </div>
 

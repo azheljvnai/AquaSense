@@ -1211,6 +1211,8 @@ body.theme-dark .recent-alerts .alert-item.neutral {
 .feed-schedule-list .status-done    { font-size: 0.7rem; font-weight: 700; color: var(--green-dark); text-transform: uppercase; letter-spacing: 0.04em; }
 .feed-schedule-list .status-pending { font-size: 0.7rem; font-weight: 700; color: var(--blue); text-transform: uppercase; letter-spacing: 0.04em; }
 .feed-schedule-list .status-inactive { font-size: 0.7rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.feed-schedule-list .status-not-today { font-size: 0.7rem; font-weight: 700; color: var(--text-faint); text-transform: uppercase; letter-spacing: 0.04em; }
+.feed-time-hint { margin: var(--space-1) 0 0; }
 .feed-schedule-list .sched-days { font-size: 0.72rem; color: var(--text-muted); font-weight: 500; }
 .feed-schedule-list .actions { display: flex; gap: 4px; margin-left: auto; flex-shrink: 0; }
 .feed-schedule-list .sched-icon { width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
@@ -1228,7 +1230,31 @@ body.theme-dark .recent-alerts .alert-item.neutral {
 .feed-field-label--days { margin-bottom: 8px; }
 .feed-field-block { margin-bottom: 10px; }
 .feed-field-block--days { margin-bottom: 12px; }
-.feed-actions-row { display: flex; gap: var(--space-2); }
+.feed-field-block--hold { margin-bottom: var(--space-3); }
+.feed-hold-select {
+  width: 100%;
+  max-width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--panel);
+  color: var(--text);
+  font-size: 0.875rem;
+}
+.feed-hold-select:disabled { opacity: 0.65; cursor: not-allowed; }
+.feed-hold-custom-wrap { margin-top: var(--space-2); }
+.feed-hold-custom-wrap input {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--panel);
+  color: var(--text);
+  font-size: 0.875rem;
+}
+.feed-hold-hint { margin: var(--space-2) 0 0; }
+.feed-hold-current { margin: 0 0 var(--space-3); }
+.feed-actions-row { display: flex; flex-wrap: wrap; gap: var(--space-2); }
 .feed-schedule-error {
   color: var(--red-dark);
   font-size: var(--text-sm);

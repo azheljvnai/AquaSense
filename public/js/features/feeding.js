@@ -3,6 +3,7 @@
  *
  * Firebase RTDB paths (matching ESP32 firmware):
  *   /devices/{id}/feeding/manualFeed          boolean — set true to trigger feed
+ *   /devices/{id}/feeding/holdMs              number — servo open duration (ms), global
  *   /devices/{id}/feeding/schedules/times/0   "HH:MM" — schedule slot 0
  *   /devices/{id}/feeding/schedules/days/0   [0..6] — repeat days (0=Sun)
  *   ...
@@ -19,7 +20,7 @@ import {
 } from '../firebase-client.js';
 import { log } from '../utils.js';
 import {
-  FEED_DISPENSE_MG_DEFAULT,
+  FEED_DISPENSE_AMOUNT_LABEL,
   dedupeDispensesBySecond,
   parseFeedLogEntry,
   parseFeedTimestamp,
@@ -37,17 +38,126 @@ let _listeners         = [];     // RTDB unsubscribe functions
 const ALL_DAYS = [0, 1, 2, 3, 4, 5, 6];
 const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
+export const HOLD_MS_DEFAULT = 1000;
+export const HOLD_MS_MAX = 60000;
+export const HOLD_MS_PRESETS = [500, 1000, 1500, 2000, 2500, 3000, 3500, 4000, 4500, 5000];
+
 let _schedules         = [];     // [{ index, time, days }] sorted by time
 let _timesByIndex      = {};
 let _daysByIndex       = {};
-let _logEntries        = [];     // [{ ts, type, amountMg }] sorted descending, max 20
+let _logEntries        = [];     // [{ ts, type, amountDisplay }] sorted descending, max 20
 let _feedChart         = null;   // Chart.js instance
 let _feedWeekOffset    = 0;      // 0 = current week, -1 = previous, etc.
 let _manualFeedTimeout = null;   // 10-second timeout handle
 let _editingIndex      = null;   // schedule index being edited (null = new)
-let _formSnapshot      = null;   // { time, days } when add/edit form is open
+let _formSnapshot      = null;   // { time, days, holdMs } when add/edit form is open
+let _holdMs            = null;   // global feed duration from RTDB (ms)
+let _purgeInProgress   = false;  // guard RTDB purge / listener re-entry
 let _dispensing        = false;  // true while waiting for ESP32 to reset manualFeed
 let _firebaseConnected = false;  // RTDB connect state (dashboard feed-btn gate)
+
+export function parseHoldMs(val) {
+  const n = typeof val === 'number' ? val : parseInt(String(val ?? '').trim(), 10);
+  if (!Number.isInteger(n) || n < 1 || n > HOLD_MS_MAX) return null;
+  return n;
+}
+
+export function formatHoldMsLabel(ms) {
+  const parsed = parseHoldMs(ms);
+  if (parsed === null) return '—';
+  return `${parsed} ms`;
+}
+
+export function formatHoldMsSummary(ms) {
+  const parsed = parseHoldMs(ms) ?? HOLD_MS_DEFAULT;
+  return `Feed duration: ${formatHoldMsLabel(parsed)}`;
+}
+
+/** @returns {{ ok: true, ms: number } | { ok: false, error: string }} */
+export function resolveHoldMsFromForm(selectValue, customValue) {
+  const sel = String(selectValue ?? '').trim();
+  if (sel !== 'custom') {
+    const ms = parseInt(sel, 10);
+    if (HOLD_MS_PRESETS.includes(ms)) return { ok: true, ms };
+    return { ok: false, error: 'Select a valid feed duration.' };
+  }
+  const raw = String(customValue ?? '').trim();
+  if (!raw) return { ok: false, error: 'Enter a duration in milliseconds.' };
+  const ms = parseHoldMs(raw);
+  if (ms === null) {
+    return { ok: false, error: `Duration must be a whole number from 1 to ${HOLD_MS_MAX} ms.` };
+  }
+  return { ok: true, ms };
+}
+
+/** @returns {{ mode: 'preset', preset: number } | { mode: 'custom', ms: number }} */
+export function holdMsToSelectState(ms) {
+  const parsed = parseHoldMs(ms) ?? HOLD_MS_DEFAULT;
+  if (HOLD_MS_PRESETS.includes(parsed)) return { mode: 'preset', preset: parsed };
+  return { mode: 'custom', ms: parsed };
+}
+
+/** Format 24h HH:MM (optional :ss) as 12-hour clock label. */
+export function formatTime12hFrom24h(hhmm) {
+  const parts = String(hhmm ?? '').trim().split(':');
+  const h = parseInt(parts[0], 10);
+  const m = parseInt(parts[1], 10);
+  if (!Number.isFinite(h) || !Number.isFinite(m)) return '—';
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  const h12 = h % 12 || 12;
+  return `${String(h12).padStart(2, '0')}:${String(m).padStart(2, '0')} ${ampm}`;
+}
+
+export function parseDaysVal(val) {
+  if (Array.isArray(val)) return normalizeDays(val.map((n) => Number(n)));
+  if (typeof val === 'string' && val.trim()) {
+    return normalizeDays(val.split(',').map((n) => Number(n.trim())));
+  }
+  if (val && typeof val === 'object') {
+    const fromTruthy = Object.entries(val)
+      .filter(([, v]) => v === true || v === 1 || v === '1' || String(v).toLowerCase() === 'true')
+      .map(([k]) => Number(k))
+      .filter((n) => Number.isInteger(n) && n >= 0 && n <= 6);
+    if (fromTruthy.length > 0) return normalizeDays(fromTruthy);
+    const keyNums = Object.keys(val)
+      .map((k) => Number(k))
+      .filter((n) => Number.isInteger(n) && n >= 0 && n <= 6);
+    if (keyNums.length > 0) return normalizeDays(keyNums);
+    return [];
+  }
+  return [...ALL_DAYS];
+}
+
+export function isScheduleActiveToday(days, nowMs = Date.now()) {
+  const normalized = normalizeDays(days);
+  if (normalized.length === 0) return false;
+  return normalized.includes(new Date(nowMs).getDay());
+}
+
+/** Scheduled log matches a configured slot (weekday + time within tolerance). */
+export function matchesActiveSchedule(ts, schedules, toleranceMin = 2) {
+  if (!schedules?.length) return false;
+  const d = new Date(ts);
+  const day = d.getDay();
+  const logMin = d.getHours() * 60 + d.getMinutes();
+
+  for (const s of schedules) {
+    const days = normalizeDays(s.days ?? []);
+    if (days.length === 0 || !days.includes(day)) continue;
+    const [sh, sm] = s.time.split(':').map(Number);
+    if (!Number.isFinite(sh) || !Number.isFinite(sm)) continue;
+    const schedMin = sh * 60 + sm;
+    if (Math.abs(logMin - schedMin) <= toleranceMin) return true;
+  }
+  return false;
+}
+
+export function shouldKeepFeedLogEntry(entry, schedules) {
+  if (!entry) return false;
+  if (entry.type === 'Manual') return true;
+  if (!schedules?.length) return true;
+  return matchesActiveSchedule(entry.ts, schedules);
+}
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
@@ -72,11 +182,17 @@ export function init(deviceId = 'device001') {
     const input = document.getElementById('feed-schedule-input');
     if (input) input.value = '';
     _setDayCheckboxes(ALL_DAYS);
+    _syncHoldMsControls(_holdMs ?? HOLD_MS_DEFAULT);
     _clearScheduleFieldError();
     _openScheduleForm();
   });
   document.getElementById('feed-schedule-confirm')?.addEventListener('click', _saveSchedule);
   document.getElementById('feed-schedule-cancel')?.addEventListener('click', _cancelScheduleForm);
+  document.getElementById('feed-hold-select')?.addEventListener('change', () => {
+    _toggleHoldCustomWrap();
+    _clearScheduleFieldError();
+  });
+  document.getElementById('feed-hold-custom')?.addEventListener('input', _clearScheduleFieldError);
   document.getElementById('feed-schedule-input')?.addEventListener('input', _clearScheduleFieldError);
   for (let d = 0; d <= 6; d++) {
     document.getElementById(`feed-day-${d}`)?.addEventListener('change', _clearScheduleFieldError);
@@ -139,23 +255,38 @@ function _subscribe(deviceId) {
   }, (err) => console.error('[feeding] schedules/days listener error', err));
   _listeners.push(unsubDays);
 
+  const holdRef = fbRef(db, `/devices/${deviceId}/feeding/holdMs`);
+  const unsubHold = fbOnValue(holdRef, (snap) => {
+    _holdMs = parseHoldMs(snap.val());
+    _updateHoldCurrentDisplay();
+    const formEl = document.getElementById('feed-schedule-form');
+    if (formEl && !formEl.classList.contains('is-hidden')) {
+      if (_isFormDirty()) return;
+      _syncHoldMsControls(_holdMs ?? HOLD_MS_DEFAULT);
+    }
+  }, (err) => console.error('[feeding] holdMs listener error', err));
+  _listeners.push(unsubHold);
+
   // 2. Feed log listener — /feedLog (firmware writes here; app also writes here)
   const logRef = fbRef(db, `/devices/${deviceId}/feedLog`);
   const unsubLog = fbOnValue(logRef, (snap) => {
-    const entries = [];
     const parsed = [];
     snap.forEach((child) => {
       const entry = parseFeedLogEntry(child.val());
-      if (entry) parsed.push(entry);
+      if (entry) parsed.push({ ...entry, logKey: child.key });
     });
-    for (const d of dedupeDispensesBySecond(parsed)) {
-      entries.push({ ts: d.ts, type: d.type, amountMg: d.amountMg });
-    }
-    entries.sort((a, b) => b.ts - a.ts);
-    _logEntries = entries.slice(0, 20);
-    _renderFeedLog();
-    _updateMetricCards();
-    _updateWeeklyChart();
+
+    const deduped = dedupeDispensesBySecond(parsed);
+    void (async () => {
+      if (!_purgeInProgress) await _purgeOffScheduleLogEntries(deduped);
+      const kept = deduped.filter((e) => shouldKeepFeedLogEntry(e, _schedules));
+      const entries = kept.map(({ ts, type, amountDisplay }) => ({ ts, type, amountDisplay }));
+      entries.sort((a, b) => b.ts - a.ts);
+      _logEntries = entries.slice(0, 20);
+      _renderFeedLog();
+      _updateMetricCards();
+      _updateWeeklyChart();
+    })();
   }, (err) => console.error('[feeding] feedLog listener error', err));
   _listeners.push(unsubLog);
 
@@ -173,6 +304,7 @@ function _teardown() {
   _schedules = [];
   _timesByIndex = {};
   _daysByIndex = {};
+  _holdMs = null;
   _logEntries = [];
   _feedWeekOffset = 0;
 
@@ -193,6 +325,88 @@ function _teardown() {
   if (manualBtn) manualBtn.textContent = '▶ Manual Feed';
   _applyFeedButtonConnectedState();
   _closeScheduleForm();
+  _updateHoldCurrentDisplay();
+}
+
+// ── Feed duration (holdMs) ────────────────────────────────────────────────────
+
+function _effectiveHoldMs() {
+  return _holdMs ?? HOLD_MS_DEFAULT;
+}
+
+function _resolveHoldMsFromDom() {
+  const select = document.getElementById('feed-hold-select');
+  const custom = document.getElementById('feed-hold-custom');
+  return resolveHoldMsFromForm(select?.value, custom?.value);
+}
+
+function _toggleHoldCustomWrap() {
+  const select = document.getElementById('feed-hold-select');
+  const wrap = document.getElementById('feed-hold-custom-wrap');
+  if (!wrap) return;
+  wrap.classList.toggle('is-hidden', select?.value !== 'custom');
+}
+
+function _syncHoldMsControls(ms) {
+  const select = document.getElementById('feed-hold-select');
+  const custom = document.getElementById('feed-hold-custom');
+  if (!select) return;
+
+  const state = holdMsToSelectState(ms);
+  if (state.mode === 'preset') {
+    select.value = String(state.preset);
+    if (custom) custom.value = '';
+  } else {
+    select.value = 'custom';
+    if (custom) custom.value = String(state.ms);
+  }
+  _toggleHoldCustomWrap();
+}
+
+function _updateHoldCurrentDisplay() {
+  const el = document.getElementById('feed-hold-current');
+  if (!el) return;
+  el.textContent = _holdMs !== null
+    ? formatHoldMsSummary(_holdMs)
+    : `Feed duration: ${formatHoldMsLabel(HOLD_MS_DEFAULT)} (default — not saved yet)`;
+}
+
+function _applyHoldMsRbac() {
+  const perms = window._rbacPerms || { canEditSchedules: false };
+  const canEdit = !!perms.canEditSchedules;
+  const select = document.getElementById('feed-hold-select');
+  const custom = document.getElementById('feed-hold-custom');
+  if (select) select.disabled = !canEdit;
+  if (custom) custom.disabled = !canEdit;
+}
+
+async function _saveHoldMs(ms) {
+  if (!_deviceId) return;
+  const db = fbDatabase();
+  await fbSet(fbRef(db, `/devices/${_deviceId}/feeding/holdMs`), ms);
+}
+
+async function _purgeOffScheduleLogEntries(entries) {
+  const perms = window._rbacPerms || { canEditSchedules: false };
+  if (!perms.canEditSchedules || !_deviceId || !_schedules.length) return;
+
+  const toRemove = entries.filter((e) => e.logKey && !shouldKeepFeedLogEntry(e, _schedules));
+  if (toRemove.length === 0) return;
+
+  _purgeInProgress = true;
+  try {
+    const db = fbDatabase();
+    await Promise.all(
+      toRemove.map((e) =>
+        fbSet(fbRef(db, `/devices/${_deviceId}/feedLog/${e.logKey}`), null),
+      ),
+    );
+    console.info(`[feeding] Removed ${toRemove.length} off-schedule feed log entries`);
+  } catch (err) {
+    console.warn('[feeding] Failed to purge off-schedule feed log entries', err);
+  } finally {
+    _purgeInProgress = false;
+  }
 }
 
 // ── Schedule helpers ──────────────────────────────────────────────────────────
@@ -209,19 +423,11 @@ function _parseTimesMap(snapshot) {
   return result;
 }
 
-function _parseDaysVal(val) {
-  if (Array.isArray(val)) return normalizeDays(val.map((n) => Number(n)));
-  if (typeof val === 'string' && val.trim()) {
-    return normalizeDays(val.split(',').map((n) => Number(n.trim())));
-  }
-  return [...ALL_DAYS];
-}
-
 function _parseDaysMap(snapshot) {
   const result = {};
   snapshot.forEach((child) => {
     const index = parseInt(child.key, 10);
-    if (!isNaN(index)) result[index] = _parseDaysVal(child.val());
+    if (!isNaN(index)) result[index] = parseDaysVal(child.val());
   });
   return result;
 }
@@ -238,7 +444,9 @@ function _rebuildSchedules() {
       return {
         index,
         time,
-        days: normalizeDays(_daysByIndex[index] ?? ALL_DAYS),
+        days: Object.prototype.hasOwnProperty.call(_daysByIndex, index)
+          ? parseDaysVal(_daysByIndex[index])
+          : [...ALL_DAYS],
       };
     })
     .filter(Boolean)
@@ -322,10 +530,7 @@ export function _scheduleStatus(timeStr, days = ALL_DAYS, nowMs = Date.now()) {
 }
 
 function _fmt12h(timeStr) {
-  const [h, m] = timeStr.split(':').map(Number);
-  const ampm = h >= 12 ? 'PM' : 'AM';
-  const h12  = h % 12 || 12;
-  return `${String(h12).padStart(2, '0')}:${String(m).padStart(2, '0')} ${ampm}`;
+  return formatTime12hFrom24h(timeStr);
 }
 
 function _renderScheduleList() {
@@ -337,6 +542,8 @@ function _renderScheduleList() {
   // Show/hide Add button
   const addBtn = document.getElementById('feed-add-schedule-btn');
   if (addBtn) addBtn.classList.toggle('is-hidden', !perms.canEditSchedules);
+  _applyHoldMsRbac();
+  _updateHoldCurrentDisplay();
 
   if (_schedules.length === 0) {
     ul.innerHTML = '<li class="empty-state empty-state--tight text-sm muted">No schedules configured for this device.</li>';
@@ -344,12 +551,20 @@ function _renderScheduleList() {
   }
 
   ul.innerHTML = _schedules.map(({ index, time, days }) => {
-    const status = _scheduleStatus(time, days);
-    const iconClass = status === 'upcoming' ? 'sched-icon--upcoming' : 'sched-icon--scheduled';
+    const activeToday = isScheduleActiveToday(days);
+    let iconClass = 'sched-icon--scheduled';
+    let statusLabel;
+    if (!activeToday) {
+      iconClass = 'sched-icon--inactive';
+      statusLabel = '<span class="status-not-today">not today</span>';
+    } else {
+      const status = _scheduleStatus(time, days);
+      iconClass = status === 'upcoming' ? 'sched-icon--upcoming' : 'sched-icon--scheduled';
+      statusLabel = status === 'upcoming'
+        ? '<span class="status-pending">upcoming</span>'
+        : '<span class="status-pending">scheduled</span>';
+    }
     const iconSvg = '<svg class="icon icon-16"><use href="#icon-clock"/></svg>';
-    const statusLabel = status === 'upcoming'
-      ? '<span class="status-pending">upcoming</span>'
-      : '<span class="status-pending">scheduled</span>';
     const daysLabel = formatScheduleDaysLabel(days);
     const actions = perms.canEditSchedules
       ? `<span class="actions">
@@ -386,9 +601,11 @@ function _renderScheduleList() {
 }
 
 function _captureFormSnapshot() {
+  const holdResolved = _resolveHoldMsFromDom();
   return {
     time: document.getElementById('feed-schedule-input')?.value.trim() || '',
     days: normalizeDays(_getSelectedDays()),
+    holdMs: holdResolved.ok ? holdResolved.ms : _effectiveHoldMs(),
   };
 }
 
@@ -396,10 +613,13 @@ function _isFormDirty() {
   if (!_formSnapshot) return false;
   const cur = _captureFormSnapshot();
   return cur.time !== _formSnapshot.time
-    || cur.days.join(',') !== _formSnapshot.days.join(',');
+    || cur.days.join(',') !== _formSnapshot.days.join(',')
+    || cur.holdMs !== _formSnapshot.holdMs;
 }
 
 function _openScheduleForm() {
+  _syncHoldMsControls(_holdMs ?? HOLD_MS_DEFAULT);
+  _applyHoldMsRbac();
   document.getElementById('feed-schedule-form')?.classList.remove('is-hidden');
   _formSnapshot = _captureFormSnapshot();
 }
@@ -470,6 +690,12 @@ async function _saveSchedule() {
     return;
   }
 
+  const holdResolved = _resolveHoldMsFromDom();
+  if (!holdResolved.ok) {
+    _setScheduleFieldError(holdResolved.error);
+    return;
+  }
+
   const excludeIndex = _editingIndex !== null ? _editingIndex : null;
   if (hasDuplicateScheduleTime(_schedules, timeVal, excludeIndex)) {
     showAlertModal({
@@ -486,15 +712,17 @@ async function _saveSchedule() {
     : _nextScheduleIndex(_schedules.map((s) => s.index));
 
   const summary = `${_fmt12h(timeVal)} (${formatScheduleDaysLabel(days)})`;
+  const holdLabel = formatHoldMsLabel(holdResolved.ms);
 
   showConfirmModal({
     title: isEdit ? 'Save changes?' : 'Add schedule?',
     message: isEdit
-      ? `Save changes to ${summary}?`
-      : `Add schedule for ${summary}?`,
+      ? `Save changes to ${summary} with feed duration ${holdLabel}?`
+      : `Add schedule for ${summary} with feed duration ${holdLabel}?`,
     confirmLabel: 'Save',
     onConfirm: async () => {
       await _saveScheduleAtIndex(index, timeVal, days);
+      await _saveHoldMs(holdResolved.ms);
       _closeScheduleForm();
       showAppToast(
         isEdit ? `Schedule updated: ${summary}.` : `Schedule added: ${summary}.`,
@@ -646,6 +874,8 @@ async function _migrateLegacySchedules(deviceId) {
 /** Re-render schedule list after RBAC permissions are applied (fixes hidden Add/Edit on first load). */
 export function refreshFeedingScheduleUi() {
   _renderScheduleList();
+  _applyHoldMsRbac();
+  _updateHoldCurrentDisplay();
 }
 
 function _confirmDeleteSchedule(index) {
@@ -761,11 +991,11 @@ function _renderFeedLog() {
     return;
   }
 
-  container.innerHTML = _logEntries.map(({ ts, type, amountMg }) => {
+  container.innerHTML = _logEntries.map(({ ts, type, amountDisplay }) => {
     const typeClass = type === 'Manual' ? 'feed-log-type--manual'
       : type === 'Scheduled' ? 'feed-log-type--auto'
       : 'feed-log-type--unknown';
-    const mgLabel = amountMg != null ? `${amountMg} mg` : '—';
+    const mgLabel = amountDisplay || '—';
     return `<div class="feed-log-row">
       <span class="feed-log-type ${typeClass}">${type}</span>
       <span class="feed-log-time">${_fmtTimestamp(ts)}</span>
@@ -804,23 +1034,30 @@ function _fmtCountdown(ms) {
   const diffMin = Math.round((ms - now) / 60000);
   const h       = Math.floor(diffMin / 60);
   const m       = diffMin % 60;
-  const timeLabel = _fmt12h(new Date(ms).toTimeString().slice(0, 5));
+  const target  = new Date(ms);
+  const pad     = (n) => String(n).padStart(2, '0');
+  const timeLabel = formatTime12hFrom24h(
+    `${pad(target.getHours())}:${pad(target.getMinutes())}`,
+  );
   if (h === 0) return `in ${m}m (${timeLabel})`;
   return `in ${h}h ${m}m (${timeLabel})`;
 }
 
-export function _feedsTodayCount(logEntries) {
+export function _feedsTodayCount(logEntries, schedules = []) {
   const now        = new Date();
   const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
   const endOfDay   = startOfDay + 86400000;
-  return logEntries.filter((e) => e.ts >= startOfDay && e.ts < endOfDay).length;
+  return logEntries.filter((e) => {
+    if (e.ts < startOfDay || e.ts >= endOfDay) return false;
+    return shouldKeepFeedLogEntry(e, schedules);
+  }).length;
 }
 
 function _updateMetricCards() {
   // Feeds Today
   const todayEl = document.getElementById('feed-metric-today');
   if (todayEl) {
-    const count = _feedsTodayCount(_logEntries);
+    const count = _feedsTodayCount(_logEntries, _schedules);
     todayEl.textContent = _logEntries.length === 0 ? '—' : String(count);
   }
 
@@ -905,7 +1142,7 @@ async function _updateWeeklyChart() {
     const snap   = await fbGet(logRef);
     snap.forEach((child) => {
       const entry = parseFeedLogEntry(child.val());
-      if (entry) allEntries.push(entry.ts);
+      if (entry && shouldKeepFeedLogEntry(entry, _schedules)) allEntries.push(entry.ts);
     });
   } catch (err) {
     console.error('[feeding] weekly chart fetch error', err);
@@ -913,7 +1150,7 @@ async function _updateWeeklyChart() {
   }
 
   const counts = days.map(({ start, end }) =>
-    allEntries.filter((ts) => ts >= start && ts < end).length
+    allEntries.filter((ts) => ts >= start && ts < end).length,
   );
 
   _feedChart.data.labels           = days.map((d) => d.label);
@@ -945,7 +1182,7 @@ async function _writeFeedLog(deviceId, reason) {
   await fbSet(fbRef(db, `/devices/${deviceId}/feedLog/${key}`), {
     reason,
     timestamp: ts,
-    amountMg: FEED_DISPENSE_MG_DEFAULT,
+    amountMg: FEED_DISPENSE_AMOUNT_LABEL,
   });
 }
 
