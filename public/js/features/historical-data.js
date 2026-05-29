@@ -67,7 +67,7 @@ function format24hLabel(bucketEndDate, bucketMs, windowStartDate) {
   }
 }
 
-function getNavigatedRange(rangeVal, weekOffset, monthOffset, customFrom, customTo) {
+export function getNavigatedRange(rangeVal, weekOffset, monthOffset, customFrom, customTo) {
   // Validate offsets: reset invalid values (NaN, Infinity) to 0
   const validWeekOffset = Number.isFinite(weekOffset) ? weekOffset : 0;
   const validMonthOffset = Number.isFinite(monthOffset) ? monthOffset : 0;
@@ -124,7 +124,7 @@ function getRange(rangeVal, customFrom, customTo) {
   return getNavigatedRange(rangeVal, 0, 0, customFrom, customTo);
 }
 
-function updateNavigatorUI(rangeVal, weekOffset, monthOffset) {
+export function updateNavigatorUI(rangeVal, weekOffset, monthOffset) {
   const weekNav = document.getElementById('hist-week-nav');
   const monthNav = document.getElementById('hist-month-nav');
   const weekPrevBtn = document.getElementById('hist-week-prev');

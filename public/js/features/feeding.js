@@ -732,6 +732,41 @@ async function _saveSchedule() {
   });
 }
 
+/**
+ * Merge dashboard slot 0/1 inputs with existing schedules; sort and reindex for RTDB.
+ * @returns {{ times: Record<number, string>, days: Record<number, number[]>, count: number }}
+ */
+export function buildCompactedScheduleMaps(t0, t1, schedules, allDays = ALL_DAYS) {
+  const byIndex = {};
+  schedules.forEach((s) => {
+    byIndex[s.index] = { time: s.time, days: s.days };
+  });
+
+  if (t0) {
+    byIndex[0] = { time: t0, days: byIndex[0]?.days ?? [...allDays] };
+  } else {
+    delete byIndex[0];
+  }
+  if (t1) {
+    byIndex[1] = { time: t1, days: byIndex[1]?.days ?? [...allDays] };
+  } else {
+    delete byIndex[1];
+  }
+
+  const sorted = Object.entries(byIndex)
+    .map(([idx, entry]) => ({ index: parseInt(idx, 10), time: entry.time, days: entry.days }))
+    .sort((a, b) => a.time.localeCompare(b.time));
+
+  const times = {};
+  const days = {};
+  sorted.forEach((s, i) => {
+    times[i] = s.time;
+    days[i] = normalizeDays(s.days);
+  });
+
+  return { times, days, count: sorted.length };
+}
+
 async function _saveDashboardSchedules() {
   const perms = window._rbacPerms || { canEditSchedules: false };
   if (!perms.canEditSchedules) {
@@ -753,46 +788,21 @@ async function _saveDashboardSchedules() {
     return;
   }
 
-  const byIndex = {};
-  _schedules.forEach((s) => {
-    byIndex[s.index] = { time: s.time, days: s.days };
-  });
-
-  if (t0) {
-    byIndex[0] = { time: t0, days: byIndex[0]?.days ?? [...ALL_DAYS] };
-  } else {
-    delete byIndex[0];
-  }
-  if (t1) {
-    byIndex[1] = { time: t1, days: byIndex[1]?.days ?? [...ALL_DAYS] };
-  } else {
-    delete byIndex[1];
-  }
-
-  const sorted = Object.entries(byIndex)
-    .map(([idx, entry]) => ({ index: parseInt(idx, 10), time: entry.time, days: entry.days }))
-    .sort((a, b) => a.time.localeCompare(b.time));
-
-  const newTimes = {};
-  const newDays = {};
-  sorted.forEach((s, i) => {
-    newTimes[i] = s.time;
-    newDays[i] = normalizeDays(s.days);
-  });
+  const { times: newTimes, days: newDays, count } = buildCompactedScheduleMaps(t0, t1, _schedules);
 
   try {
     const db = fbDatabase();
     await fbSet(
       fbRef(db, `/devices/${_deviceId}/feeding/schedules/times`),
-      sorted.length ? newTimes : null,
+      count ? newTimes : null,
     );
     await fbSet(
       fbRef(db, `/devices/${_deviceId}/feeding/schedules/days`),
-      sorted.length ? newDays : null,
+      count ? newDays : null,
     );
     showAppToast(
-      sorted.length
-        ? `Dashboard schedules saved (${sorted.length} active).`
+      count
+        ? `Dashboard schedules saved (${count} active).`
         : 'All feeding schedules cleared.',
       'success',
     );
