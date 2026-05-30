@@ -1,3 +1,8 @@
+/**
+ * Feeding — randomized schedule invariants (property-based).
+ * Module: public/js/features/feeding.js (fast-check)
+ * Demo: schedule math holds for many random inputs, not just fixed examples.
+ */
 import { describe, it, expect, vi } from 'vitest';
 import fc from 'fast-check';
 

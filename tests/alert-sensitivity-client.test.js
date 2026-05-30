@@ -1,3 +1,7 @@
+/**
+ * Water quality alerts — debounce (client, mirrors server alert-sensitivity.test.js).
+ * Module: public/js/alert-sensitivity.js
+ */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   createBreachTracker,

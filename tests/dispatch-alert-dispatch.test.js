@@ -22,7 +22,10 @@ vi.mock('../backend/lib/emailjs-env.js', () => ({
   }),
 }));
 
-import { dispatchAlertToAllUsers } from '../backend/notifications/dispatch-alert.js';
+import {
+  dispatchAlertToAllUsers,
+  formatAlertEmailTimestamp,
+} from '../backend/notifications/dispatch-alert.js';
 import { sendUniSms } from '../backend/lib/unisms.js';
 
 const validAlert = {
@@ -89,5 +92,31 @@ describe('dispatchAlertToAllUsers', () => {
     expect(globalThis.fetch).toHaveBeenCalled();
     expect(sendUniSms).toHaveBeenCalled();
     expect(mockState.notificationLogAdd).toHaveBeenCalled();
+  });
+
+  it('sends email timestamp as local wall-clock, not UTC ISO', async () => {
+    const ts = Date.UTC(2026, 4, 30, 9, 13, 1, 840);
+    await dispatchAlertToAllUsers({ ...validAlert, ts });
+
+    const emailCall = globalThis.fetch.mock.calls.find((c) =>
+      String(c[0]).includes('api.emailjs.com')
+    );
+    expect(emailCall).toBeDefined();
+    const body = JSON.parse(emailCall[1].body);
+    expect(body.template_params.timestamp).toBe(formatAlertEmailTimestamp(ts));
+    expect(body.template_params.timestamp).not.toMatch(/Z$/);
+    expect(body.template_params.timestamp).not.toContain('T');
+  });
+});
+
+describe('formatAlertEmailTimestamp', () => {
+  it('matches local Date getters for a fixed instant', () => {
+    const ms = Date.UTC(2026, 4, 30, 9, 13, 1, 840);
+    const d = new Date(ms);
+    const pad = (n) => String(n).padStart(2, '0');
+    const expected =
+      `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ` +
+      `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+    expect(formatAlertEmailTimestamp(ms)).toBe(expected);
   });
 });

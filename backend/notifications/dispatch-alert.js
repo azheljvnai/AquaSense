@@ -36,6 +36,14 @@ function formatSmsValue(key, val) {
   return `${Number(val).toFixed(1)}${unit}`;
 }
 
+/** Epoch ms → local wall-clock "YYYY-MM-DD HH:MM:SS" (server/process timezone). */
+export function formatAlertEmailTimestamp(ms) {
+  const d = new Date(Number(ms) || Date.now());
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ` +
+    `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
 /** Exported for tests — must stay ASCII for UniSMS. */
 export function buildSmsContent(alert) {
   const severity = alert?.severity === 'critical' ? 'Critical' : 'Warning';
@@ -192,7 +200,7 @@ async function sendEmailJsServer(prefs, alertOrAlerts) {
     value,
     severity: sev === 'critical' ? 'Critical' : 'Warning',
     threshold,
-    timestamp: new Date(Number(primary.ts) || Date.now()).toISOString(),
+    timestamp: formatAlertEmailTimestamp(primary.ts),
   };
 
   const resp = await fetch('https://api.emailjs.com/api/v1.0/email/send', {

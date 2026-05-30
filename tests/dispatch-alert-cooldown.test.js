@@ -1,3 +1,8 @@
+/**
+ * Water quality alerts — SMS/email cooldown (server).
+ * Module: backend/notifications/dispatch-alert.js isCooledDownFromLogRows
+ * Demo: no duplicate sends for same pond+parameter+severity within notify window; escalation allowed.
+ */
 import { describe, it, expect } from 'vitest';
 import { isCooledDownFromLogRows } from '../backend/notifications/dispatch-alert.js';
 import { NOTIFY_INTERVAL_MS } from '../backend/lib/alert-notify-interval.js';

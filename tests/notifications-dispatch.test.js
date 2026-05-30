@@ -1,6 +1,8 @@
-// tests/notifications-dispatch.test.js
-// Validates that handleAlert delegates fan-out to POST /api/notifications/dispatch-alert
-// (server notifies all active users) for every sensor parameter.
+/**
+ * Water quality alerts — client dispatch to backend.
+ * Module: public/js/features/notifications.js handleAlert
+ * Demo: each sensor breach POSTs once to /api/notifications/dispatch-alert (SMS/email fan-out).
+ */
 
 import { describe, it, expect, vi, beforeEach, afterEach, beforeAll } from 'vitest';
 
@@ -41,6 +43,7 @@ describe('notifications dispatch — handleAlert API', () => {
     delete globalThis.fetch;
   });
 
+  // Critical dissolved O₂ → single dispatch with key "do"
   it('DO breach triggers one dispatch-alert request with alert payload', async () => {
     const alert = {
       id: 'alert1',

@@ -1,3 +1,8 @@
+/**
+ * Water quality — dashboard badges (client).
+ * Module: public/js/pond-config.js getBadgeForSpecies
+ * Demo: UI status chips match server threshold-eval for the same reading.
+ */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 vi.mock('../public/js/firebase-client.js', () => ({
@@ -18,6 +23,7 @@ describe('pond-config getBadgeForSpecies', () => {
     applyConfig({ species: 'crayfish', thresholds: null, id: 'test' });
   });
 
+  // Unknown species / no thresholds → placeholder badge
   it('returns dash label when active thresholds are null', () => {
     applyConfig({ species: 'unknown_species', thresholds: null, id: 'empty' });
     expect(getBadgeForSpecies('ph', 7)).toEqual({ c: 'ok', l: '—' });
@@ -36,6 +42,7 @@ describe('pond-config getBadgeForSpecies', () => {
     expect(getBadgeForSpecies('turb', 90).c).toBe('danger');
   });
 
+  // Client badge.c/l must equal server getBadgeForThresholds (single source of truth)
   it('matches threshold-eval for same thresholds and reading', () => {
     const key = 'do';
     const val = 4.0;

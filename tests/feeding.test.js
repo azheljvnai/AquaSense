@@ -1,3 +1,8 @@
+/**
+ * Feeding — schedules, hold duration, next feed, dashboard RTDB maps.
+ * Module: public/js/features/feeding.js
+ * Demo: automated feeding times, weekday rules, log filtering, slot compaction.
+ */
 import { describe, it, expect, vi } from 'vitest';
 
 vi.mock('../public/js/firebase-client.js', () => ({
@@ -43,6 +48,7 @@ import {
 
 const ALL_DAYS = [0, 1, 2, 3, 4, 5, 6];
 
+// Motor run time (ms) for each dispense — form validation and presets
 describe('feeding module — holdMs', () => {
   it('parseHoldMs accepts positive integers up to HOLD_MS_MAX', () => {
     expect(parseHoldMs(1500)).toBe(1500);
@@ -77,6 +83,7 @@ describe('feeding module — holdMs', () => {
   });
 });
 
+// Which weekdays a schedule runs; parse formats from UI and Firebase
 describe('feeding module — schedule days', () => {
   it('normalizeDays deduplicates and sorts', () => {
     expect(normalizeDays([3, 1, 3, 5])).toEqual([1, 3, 5]);
@@ -102,6 +109,7 @@ describe('feeding module — schedule days', () => {
   });
 });
 
+// Does this timestamp fall on an active schedule day/time (±2 min tolerance)?
 describe('feeding module — schedule matching', () => {
   const schedules = [{ index: 0, time: '19:00', days: [0, 2, 4, 6] }];
 
@@ -130,6 +138,7 @@ describe('feeding module — schedule matching', () => {
   });
 });
 
+// RTDB schedule slot indices and duplicate-time prevention
 describe('feeding module — schedule indexing', () => {
   it('_nextScheduleIndex returns 0 for empty list', () => {
     expect(_nextScheduleIndex([])).toBe(0);
@@ -147,6 +156,7 @@ describe('feeding module — schedule indexing', () => {
   });
 });
 
+// Upcoming vs scheduled status, next occurrence, feeds counted for today
 describe('feeding module — next feed helpers', () => {
   it('_scheduleStatus never returns completed', () => {
     const now = new Date(2025, 4, 21, 15, 0, 0);
@@ -192,6 +202,7 @@ describe('feeding module — next feed helpers', () => {
   });
 });
 
+// Merge dashboard time inputs with extra schedules for Firebase write
 describe('feeding module — buildCompactedScheduleMaps', () => {
   it('merges dashboard slots with extra schedules and compacts indices', () => {
     const schedules = [

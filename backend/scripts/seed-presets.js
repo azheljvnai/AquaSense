@@ -7,7 +7,7 @@ import { createRequire } from 'module';
 import { fileURLToPath } from 'url';
 import path from 'path';
 import fs from 'fs';
-import { SPECIES_PRESETS } from '../lib/species-presets.js';
+import { SPECIES_PRESETS, migrateAllConfigurationWarningBands } from '../lib/species-presets.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -103,6 +103,11 @@ export async function seedSpeciesPresets() {
   }
 
   console.log(`[Preset Seeding] Complete: ${seededCount} created, ${updatedCount} updated, ${skippedCount} skipped`);
+
+  const migration = await migrateAllConfigurationWarningBands(fsDb);
+  console.log(
+    `[Preset Seeding] Warning-band migration: ${migration.updated}/${migration.scanned} configurations updated`,
+  );
 }
 
 /**

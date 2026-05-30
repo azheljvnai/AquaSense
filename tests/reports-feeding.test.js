@@ -1,3 +1,8 @@
+/**
+ * Feeding — CSV / report row builder.
+ * Module: public/js/features/report-feeding-rows.js
+ * Demo: export feeding history with totals and per-dispense rows.
+ */
 import { describe, it, expect } from 'vitest';
 import { buildFeedingCsvRows } from '../public/js/features/report-feeding-rows.js';
 

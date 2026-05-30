@@ -59,18 +59,18 @@ describe('threshold-form', () => {
       document.body.innerHTML = `
         <input id="t-ph-opt-min" value="6.5" />
         <input id="t-ph-opt-max" value="8.5" />
-        <input id="t-ph-warn-low-min" value="6.2" />
-        <input id="t-ph-warn-low-max" value="6.4" />
-        <input id="t-ph-warn-high-min" value="8.6" />
-        <input id="t-ph-warn-high-max" value="8.8" />
+        <input id="t-ph-warn-low-min" value="6.0" />
+        <input id="t-ph-warn-low-max" value="6.49" />
+        <input id="t-ph-warn-high-min" value="8.51" />
+        <input id="t-ph-warn-high-max" value="9.0" />
         <input id="t-ph-crit-low" value="" />
         <input id="t-ph-crit-high" value="" />
         <input id="t-temp-opt-min" value="25" />
         <input id="t-temp-opt-max" value="31" />
-        <input id="t-temp-warn-low-min" value="24" />
-        <input id="t-temp-warn-low-max" value="24.5" />
-        <input id="t-temp-warn-high-min" value="31.5" />
-        <input id="t-temp-warn-high-max" value="32.5" />
+        <input id="t-temp-warn-low-min" value="24.5" />
+        <input id="t-temp-warn-low-max" value="24.99" />
+        <input id="t-temp-warn-high-min" value="31.01" />
+        <input id="t-temp-warn-high-max" value="31.5" />
         <input id="t-temp-crit-low" value="" />
         <input id="t-temp-crit-high" value="" />
         <input id="t-do-opt-min" value="5" />

@@ -959,7 +959,7 @@ app.get('/api/configurations', verifyToken, async (req, res) => {
 app.post('/api/configurations/update-presets', verifyToken, requireRole('admin'), async (_req, res) => {
   try {
     await seedSpeciesPresets();
-    return res.json({ success: true });
+    return res.json({ success: true, message: 'Presets seeded and legacy warning bands migrated.' });
   } catch (e) {
     return res.status(500).json({ error: e.message });
   }

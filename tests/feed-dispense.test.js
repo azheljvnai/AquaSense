@@ -1,3 +1,8 @@
+/**
+ * Feeding — feed log parsing and display.
+ * Module: public/js/feed-dispense.js
+ * Demo: manual/scheduled dispenses normalized for UI and reports; junk rows filtered out.
+ */
 import { describe, it, expect } from 'vitest';
 import {
   FEED_DISPENSE_MG_MIN,
@@ -15,6 +20,7 @@ import {
 } from '../public/js/feed-dispense.js';
 
 describe('feed-dispense', () => {
+  // Total mg label scales with number of dispenses in a period
   it('formatFeedAmountTotalDisplay scales range by dispense count', () => {
     expect(formatFeedAmountTotalDisplay(0)).toBe('—');
     expect(formatFeedAmountTotalDisplay(1)).toBe('~200-300mg');
@@ -41,12 +47,14 @@ describe('feed-dispense', () => {
     expect(normalizeAmountMg(320)).toBe(300);
   });
 
+  // RTDB timestamp strings → epoch ms for sorting/filtering
   it('parseFeedTimestamp parses RTDB format', () => {
     const ms = parseFeedTimestamp('2026-05-22 14:30:00');
     expect(ms).toBeTypeOf('number');
     expect(Number.isFinite(ms)).toBe(true);
   });
 
+  // Only user-facing dispense reasons appear in feed history
   it('isTriggeredDispenseReason accepts manual and scheduled only', () => {
     expect(isTriggeredDispenseReason('MANUAL')).toBe(true);
     expect(isTriggeredDispenseReason('SCHED 1')).toBe(true);
@@ -62,6 +70,7 @@ describe('feed-dispense', () => {
     })).toBeNull();
   });
 
+  // Duplicate RTDB writes in the same second → one row in UI
   it('dedupeDispensesBySecond keeps one entry per second', () => {
     const out = dedupeDispensesBySecond([
       { ts: 1000, type: 'Manual', amountDisplay: '~200-300mg', amountMgEstimate: 250, timestampDisplay: 't1', reason: 'Manual' },

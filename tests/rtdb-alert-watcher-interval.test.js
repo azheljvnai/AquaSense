@@ -1,3 +1,8 @@
+/**
+ * Water quality alerts — RTDB sensor watcher (server).
+ * Module: backend/notifications/rtdb-alert-watcher.js
+ * Demo: live readings evaluated per active config; notify interval suppresses spam per parameter.
+ */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { mockState } from './mocks/firebase-admin.js';
 import { NOTIFY_INTERVAL_MS } from '../backend/lib/alert-notify-interval.js';
