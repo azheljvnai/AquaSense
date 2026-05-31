@@ -103,6 +103,18 @@ export function parseFeedLogEntry(raw) {
   };
 }
 
+/** Filter dispenses to an inclusive local-time range [fromMs, toMs]. */
+export function filterDispensesInRange(entries, fromMs, toMs) {
+  return dedupeDispensesBySecond(
+    entries.filter((e) => e.ts >= fromMs && e.ts <= toMs),
+  );
+}
+
+/** Union multiple dispense lists, dedupe by second, sort ascending by ts. */
+export function mergeFeedLogDispenseLists(...lists) {
+  return dedupeDispensesBySecond(lists.flat());
+}
+
 /** One dispense per second — avoids duplicate/high-frequency log noise. */
 export function dedupeDispensesBySecond(entries) {
   const bySecond = new Map();

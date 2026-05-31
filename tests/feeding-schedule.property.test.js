@@ -87,7 +87,7 @@ describe('feeding schedule — property-based', () => {
           }),
           { minLength: 0, maxLength: 50 },
         ),
-        (entries) => _feedsTodayCount(entries, []) <= entries.length,
+        (entries) => _feedsTodayCount(entries) <= entries.length,
       ),
       { numRuns: 200 },
     );

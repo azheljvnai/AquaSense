@@ -70,6 +70,8 @@ npm test
 
 - **Feed log parsing / normalization**
   - `tests/feed-dispense.test.js` — amount labels, timestamp parsing, dedupe.
+  - `tests/fetch-feed-log.test.js` — range filter/merge for report feed-log extraction.
+  - `tests/report-date-range.test.js` — weekly/monthly report period boundaries.
 
 ## Intentionally not unit-tested (DOM / CDN / init-only)
 

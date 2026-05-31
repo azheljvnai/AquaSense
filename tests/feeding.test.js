@@ -129,12 +129,13 @@ describe('feeding module — schedule matching', () => {
     expect(matchesActiveSchedule(wed1900, schedules)).toBe(false);
   });
 
-  it('shouldKeepFeedLogEntry keeps manual and matching scheduled', () => {
+  it('shouldKeepFeedLogEntry keeps all manual and scheduled dispenses regardless of current schedule', () => {
     const thu1900 = new Date(2026, 4, 28, 19, 0, 0).getTime();
     const wed1900 = new Date(2026, 4, 27, 19, 0, 0).getTime();
-    expect(shouldKeepFeedLogEntry({ type: 'Manual', ts: wed1900 }, schedules)).toBe(true);
-    expect(shouldKeepFeedLogEntry({ type: 'Scheduled', ts: thu1900 }, schedules)).toBe(true);
-    expect(shouldKeepFeedLogEntry({ type: 'Scheduled', ts: wed1900 }, schedules)).toBe(false);
+    expect(shouldKeepFeedLogEntry({ type: 'Manual', ts: wed1900 })).toBe(true);
+    expect(shouldKeepFeedLogEntry({ type: 'Scheduled', ts: thu1900 })).toBe(true);
+    expect(shouldKeepFeedLogEntry({ type: 'Scheduled', ts: wed1900 })).toBe(true);
+    expect(matchesActiveSchedule(wed1900, schedules)).toBe(false);
   });
 });
 
@@ -189,16 +190,15 @@ describe('feeding module — next feed helpers', () => {
     expect(nextDate.getMinutes()).toBe(30);
   });
 
-  it('_feedsTodayCount filters by schedule when provided', () => {
+  it('_feedsTodayCount counts all dispenses today regardless of schedule', () => {
     const start = new Date();
     start.setHours(12, 0, 0, 0);
-    const schedules = [{ index: 0, time: '12:00', days: ALL_DAYS }];
     const entries = [
       { ts: start.getTime(), type: 'Scheduled' },
       { ts: start.getTime() - 86400000, type: 'Scheduled' },
       { ts: start.getTime(), type: 'Manual' },
     ];
-    expect(_feedsTodayCount(entries, schedules)).toBe(2);
+    expect(_feedsTodayCount(entries)).toBe(2);
   });
 });
 

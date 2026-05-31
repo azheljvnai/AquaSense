@@ -18,6 +18,8 @@ import {
   formatFeedAmountTotalDisplay,
 } from '../feed-dispense.js';
 import { buildFeedingCsvRows } from './report-feeding-rows.js';
+import { getReportDateRange } from '../report-date-range.js';
+import { log } from '../utils.js';
 import { rowsToStyledExcelBlob, buildPrintableHtml } from './report-format.js';
 import {
   closeReportPrintTarget,
@@ -95,29 +97,7 @@ export function init() {
   }
 
   function getDateRange(period, customFrom, customTo) {
-    const now = new Date();
-    if (period === 'daily') {
-      const s = new Date(now); s.setHours(0,0,0,0);
-      const e = new Date(now); e.setHours(23,59,59,999);
-      return { from: s, to: e, label: `Today (${fmtDate(now)})` };
-    }
-    if (period === 'weekly') {
-      const day = now.getDay();
-      const mon = new Date(now); mon.setDate(now.getDate() + (day===0?-6:1-day)); mon.setHours(0,0,0,0);
-      const sun = new Date(mon); sun.setDate(mon.getDate()+6); sun.setHours(23,59,59,999);
-      return { from: mon, to: sun, label: `This week (${fmtDate(mon)} Mon – ${fmtDate(sun)} Sun)` };
-    }
-    if (period === 'monthly') {
-      const s = new Date(now.getFullYear(), now.getMonth(), 1, 0,0,0,0);
-      const e = new Date(now.getFullYear(), now.getMonth()+1, 0, 23,59,59,999);
-      return { from: s, to: e, label: `This month (${fmtDate(s)} – ${fmtDate(e)})` };
-    }
-    if (period === 'custom' && customFrom && customTo) {
-      return { from: new Date(customFrom+'T00:00:00'), to: new Date(customTo+'T23:59:59'), label: `${customFrom} – ${customTo}` };
-    }
-    const s = new Date(now); s.setHours(0,0,0,0);
-    const e = new Date(now); e.setHours(23,59,59,999);
-    return { from: s, to: e, label: fmtDate(now) };
+    return getReportDateRange(period, customFrom, customTo);
   }
 
   function getLiveSnapshot() {
@@ -220,10 +200,14 @@ export function init() {
   }
 
   async function loadFeedDispenses(range) {
-    if (typeof window.fetchFeedLogFromRTDB !== 'function') return [];
+    if (typeof window.fetchFeedLogFromRTDB !== 'function') {
+      log('Feed log fetch unavailable (Firebase not connected).', 'warn');
+      return [];
+    }
     try {
       return await window.fetchFeedLogFromRTDB(range.from.getTime(), range.to.getTime());
-    } catch {
+    } catch (e) {
+      log('Feed log fetch failed: ' + (e?.message || String(e)), 'err');
       return [];
     }
   }

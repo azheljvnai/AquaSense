@@ -52,7 +52,6 @@ let _manualFeedTimeout = null;   // 10-second timeout handle
 let _editingIndex      = null;   // schedule index being edited (null = new)
 let _formSnapshot      = null;   // { time, days, holdMs } when add/edit form is open
 let _holdMs            = null;   // global feed duration from RTDB (ms)
-let _purgeInProgress   = false;  // guard RTDB purge / listener re-entry
 let _dispensing        = false;  // true while waiting for ESP32 to reset manualFeed
 let _firebaseConnected = false;  // RTDB connect state (dashboard feed-btn gate)
 
@@ -152,11 +151,10 @@ export function matchesActiveSchedule(ts, schedules, toleranceMin = 2) {
   return false;
 }
 
-export function shouldKeepFeedLogEntry(entry, schedules) {
+/** True for any valid manual/scheduled dispense (history is never retro-filtered by schedule). */
+export function shouldKeepFeedLogEntry(entry) {
   if (!entry) return false;
-  if (entry.type === 'Manual') return true;
-  if (!schedules?.length) return true;
-  return matchesActiveSchedule(entry.ts, schedules);
+  return entry.type === 'Manual' || entry.type === 'Scheduled';
 }
 
 // ── Public API ────────────────────────────────────────────────────────────────
@@ -278,9 +276,9 @@ function _subscribe(deviceId) {
 
     const deduped = dedupeDispensesBySecond(parsed);
     void (async () => {
-      if (!_purgeInProgress) await _purgeOffScheduleLogEntries(deduped);
-      const kept = deduped.filter((e) => shouldKeepFeedLogEntry(e, _schedules));
-      const entries = kept.map(({ ts, type, amountDisplay }) => ({ ts, type, amountDisplay }));
+      const entries = deduped
+        .filter((e) => shouldKeepFeedLogEntry(e))
+        .map(({ ts, type, amountDisplay }) => ({ ts, type, amountDisplay }));
       entries.sort((a, b) => b.ts - a.ts);
       _logEntries = entries.slice(0, 20);
       _renderFeedLog();
@@ -384,29 +382,6 @@ async function _saveHoldMs(ms) {
   if (!_deviceId) return;
   const db = fbDatabase();
   await fbSet(fbRef(db, `/devices/${_deviceId}/feeding/holdMs`), ms);
-}
-
-async function _purgeOffScheduleLogEntries(entries) {
-  const perms = window._rbacPerms || { canEditSchedules: false };
-  if (!perms.canEditSchedules || !_deviceId || !_schedules.length) return;
-
-  const toRemove = entries.filter((e) => e.logKey && !shouldKeepFeedLogEntry(e, _schedules));
-  if (toRemove.length === 0) return;
-
-  _purgeInProgress = true;
-  try {
-    const db = fbDatabase();
-    await Promise.all(
-      toRemove.map((e) =>
-        fbSet(fbRef(db, `/devices/${_deviceId}/feedLog/${e.logKey}`), null),
-      ),
-    );
-    console.info(`[feeding] Removed ${toRemove.length} off-schedule feed log entries`);
-  } catch (err) {
-    console.warn('[feeding] Failed to purge off-schedule feed log entries', err);
-  } finally {
-    _purgeInProgress = false;
-  }
 }
 
 // ── Schedule helpers ──────────────────────────────────────────────────────────
@@ -1053,21 +1028,18 @@ function _fmtCountdown(ms) {
   return `in ${h}h ${m}m (${timeLabel})`;
 }
 
-export function _feedsTodayCount(logEntries, schedules = []) {
+export function _feedsTodayCount(logEntries) {
   const now        = new Date();
   const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
   const endOfDay   = startOfDay + 86400000;
-  return logEntries.filter((e) => {
-    if (e.ts < startOfDay || e.ts >= endOfDay) return false;
-    return shouldKeepFeedLogEntry(e, schedules);
-  }).length;
+  return logEntries.filter((e) => e.ts >= startOfDay && e.ts < endOfDay).length;
 }
 
 function _updateMetricCards() {
   // Feeds Today
   const todayEl = document.getElementById('feed-metric-today');
   if (todayEl) {
-    const count = _feedsTodayCount(_logEntries, _schedules);
+    const count = _feedsTodayCount(_logEntries);
     todayEl.textContent = _logEntries.length === 0 ? '—' : String(count);
   }
 
@@ -1152,7 +1124,7 @@ async function _updateWeeklyChart() {
     const snap   = await fbGet(logRef);
     snap.forEach((child) => {
       const entry = parseFeedLogEntry(child.val());
-      if (entry && shouldKeepFeedLogEntry(entry, _schedules)) allEntries.push(entry.ts);
+      if (entry && shouldKeepFeedLogEntry(entry)) allEntries.push(entry.ts);
     });
   } catch (err) {
     console.error('[feeding] weekly chart fetch error', err);

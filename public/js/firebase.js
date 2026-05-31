@@ -5,7 +5,11 @@
 import { fbDatabase, fbRef as ref, fbOnValue as onValue, fbRtdbQuery as rtdbQuery, fbOrderByChild as orderByChild, fbOrderByKey as orderByKey, fbStartAt as startAt, fbEndAt as endAt, fbGet as get } from './firebase-client.js';
 import { fbOnAuthStateChanged, fbFirestore, fbDoc, fbGetDoc } from './firebase-client.js';
 import { log } from './utils.js';
-import { dedupeDispensesBySecond, parseFeedLogEntry } from './feed-dispense.js';
+import {
+  parseFeedLogEntry,
+  filterDispensesInRange,
+  mergeFeedLogDispenseLists,
+} from './feed-dispense.js';
 import { setFirebaseConnected } from './features/feeding.js';
 
 let fbDb = null;
@@ -276,23 +280,20 @@ export async function fetchFeedLogFromRTDB(deviceId, fromMs, toMs) {
       return out;
     };
 
-    const inRange = (entries) =>
-      dedupeDispensesBySecond(
-        entries.filter((e) => e.ts >= fromMs && e.ts <= toMs),
-      );
-
     const q1 = rtdbQuery(feedRef, orderByKey(), startAt(toKeyStamp(fromMs)), endAt(toKeyStamp(toMs)));
     const snap1 = await get(q1);
-    const entries1 = inRange(collectFromSnapshot(snap1));
-    if (entries1.length) return entries1;
 
     const q2 = rtdbQuery(feedRef, orderByKey(), startAt(toKeyStampAlt(fromMs)), endAt(toKeyStampAlt(toMs)));
     const snap2 = await get(q2);
-    const entries2 = inRange(collectFromSnapshot(snap2));
-    if (entries2.length) return entries2;
 
     const snapAll = await get(feedRef);
-    return inRange(collectFromSnapshot(snapAll));
+
+    const merged = mergeFeedLogDispenseLists(
+      collectFromSnapshot(snap1),
+      collectFromSnapshot(snap2),
+      collectFromSnapshot(snapAll),
+    );
+    return filterDispensesInRange(merged, fromMs, toMs);
   } catch (e) {
     log('Feed log fetch error: ' + e.message, 'err');
     return [];
