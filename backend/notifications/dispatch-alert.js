@@ -5,6 +5,7 @@ import admin from 'firebase-admin';
 import { sendUniSms, normalizePhPhoneToE164 } from '../lib/unisms.js';
 import { getEmailJsServerEnv } from '../lib/emailjs-env.js';
 import { NOTIFY_INTERVAL_MS } from '../lib/alert-notify-interval.js';
+import { formatWallClockInTimeZone, MANILA_TZ } from '../lib/datetime.js';
 
 /** Same predicate as /api/config serverDispatchesAlerts — RTDB watcher owns dispatch when true. */
 export function isServerWatcherEnabled() {
@@ -36,12 +37,9 @@ function formatSmsValue(key, val) {
   return `${Number(val).toFixed(1)}${unit}`;
 }
 
-/** Epoch ms → local wall-clock "YYYY-MM-DD HH:MM:SS" (server/process timezone). */
+/** Epoch ms → Manila wall-clock "YYYY-MM-DD HH:MM:SS" for EmailJS templates. */
 export function formatAlertEmailTimestamp(ms) {
-  const d = new Date(Number(ms) || Date.now());
-  const pad = (n) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ` +
-    `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+  return formatWallClockInTimeZone(ms, MANILA_TZ);
 }
 
 /** Exported for tests — must stay ASCII for UniSMS. */

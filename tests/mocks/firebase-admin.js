@@ -32,6 +32,8 @@ export const mockState = {
   authCreateUser: async () => ({ uid: 'new-uid' }),
   authUpdateUser: async () => ({}),
   authDeleteUser: async () => ({}),
+  usersDocSet: async () => ({}),
+  notificationPrefsSet: async () => ({}),
 };
 
 const FieldValue = { serverTimestamp: () => ({ _serverTimestamp: true }) };
@@ -49,6 +51,16 @@ function firestore() {
             get: () => mockState.usersDocGet(id),
             set: (data, opts) => mockState.usersDocSet?.(id, data, opts),
             delete: () => mockState.usersDocDelete?.(id),
+            collection: (subName) => {
+              if (subName === 'notificationPrefs') {
+                return {
+                  doc: (docId) => ({
+                    set: (data, opts) => mockState.notificationPrefsSet?.(id, docId, data, opts),
+                  }),
+                };
+              }
+              return { doc: () => ({ set: async () => ({}) }) };
+            },
           }),
         };
       }

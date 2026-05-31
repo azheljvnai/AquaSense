@@ -94,8 +94,8 @@ describe('dispatchAlertToAllUsers', () => {
     expect(mockState.notificationLogAdd).toHaveBeenCalled();
   });
 
-  it('sends email timestamp as local wall-clock, not UTC ISO', async () => {
-    const ts = Date.UTC(2026, 4, 30, 9, 13, 1, 840);
+  it('sends email timestamp as Manila wall-clock, not UTC ISO', async () => {
+    const ts = Date.UTC(2026, 4, 30, 1, 13, 1, 840);
     await dispatchAlertToAllUsers({ ...validAlert, ts });
 
     const emailCall = globalThis.fetch.mock.calls.find((c) =>
@@ -104,19 +104,15 @@ describe('dispatchAlertToAllUsers', () => {
     expect(emailCall).toBeDefined();
     const body = JSON.parse(emailCall[1].body);
     expect(body.template_params.timestamp).toBe(formatAlertEmailTimestamp(ts));
+    expect(body.template_params.timestamp).toBe('2026-05-30 09:13:01');
     expect(body.template_params.timestamp).not.toMatch(/Z$/);
     expect(body.template_params.timestamp).not.toContain('T');
   });
 });
 
 describe('formatAlertEmailTimestamp', () => {
-  it('matches local Date getters for a fixed instant', () => {
-    const ms = Date.UTC(2026, 4, 30, 9, 13, 1, 840);
-    const d = new Date(ms);
-    const pad = (n) => String(n).padStart(2, '0');
-    const expected =
-      `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ` +
-      `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
-    expect(formatAlertEmailTimestamp(ms)).toBe(expected);
+  it('formats a fixed UTC instant as Asia/Manila wall-clock', () => {
+    const ms = Date.UTC(2026, 4, 30, 1, 13, 1, 840);
+    expect(formatAlertEmailTimestamp(ms)).toBe('2026-05-30 09:13:01');
   });
 });

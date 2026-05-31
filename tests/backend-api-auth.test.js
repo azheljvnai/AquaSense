@@ -104,5 +104,60 @@ describe('backend API auth/roles (automated)', () => {
     expect(r.body).toHaveLength(2);
     expect(r.body[0]).toHaveProperty('id', 'p1');
   });
+
+  it('PATCH /api/users/me saves notificationPrefs for farmer role', async () => {
+    const app = createApp();
+    mockState.authVerifyIdToken = async () => ({ uid: 'farmer-1' });
+    mockState.usersDocGet = async () => ({
+      exists: true,
+      data: () => ({ role: 'farmer', email: 'farmer@example.com' }),
+    });
+    const prefsSet = vi.fn().mockResolvedValue(undefined);
+    mockState.notificationPrefsSet = prefsSet;
+
+    const r = await request(app)
+      .patch('/api/users/me')
+      .set('Authorization', 'Bearer test-token')
+      .send({
+        notificationPrefs: {
+          email: { enabled: true, address: 'farmer@example.com' },
+          sms: { enabled: false },
+        },
+      });
+
+    expect(r.status).toBe(200);
+    expect(r.body).toEqual({ success: true });
+    expect(prefsSet).toHaveBeenCalledWith(
+      'farmer-1',
+      'settings',
+      expect.objectContaining({
+        email: { enabled: true, address: 'farmer@example.com' },
+        sms: { enabled: false },
+      }),
+      { merge: true },
+    );
+  });
+
+  it('PATCH /api/users/me rejects invalid email when email alerts enabled', async () => {
+    const app = createApp();
+    mockState.authVerifyIdToken = async () => ({ uid: 'farmer-1' });
+    mockState.usersDocGet = async () => ({
+      exists: true,
+      data: () => ({ role: 'farmer', email: '' }),
+    });
+
+    const r = await request(app)
+      .patch('/api/users/me')
+      .set('Authorization', 'Bearer test-token')
+      .send({
+        notificationPrefs: {
+          email: { enabled: true, address: 'not-an-email' },
+          sms: { enabled: false },
+        },
+      });
+
+    expect(r.status).toBe(400);
+    expect(r.body.error).toMatch(/invalid email/i);
+  });
 });
 

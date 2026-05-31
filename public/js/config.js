@@ -33,6 +33,7 @@ export async function getConfig() {
       serverDispatchesAlerts: data.serverDispatchesAlerts === true,
       alertNotifyIntervalMs:
         Number(data.alertNotifyIntervalMs) > 0 ? Number(data.alertNotifyIntervalMs) : 5 * 60 * 1000,
+      emailNotificationsAvailable: data.emailNotificationsAvailable === true,
       emailjsPublicKey: data.emailjsPublicKey || '',
       emailjsServiceId: data.emailjsServiceId || '',
       emailjsTemplateId: data.emailjsTemplateId || '',
@@ -55,6 +56,7 @@ export async function getConfig() {
         appId: hosted.appId || '',
         databaseURL: hosted.databaseURL || '',
       },
+      emailNotificationsAvailable: hosted.emailNotificationsAvailable === true,
       emailjsPublicKey: hosted.emailjsPublicKey || '',
       emailjsServiceId: hosted.emailjsServiceId || '',
       emailjsTemplateId: hosted.emailjsTemplateId || '',

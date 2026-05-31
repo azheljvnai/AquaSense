@@ -182,6 +182,7 @@ app.get('/api/config', (_req, res) => {
       process.env.RTDB_ALERT_WATCHER !== '0' &&
       String(process.env.RTDB_ALERT_WATCHER || '').toLowerCase() !== 'false',
     alertNotifyIntervalMs: NOTIFY_INTERVAL_MS,
+    emailNotificationsAvailable: getEmailJsServerEnv().configured,
     emailjsPublicKey: process.env.EMAILJS_PUBLIC_KEY || '',
     emailjsServiceId: process.env.EMAILJS_SERVICE_ID || '',
     emailjsTemplateId: process.env.EMAILJS_TEMPLATE_ID || '',
@@ -238,10 +239,13 @@ console.log('[HTTP] Mounted POST /api/notifications/sms, POST /api/notifications
  * Role and status cannot be self-modified.
  */
 app.patch('/api/users/me', verifyToken, async (req, res) => {
-  const { displayName, email, phone, farm } = req.body || {};
+  const { displayName, email, phone, farm, notificationPrefs } = req.body || {};
   const hasFarmPatch = !!(farm && typeof farm === 'object');
-  if (!displayName && !email && phone === undefined && !hasFarmPatch) {
-    return res.status(400).json({ error: 'Provide at least one of: displayName, email, phone, farm.' });
+  const hasNotificationPrefs = !!(notificationPrefs && typeof notificationPrefs === 'object');
+  if (!displayName && !email && phone === undefined && !hasFarmPatch && !hasNotificationPrefs) {
+    return res.status(400).json({
+      error: 'Provide at least one of: displayName, email, phone, farm, notificationPrefs.',
+    });
   }
   try {
     const fs = admin.firestore();
@@ -258,7 +262,29 @@ app.patch('/api/users/me', verifyToken, async (req, res) => {
       await admin.auth().updateUser(req.auth.uid, { email });
     }
     if (phone !== undefined) update.phone = phone;
-    await userRef.set(update, { merge: true });
+    if (displayName || email || phone !== undefined) {
+      await userRef.set(update, { merge: true });
+    }
+
+    if (hasNotificationPrefs) {
+      const emailEnabled = notificationPrefs?.email?.enabled === true;
+      const emailAddress = String(
+        notificationPrefs?.email?.address || current.email || '',
+      ).trim();
+      if (emailEnabled && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailAddress)) {
+        return res.status(400).json({ error: 'Invalid email address.' });
+      }
+      await userRef.collection('notificationPrefs').doc('settings').set({
+        email: {
+          enabled: !!notificationPrefs?.email?.enabled,
+          address: emailAddress,
+        },
+        sms: {
+          enabled: !!notificationPrefs?.sms?.enabled,
+        },
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      }, { merge: true });
+    }
 
     if (hasFarmPatch) {
       const farmId = current?.farmId || '';

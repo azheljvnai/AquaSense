@@ -52,8 +52,25 @@ function alertLocationLabel() {
 /** Set in init() so module-level helpers can refresh the alerts tab UI. */
 let rerenderAlertsTab = () => {};
 
-/** Re-evaluate unresolved alerts against current thresholds (assigned in init). */
-let reconcileUnresolvedAlerts = () => {};
+/** Refresh unresolved alert labels/descriptions when thresholds change (assigned in init). */
+let refreshAlertMetadata = () => {};
+
+/** In-session config fingerprint — null until first hydrate (page load). */
+let _alertsConfigFingerprint = null;
+
+/** Fingerprint for detecting a real config/threshold change vs page-load hydrate. */
+export function buildAlertsConfigFingerprint(configId, thresholds) {
+  return `${configId || ''}:${JSON.stringify(thresholds || null)}`;
+}
+
+/** True when config changed after initial page-load hydrate (not a mere refresh). */
+export function shouldAutoResolveAlertsOnConfigApply(previousFingerprint, nextFingerprint) {
+  return previousFingerprint !== null && previousFingerprint !== nextFingerprint;
+}
+
+function currentAlertsConfigFingerprint() {
+  return buildAlertsConfigFingerprint(getActiveConfigId(), getActiveThresholds());
+}
 
 /** Human-readable optimal range for notification emails (mirrors server email template). */
 function thresholdSummaryForKey(key) {
@@ -90,6 +107,15 @@ const ALERT_STORAGE_KEY = 'aquasense.alerts.v1';
 const MAX_ALERTS = 200;
 const MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 
+/** Coerce alert sensor values; null/undefined/invalid → NaN (never 0). */
+export function normalizeAlertVal(raw) {
+  if (typeof raw === 'number' && Number.isFinite(raw)) return raw;
+  if (raw == null) return NaN;
+  if (typeof raw === 'string' && raw.trim() === '') return NaN;
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : NaN;
+}
+
 function normalizeAlerts(raw) {
   if (!Array.isArray(raw)) return [];
   const out = [];
@@ -110,7 +136,7 @@ function normalizeAlerts(raw) {
       id: typeof item.id === 'string' && item.id ? item.id : `migrated-${ts}-${Math.random().toString(36).slice(2, 7)}`,
       ts,
       key: typeof item.key === 'string' ? item.key : '',
-      val: typeof item.val === 'number' && Number.isFinite(item.val) ? item.val : Number(item.val),
+      val: normalizeAlertVal(item.val),
       severity,
       badge,
       label: typeof item.label === 'string' ? item.label : '',
@@ -193,7 +219,7 @@ function firestoreDataToAlert(data, docId) {
     id: data.id || docId,
     ts,
     key: typeof data.key === 'string' ? data.key : '',
-    val: typeof data.val === 'number' && Number.isFinite(data.val) ? data.val : Number(data.val),
+    val: normalizeAlertVal(data.val),
     severity,
     badge,
     label: typeof data.label === 'string' ? data.label : '',
@@ -246,7 +272,6 @@ function subscribeAlertsRealtime() {
         if (isFirstSnapshot) {
           isFirstSnapshot = false;
           saveAlerts(mergeFirestoreSnapshotDocs(snapshot.docs));
-          reconcileUnresolvedAlerts();
         } else {
           const byId = new Map();
           for (const a of loadAlerts()) {
@@ -487,30 +512,6 @@ export function unloadAlertsOnSignOut() {
 
 export function init() {
   // Firestore load/subscribe deferred until loadAlertsAfterAuth() (app.js)
-
-  // ── Notification preference toggles ────────────────────────────────────────
-  const email = document.getElementById('alert-email');
-  const sms   = document.getElementById('alert-sms');
-  const push  = document.getElementById('alert-push');
-  const SETTINGS_KEY = 'aquasense.settings.v1';
-
-  function loadSettings() {
-    try { return JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}'); } catch { return {}; }
-  }
-  function saveSettings(next) {
-    const merged = { ...loadSettings(), ...next };
-    try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(merged)); } catch { /* ignore */ }
-  }
-
-  if (email || sms || push) {
-    const s = loadSettings();
-    if (email && typeof s.email === 'boolean') email.checked = s.email;
-    if (sms   && typeof s.sms   === 'boolean') sms.checked   = s.sms;
-    if (push  && typeof s.push  === 'boolean') push.checked  = s.push;
-    email?.addEventListener('change', () => saveSettings({ email: !!email.checked }));
-    sms?.addEventListener('change',   () => saveSettings({ sms:   !!sms.checked }));
-    push?.addEventListener('change',  () => saveSettings({ push:  !!push.checked }));
-  }
 
   // ── Alert action buttons ───────────────────────────────────────────────────
   const clearAllBtn = document.getElementById('btn-clear-all-alerts');
@@ -784,65 +785,81 @@ export function init() {
     }
   });
 
-  // Re-render when pond/config changes (thresholds may reclassify existing state)
-  reconcileUnresolvedAlerts = function reconcileUnresolvedAlertsImpl() {
-    if (!isActiveConfigReady()) return;
-
-    const all = loadAlerts();
-    const toResolve = [];
-    let changed = false;
-
-    for (const a of all) {
-      if (!a || typeof a !== 'object') continue;
-      if (a.resolved) continue;
-      if (a.val == null || !Number.isFinite(Number(a.val))) continue;
-      if (!a.key || typeof a.key !== 'string') continue;
-
-      const val = Number(a.val);
-      const badge = getBadgeForSpecies(a.key, val);
-      const severity = severityFromBadge(badge.c);
-
-      // If the reading is now within optimal range, keep history but remove from active view.
-      if (!severity) {
-        a.resolved = true;
-        toResolve.push(a.id);
-        changed = true;
-        continue;
-      }
-
-      // Otherwise, refresh display fields so the alert matches the currently active thresholds.
-      a.badge = badge.c;
-      a.severity = severity;
-      a.label = labelFor(a.key, badge.c, a.pond || 'Unknown');
-      a.description = descriptionForCurrentThresholds(a.key, val);
-      a.thresholdSummary = thresholdSummaryForKey(a.key);
-      changed = true;
-    }
-
-    if (changed) {
-      saveAlerts(pruneAlerts(all));
-      rerenderAlertsTab();
-      window.dispatchEvent(new Event('alerts-updated'));
-
-      if (fbAuth().currentUser) {
-        // Non-blocking; localStorage is the source of truth for UI.
-        toResolve.forEach((id) => updateAlertResolvedInFirestore(id).catch(() => {}));
-      }
-    }
-  };
-
   function onActiveConfigChanged(e) {
     const configId = e.detail?.configId || e.detail?.pondId || getActiveConfigId() || 'default';
     resetCooldownsForPond(configId);
-    reconcileUnresolvedAlerts();
+    refreshAlertMetadata();
     renderAlertList();
   }
   window.addEventListener('config-changed', onActiveConfigChanged);
   window.addEventListener('thresholds-changed', onActiveConfigChanged);
   window.addEventListener('active-config-ready', onActiveConfigChanged);
 
-  // Clean up any stale unresolved alerts on first load too.
-  reconcileUnresolvedAlerts();
+  refreshAlertMetadata = function refreshAlertMetadataImpl() {
+    if (!isActiveConfigReady()) return;
+
+    const nextFingerprint = currentAlertsConfigFingerprint();
+    const autoResolveIfOptimal = shouldAutoResolveAlertsOnConfigApply(
+      _alertsConfigFingerprint,
+      nextFingerprint
+    );
+    _alertsConfigFingerprint = nextFingerprint;
+
+    const all = loadAlerts();
+    const { changed, toResolve } = refreshAlertMetadataForAlerts(all, { autoResolveIfOptimal });
+
+    if (changed) {
+      saveAlerts(pruneAlerts(all));
+      rerenderAlertsTab();
+      window.dispatchEvent(new Event('alerts-updated'));
+
+      if (autoResolveIfOptimal && toResolve.length && fbAuth().currentUser) {
+        toResolve.forEach((id) => updateAlertResolvedInFirestore(id).catch(() => {}));
+      }
+    }
+  };
+}
+
+/**
+ * Update display fields on unresolved alerts to match active thresholds.
+ * Resolution is manual by default; optional auto-resolve when config changes
+ * and the stored reading is optimal under the new thresholds.
+ * @param {Object[]} alerts - Mutable alert list
+ * @param {{ autoResolveIfOptimal?: boolean }} [options]
+ * @returns {{ changed: boolean, toResolve: string[] }}
+ */
+export function refreshAlertMetadataForAlerts(alerts, { autoResolveIfOptimal = false } = {}) {
+  let changed = false;
+  const toResolve = [];
+
+  for (const a of alerts) {
+    if (!a || typeof a !== 'object') continue;
+    if (a.resolved) continue;
+    if (a.val == null || !Number.isFinite(Number(a.val))) continue;
+    if (!a.key || typeof a.key !== 'string') continue;
+
+    const val = Number(a.val);
+    const badge = getBadgeForSpecies(a.key, val);
+    const severity = severityFromBadge(badge.c);
+
+    if (!severity) {
+      if (autoResolveIfOptimal) {
+        a.resolved = true;
+        toResolve.push(a.id);
+        changed = true;
+      }
+      continue;
+    }
+
+    a.badge = badge.c;
+    a.severity = severity;
+    a.label = labelFor(a.key, badge.c, a.pond || 'Unknown');
+    a.description = descriptionForCurrentThresholds(a.key, val);
+    a.thresholdSummary = thresholdSummaryForKey(a.key);
+    changed = true;
+  }
+
+  return { changed, toResolve };
 }
 
 // ─── Alert Management Functions ───────────────────────────────────────────────

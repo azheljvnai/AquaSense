@@ -52,7 +52,7 @@ import { init as initReports } from './features/reports.js';
 import { init as initConfiguration } from './features/configuration.js';
 import { init as initConfigManagement, loadConfigurationsAfterAuth } from './features/config-management.js';
 import { init as initUserManagement, loadUsers, setCurrentUser } from './features/user-management.js';
-import { init as initNotifications, handleAlert } from './features/notifications.js';
+import { init as initNotifications, handleAlert, refreshNotificationPrefsUi } from './features/notifications.js';
 import { initRouter, pageFromPath, pathFromPage } from './router.js';
 import { showAppToast, showConfirmModal, wireAppDialog } from './ui/modal-ui.js';
 
@@ -147,6 +147,7 @@ function getPermissions(role) {
     canDeleteUsers:      r === 'admin',
     canAssignAdminRole:  r === 'admin',
     canViewLogs:         r === 'admin' || r === 'owner',
+    canManageNotificationPrefs: true,
     isAdmin:             r === 'admin',
     isOwner:             r === 'owner',
     isFarmer:            r === 'farmer',
@@ -221,6 +222,11 @@ function applyRoleGuards(role) {
   // Expose current permissions on window for feature modules
   window._rbacPerms = perms;
   refreshFeedingScheduleUi();
+
+  // Notification toggles are available to all roles; availability is handled in notifications.js
+  if (perms.canManageNotificationPrefs) {
+    refreshNotificationPrefsUi().catch(() => {/* ignore */});
+  }
 }
 
 async function ensureUserProfile(user) {
@@ -656,6 +662,7 @@ function setupAccountMenu() {
           await window._farmProfileOnUser(currentUser);
         }
         populateProfilePage();
+        refreshNotificationPrefsUi().catch(() => {/* ignore */});
         showAppToast('Profile updated successfully.', 'success');
         close();
       } catch (e) {

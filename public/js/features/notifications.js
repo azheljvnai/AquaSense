@@ -4,15 +4,14 @@
  * Public API:
  *   init(user)                          — called after auth
  *   loadPrefs(uid)                      — read Firestore prefs
- *   savePrefs(uid, prefs)               — validate + write Firestore prefs
+ *   savePrefs(uid, prefs)               — validate + write via API
+ *   refreshNotificationPrefsUi()        — re-sync toggles after profile change
  *   handleAlert(alert)                  — orchestrate dispatch
  */
 import {
   fbFirestore,
   fbDoc,
   fbGetDoc,
-  fbSetDoc,
-  fbServerTimestamp,
   fbGetIdToken,
 } from '../firebase-client.js';
 import { getConfig } from '../config.js';
@@ -26,10 +25,15 @@ const RETRY_INTERVAL_MS = 60 * 1000;               // 60 seconds
 
 // ─── Module State ─────────────────────────────────────────────────────────────
 
-let _currentUser        = null;
-let _emailjsPublicKey   = '';
-let _emailjsServiceId   = '';
-let _emailjsTemplateId  = '';
+let _currentUser                 = null;
+let _emailjsPublicKey            = '';
+let _emailjsServiceId            = '';
+let _emailjsTemplateId           = '';
+let _emailNotificationsAvailable = false;
+let _prefsUiBound                = false;
+let _prefsUiUser                 = null;
+let _syncSmsUiState              = null;
+let _persistPrefs                = null;
 
 // ─── Exported: init ───────────────────────────────────────────────────────────
 
@@ -46,6 +50,8 @@ export async function init(user) {
     _emailjsPublicKey  = cfg.emailjsPublicKey  || '';
     _emailjsServiceId  = cfg.emailjsServiceId  || '';
     _emailjsTemplateId = cfg.emailjsTemplateId || '';
+    _emailNotificationsAvailable = cfg.emailNotificationsAvailable === true
+      || !!(_emailjsPublicKey && _emailjsServiceId && _emailjsTemplateId);
 
     if (_emailjsPublicKey && typeof emailjs !== 'undefined') {
       emailjs.init(_emailjsPublicKey);
@@ -56,12 +62,15 @@ export async function init(user) {
 
   initPrefsUI(user);
 
-  // Wire offline retry flush
-  window.addEventListener('online', () => {
-    flushRetryQueue().catch(err =>
-      console.warn('[NotificationService] flushRetryQueue error:', err)
-    );
-  });
+  // Wire offline retry flush (once per page load)
+  if (!window._notifOnlineBound) {
+    window._notifOnlineBound = true;
+    window.addEventListener('online', () => {
+      flushRetryQueue().catch(err =>
+        console.warn('[NotificationService] flushRetryQueue error:', err)
+      );
+    });
+  }
 }
 
 // ─── Exported: loadPrefs ──────────────────────────────────────────────────────
@@ -96,9 +105,9 @@ export async function loadPrefs(uid) {
 // ─── Exported: savePrefs ─────────────────────────────────────────────────────
 
 /**
- * Validates the email address when `email.enabled` is true, then writes to
- * Firestore with a server timestamp.
- * Throws if the email address is invalid.
+ * Validates the email address when `email.enabled` is true, then persists via
+ * PATCH /api/users/me (Admin SDK on server).
+ * Throws if the email address is invalid or the API call fails.
  */
 export async function savePrefs(uid, prefs) {
   if (!uid) throw new Error('No user ID provided.');
@@ -109,17 +118,45 @@ export async function savePrefs(uid, prefs) {
     }
   }
 
-  const ref = fbDoc(fbFirestore(), 'users', uid, 'notificationPrefs', 'settings');
-  await fbSetDoc(ref, {
-    email: {
-      enabled: !!prefs?.email?.enabled,
-      address: prefs?.email?.address || '',
+  const token = await fbGetIdToken();
+  const resp = await fetch('/api/users/me', {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
     },
-    sms: {
-      enabled: !!prefs?.sms?.enabled,
-    },
-    updatedAt: fbServerTimestamp(),
-  }, { merge: true });
+    body: JSON.stringify({ notificationPrefs: prefs }),
+  });
+  const data = await resp.json().catch(() => ({}));
+  if (!resp.ok) {
+    throw new Error(data?.error || `HTTP ${resp.status}`);
+  }
+}
+
+// ─── Exported: refreshNotificationPrefsUi ────────────────────────────────────
+
+/** Re-load prefs and SMS phone state (e.g. after profile phone update). */
+export async function refreshNotificationPrefsUi() {
+  const user = _prefsUiUser || _currentUser;
+  if (!user?.uid) return;
+
+  applyEmailToggleAvailability();
+
+  try {
+    const prefs = await loadPrefs(user.uid);
+    const toggle = document.getElementById('notif-email-toggle');
+    const address = document.getElementById('notif-email-address');
+    const smsToggle = document.getElementById('notif-sms-toggle');
+    if (toggle) toggle.checked = !!prefs?.email?.enabled;
+    if (address) address.value = prefs?.email?.address || user.email || '';
+    if (smsToggle) smsToggle.checked = !!prefs?.sms?.enabled;
+  } catch {
+    // ignore
+  }
+
+  if (typeof _syncSmsUiState === 'function') {
+    await _syncSmsUiState().catch(() => {/* ignore */});
+  }
 }
 
 // ─── Exported: handleAlert ────────────────────────────────────────────────────
@@ -195,30 +232,36 @@ async function dispatchAlertViaApi(alertOrAlerts) {
   return data;
 }
 
+function applyEmailToggleAvailability() {
+  const toggle = document.getElementById('notif-email-toggle');
+  const warning = document.getElementById('notif-config-warning');
+  const emailAvailable = _emailNotificationsAvailable || !!_emailjsPublicKey;
+
+  if (warning) warning.classList.toggle('is-hidden', emailAvailable);
+  if (toggle) toggle.disabled = !emailAvailable;
+}
+
 function initPrefsUI(user) {
+  if (_prefsUiBound && _prefsUiUser?.uid === user?.uid) {
+    refreshNotificationPrefsUi().catch(() => {/* ignore */});
+    return;
+  }
+
   const toggle   = document.getElementById('notif-email-toggle');
   const address  = document.getElementById('notif-email-address');
   const saveBtn  = document.getElementById('notif-prefs-save');
-  const warning  = document.getElementById('notif-config-warning');
   const smsToggle = document.getElementById('notif-sms-toggle');
   const smsWarning = document.getElementById('notif-sms-warning');
 
-  // Show config warning and disable email toggle if EmailJS is not configured
-  // NOTE: Do NOT return early — SMS prefs must still be saveable even without EmailJS
-  if (!_emailjsPublicKey) {
-    if (warning) warning.classList.remove('is-hidden');
-    if (toggle)  { toggle.disabled = true; toggle.checked = false; }
-    // Do NOT disable saveBtn — SMS notifications can still be saved
-  } else {
-    if (warning) warning.classList.add('is-hidden');
-  }
+  applyEmailToggleAvailability();
 
   if (!user?.uid) return;
+
+  _prefsUiUser = user;
 
   // Load prefs and populate state
   loadPrefs(user.uid).then(prefs => {
     if (toggle)  toggle.checked  = !!prefs?.email?.enabled;
-    // Recipient is always the logged-in user's email (no input UI required)
     if (address) address.value = prefs?.email?.address || user.email || '';
     if (smsToggle) smsToggle.checked = !!prefs?.sms?.enabled;
   }).catch(() => {
@@ -233,6 +276,8 @@ function initPrefsUI(user) {
     if (smsToggle && !hasPhone) smsToggle.checked = false;
     return hasPhone;
   }
+
+  _syncSmsUiState = syncSmsUiState;
 
   async function persist() {
     await syncSmsUiState();
@@ -254,18 +299,19 @@ function initPrefsUI(user) {
     }
   }
 
-  // Auto-save on toggle change (single-toggle UX)
-  toggle?.addEventListener('change', () => {
-    persist();
-  });
-  smsToggle?.addEventListener('change', () => {
-    persist();
-  });
+  _persistPrefs = persist;
 
-  // Backward compatibility: if the old Save button still exists, keep it working.
-  saveBtn?.addEventListener('click', () => persist());
+  if (!_prefsUiBound) {
+    toggle?.addEventListener('change', () => {
+      persist();
+    });
+    smsToggle?.addEventListener('change', () => {
+      persist();
+    });
+    saveBtn?.addEventListener('click', () => persist());
+    _prefsUiBound = true;
+  }
 
-  // Evaluate phone state on load (async) to show warning/disable as needed (no Firestore write)
   syncSmsUiState().catch(() => {/* ignore */});
 }
 
