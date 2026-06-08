@@ -7,6 +7,7 @@
 import admin from 'firebase-admin';
 
 import { dispatchAlertsBatchToAllUsers, persistAlertsToFirestore } from './dispatch-alert.js';
+import { createSystemLogAsync } from '../lib/system-log.js';
 
 import { buildAlertFromReading, mergeConfigThresholds } from '../lib/threshold-eval.js';
 
@@ -228,6 +229,22 @@ async function processSensorSnapshot(d, options = {}) {
         console.log(
           `[RTDB alert watcher] Persisted ${persistResult.written} alert(s) to Firestore (skipped ${persistResult.skipped})`
         );
+        for (const alert of pending) {
+          createSystemLogAsync({
+            eventType: 'alert.threshold',
+            severity: alert.severity === 'critical' ? 'critical' : 'warning',
+            source: 'alert',
+            description: `${alert.key} exceeded threshold`,
+            metadata: { alertId: alert.id, key: alert.key, val: alert.val, pond: alert.pond },
+          });
+          createSystemLogAsync({
+            eventType: 'alert.generated',
+            severity: 'info',
+            source: 'alert',
+            description: 'Alert generated',
+            metadata: { alertId: alert.id, key: alert.key, pond: alert.pond },
+          });
+        }
       } else if (persistResult.skipped > 0) {
         console.warn('[RTDB alert watcher] No alerts persisted — validation skipped all items');
       }

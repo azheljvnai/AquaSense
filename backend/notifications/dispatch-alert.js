@@ -2,6 +2,7 @@
  * Server-side alert notification fan-out (Firebase Admin bypasses client Firestore rules).
  */
 import admin from 'firebase-admin';
+import { createSystemLogAsync } from '../lib/system-log.js';
 import { sendUniSms, normalizePhPhoneToE164 } from '../lib/unisms.js';
 import { getEmailJsServerEnv } from '../lib/emailjs-env.js';
 import { NOTIFY_INTERVAL_MS } from '../lib/alert-notify-interval.js';
@@ -154,6 +155,15 @@ async function writeLog(fs, uid, channel, alert, status, errorDetail) {
     status,
     errorDetail: errorDetail || null,
   });
+  if (status === 'sent') {
+    createSystemLogAsync({
+      eventType: 'alert.notification_sent',
+      severity: 'info',
+      source: 'alert',
+      description: 'Alert notification sent',
+      metadata: { uid, channel, alertId: alert.id, parameter: alert.key },
+    });
+  }
 }
 
 async function sendEmailJsServer(prefs, alertOrAlerts) {

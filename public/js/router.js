@@ -14,6 +14,7 @@ const PATH_TO_PAGE = {
   '/reports': 'reports',
   '/configuration': 'configuration',
   '/user-management': 'user-management',
+  '/system-logs': 'system-logs',
   '/account': 'account-profile',
 };
 
@@ -27,6 +28,7 @@ const PAGE_TO_PATH = {
   reports: '/reports',
   configuration: '/configuration',
   'user-management': '/user-management',
+  'system-logs': '/system-logs',
   'account-profile': '/account',
 };
 

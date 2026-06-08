@@ -69,6 +69,12 @@ service cloud.firestore {
         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
     }
 
+    // System logs — read-only for admin/owner; writes via Admin SDK only
+    match /system_logs/{logId} {
+      allow read: if isAdminOrOwner();
+      allow create, update, delete: if false;
+    }
+
     // Deny everything else
     match /{document=**} {
       allow read, write: if false;

@@ -130,6 +130,10 @@
         <span class="nav-icon"><svg class="icon icon-20"><use href="#icon-users"/></svg></span>
         <span>User Management</span>
       </a>
+      <a href="#" data-page="system-logs" id="nav-system-logs">
+        <span class="nav-icon"><svg class="icon icon-20"><use href="#icon-document"/></svg></span>
+        <span>System Logs</span>
+      </a>
     </nav>
     <div class="sidebar-user">
       <button class="sidebar-user-avatar" id="account-avatar-btn" type="button" aria-label="Open account">F</button>
@@ -964,6 +968,137 @@
       </div>
 
       <!-- Pond Management removed (configuration-only system) -->
+    </section>
+
+    <!-- System Logs -->
+    <section id="page-system-logs" class="page-section">
+      <h1 class="page-title">System Logs</h1>
+
+      <div class="sl-summary-grid" id="sl-summary">
+        <div class="card sl-summary-card">
+          <div class="sl-summary-label">Total Logs</div>
+          <div class="sl-summary-value" id="sl-summary-total">—</div>
+        </div>
+        <div class="card sl-summary-card sl-summary-card--error">
+          <div class="sl-summary-label">Errors</div>
+          <div class="sl-summary-value" id="sl-summary-error">—</div>
+        </div>
+        <div class="card sl-summary-card sl-summary-card--warning">
+          <div class="sl-summary-label">Warnings</div>
+          <div class="sl-summary-value" id="sl-summary-warning">—</div>
+        </div>
+        <div class="card sl-summary-card sl-summary-card--critical">
+          <div class="sl-summary-label">Critical Events</div>
+          <div class="sl-summary-value" id="sl-summary-critical">—</div>
+        </div>
+      </div>
+
+      <div id="sl-error" class="sl-error-banner" style="display:none" role="alert"></div>
+
+      <div class="card sl-toolbar-card">
+        <div class="sl-toolbar">
+          <div class="um-search-wrap sl-search-wrap">
+            <svg class="um-search-icon icon icon-16"><use href="#icon-activity"/></svg>
+            <input id="sl-search" type="search" class="um-search" placeholder="Search logs..." autocomplete="off" />
+          </div>
+
+          <select id="sl-date-preset" class="um-select sl-date-preset-select" aria-label="Date range preset">
+            <option value="">All time</option>
+            <option value="today">Today</option>
+            <option value="7d">Last 7 days</option>
+            <option value="30d">Last 30 days</option>
+            <option value="eval">Evaluation (May 25–28, 2026)</option>
+            <option value="custom">Custom range…</option>
+          </select>
+
+          <details class="sl-multi" id="sl-severity-multi">
+            <summary class="sl-multi-trigger" id="sl-severity-trigger">Severity: All</summary>
+            <div class="sl-multi-menu" id="sl-severity-options"></div>
+          </details>
+
+          <details class="sl-multi" id="sl-source-multi">
+            <summary class="sl-multi-trigger" id="sl-source-trigger">Source: All</summary>
+            <div class="sl-multi-menu" id="sl-source-options"></div>
+          </details>
+
+          <details class="sl-multi" id="sl-user-multi">
+            <summary class="sl-multi-trigger" id="sl-user-trigger">User: All</summary>
+            <div class="sl-multi-menu" id="sl-user-options"></div>
+          </details>
+
+          <button type="button" class="btn btn-outline btn-sm" id="sl-advanced-toggle" aria-expanded="false">
+            Filters
+          </button>
+          <button type="button" class="btn btn-primary btn-sm" id="sl-apply">Apply Filters</button>
+        </div>
+
+        <div id="sl-active-filters" class="sl-active-filters" hidden></div>
+
+        <div id="sl-advanced-panel" class="sl-advanced-panel is-hidden">
+          <div class="sl-advanced-grid">
+            <div class="sl-advanced-field">
+              <label for="sl-filter-event">Event type</label>
+              <select id="sl-filter-event" class="um-select sl-event-select" aria-label="Filter by event type">
+                <option value="">All event types</option>
+              </select>
+            </div>
+            <div id="sl-custom-dates" class="sl-date-range is-hidden" aria-label="Custom date range">
+              <label class="sl-date-field">
+                <span class="sl-date-field-label">From</span>
+                <input id="sl-date-from" type="date" class="sl-date-input" aria-label="From date" />
+              </label>
+              <span class="sl-date-sep">to</span>
+              <label class="sl-date-field">
+                <span class="sl-date-field-label">To</span>
+                <input id="sl-date-to" type="date" class="sl-date-input" aria-label="To date" />
+              </label>
+            </div>
+          </div>
+          <div class="sl-advanced-actions">
+            <button type="button" class="btn btn-secondary btn-sm" id="sl-clear-filters">Clear all filters</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="sl-actions-bar">
+        <button type="button" class="btn btn-primary btn-sm" id="sl-refresh">Refresh</button>
+        <button type="button" class="btn btn-secondary btn-sm is-hidden" id="sl-export-csv">Export CSV</button>
+        <button type="button" class="btn btn-secondary btn-sm is-hidden" id="sl-export-xlsx">Export Excel</button>
+        <button type="button" class="btn btn-danger btn-sm is-hidden" id="sl-clear">Clear Logs</button>
+      </div>
+
+      <div class="card sl-table-card" id="sl-table-card">
+        <div class="um-table-wrap table-scroll sl-table-wrap">
+          <table class="um-table sl-table">
+            <thead>
+              <tr>
+                <th class="sl-sort" data-sort-key="createdAt">Timestamp <span class="sl-sort-ind" id="sl-sort-createdAt">↓</span></th>
+                <th class="sl-sort" data-sort-key="severity">Severity <span class="sl-sort-ind" id="sl-sort-severity"></span></th>
+                <th class="sl-sort" data-sort-key="source">Source <span class="sl-sort-ind" id="sl-sort-source"></span></th>
+                <th class="sl-sort" data-sort-key="user">User <span class="sl-sort-ind" id="sl-sort-user"></span></th>
+                <th class="sl-sort" data-sort-key="description">Description <span class="sl-sort-ind" id="sl-sort-description"></span></th>
+              </tr>
+            </thead>
+            <tbody id="sl-tbody">
+              <tr><td colspan="5" class="sl-empty">Loading logs…</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <footer class="sl-pagination" aria-label="System logs pagination">
+          <p id="sl-range-label" class="sl-pagination-summary">—</p>
+          <div class="sl-pagination-nav">
+            <button type="button" class="btn btn-outline btn-sm sl-page-btn" id="sl-prev" disabled aria-label="Previous page">
+              <svg class="icon icon-14" aria-hidden="true"><use href="#icon-chevron-left"/></svg>
+              <span>Previous</span>
+            </button>
+            <span id="sl-page-label" class="sl-page-indicator" role="status">Page 1</span>
+            <button type="button" class="btn btn-outline btn-sm sl-page-btn" id="sl-next" disabled aria-label="Next page">
+              <span>Next</span>
+              <svg class="icon icon-14" aria-hidden="true"><use href="#icon-chevron-right"/></svg>
+            </button>
+          </div>
+        </footer>
+      </div>
     </section>
 
     <!-- User Management -->

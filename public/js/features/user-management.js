@@ -48,7 +48,58 @@ function normalizeUserRecord(id, data) {
   const row = { id, ...data };
   if (row.role === 'manager') row.role = 'owner';
   if (row.role === 'viewer') row.role = 'farmer';
+  row.joinedDateMs = parseUserTimestampMs(
+    row.joinedDateMs ?? row.joinedDate ?? row.createdAt ?? row.creationTime ?? row.metadata?.creationTime,
+  );
   return row;
+}
+
+function parseUserTimestampMs(value) {
+  if (value == null) return null;
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value < 1e12 ? Math.round(value * 1000) : Math.round(value);
+  }
+  if (typeof value === 'string') {
+    const ms = Date.parse(value);
+    return Number.isFinite(ms) ? ms : null;
+  }
+  if (value instanceof Date) {
+    const ms = value.getTime();
+    return Number.isFinite(ms) ? ms : null;
+  }
+  if (typeof value?.toMillis === 'function') {
+    const ms = value.toMillis();
+    return Number.isFinite(ms) ? ms : null;
+  }
+  if (typeof value?.toDate === 'function') {
+    const d = value.toDate();
+    const ms = d?.getTime?.();
+    return Number.isFinite(ms) ? ms : null;
+  }
+  if (value?._seconds != null) {
+    return Number(value._seconds) * 1000;
+  }
+  if (value?.seconds != null) {
+    return Number(value.seconds) * 1000;
+  }
+  return null;
+}
+
+function formatJoinedDate(user) {
+  const ms = parseUserTimestampMs(user?.joinedDateMs ?? user?.joinedDate ?? user?.createdAt);
+  return ms ? new Date(ms).toLocaleDateString() : '—';
+}
+
+/** Snapshot of users loaded from User Management (for System Logs filters, etc.). */
+export function getUsersList() {
+  return allUsers.map((u) => ({
+    id: u.id,
+    displayName: (u.displayName || u.email || 'User').trim(),
+    email: u.email || '',
+    role: u.role || 'farmer',
+    joinedDateMs: u.joinedDateMs ?? null,
+    joinedDate: u.joinedDateMs ? new Date(u.joinedDateMs).toISOString() : null,
+  }));
 }
 
 export async function loadUsers() {
@@ -111,7 +162,7 @@ function renderTable() {
     const email    = u.email || '—';
     const role     = u.role || 'farmer';
     const status   = u.status || 'active';
-    const joined   = u.createdAt?.toDate ? u.createdAt.toDate().toLocaleDateString() : '—';
+    const joined   = formatJoinedDate(u);
     const letter   = (name[0] || 'U').toUpperCase();
     const isSelf   = u.id === currentUserId;
     const disabled = status !== 'active';
@@ -313,7 +364,16 @@ function openUserModal(user) {
         });
         const data = await resp.json();
         if (!resp.ok) throw new Error(data.error || 'Failed to create user.');
-        allUsers.push({ id: data.uid, email, displayName: name || email.split('@')[0], phone, role, status: 'active', farmId });
+        allUsers.push({
+          id: data.uid,
+          email,
+          displayName: name || email.split('@')[0],
+          phone,
+          role,
+          status: 'active',
+          farmId,
+          joinedDateMs: Date.now(),
+        });
       }
       updateStats();
       renderTable();

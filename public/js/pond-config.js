@@ -395,6 +395,7 @@ export async function recordSensorReading(ph, doVal, turb, temp) {
       timestamp:        fbServerTimestamp(),
       values:           { ph, do: doVal, turb, temp },
     });
+    // Routine readings go to sensor_data only — not system_logs (see log-policy).
   } catch {
     // Non-critical — local history still recorded via utils.js
   }

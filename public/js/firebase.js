@@ -3,6 +3,7 @@
  * Uses the shared Firebase app instance from firebase-client.js.
  */
 import { fbDatabase, fbRef as ref, fbOnValue as onValue, fbRtdbQuery as rtdbQuery, fbOrderByChild as orderByChild, fbOrderByKey as orderByKey, fbStartAt as startAt, fbEndAt as endAt, fbGet as get } from './firebase-client.js';
+import { createLog } from './services/system-log.js';
 import { fbOnAuthStateChanged, fbFirestore, fbDoc, fbGetDoc } from './firebase-client.js';
 import { log } from './utils.js';
 import {
@@ -86,16 +87,36 @@ export async function connect(firebaseUrl, deviceId, { onStatus, onSensorData })
       const ts = d.ts ? Number(d.ts) : Date.now();
 
       if (onSensorData) onSensorData(ph, doV, turb, temp, ts);
-    }, (err) => {      onStatus('ERROR', false);
+    }, (err) => {
+      onStatus('ERROR', false);
       log('Firebase error: ' + err.message, 'err');
+      createLog({
+        eventType: 'sensor.disconnect',
+        severity: 'warning',
+        source: 'sensor',
+        description: 'Sensor stream disconnected or errored',
+        metadata: { message: err?.message },
+      });
     });
 
     setFirebaseConnected(true);
     log('Firebase connected ✓ — feed button ready', 'feed');
+    createLog({
+      eventType: 'system.firebase',
+      severity: 'info',
+      source: 'system',
+      description: 'Firebase connection established',
+    });
   } catch (e) {
     setFirebaseConnected(false);
     onStatus('ERROR', false);
     log('Connection failed: ' + e.message, 'err');
+    createLog({
+      eventType: 'system.firebase',
+      severity: 'error',
+      source: 'error',
+      description: 'Firebase connection failed: ' + (e?.message || String(e)),
+    });
   }
 }
 

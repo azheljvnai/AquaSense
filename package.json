@@ -14,6 +14,8 @@
     "accuracy": "node scripts/accuracy/evaluate-accuracy.js",
     "feedlog:patch-device001": "node scripts/feeding/patch-feedlog-device001.js",
     "feedlog:restore-may2026": "node scripts/feeding/restore-missing-may-feedlog.js",
+    "system-logs:seed": "node scripts/system-logs/seed-evaluation-dataset.js",
+    "users:seed-eval": "node backend/scripts/seed-eval-users.js",
     "test": "vitest --run"
   },
   "dependencies": {

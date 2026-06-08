@@ -52,7 +52,9 @@ import { init as initReports } from './features/reports.js';
 import { init as initConfiguration } from './features/configuration.js';
 import { init as initConfigManagement, loadConfigurationsAfterAuth } from './features/config-management.js';
 import { init as initUserManagement, loadUsers, setCurrentUser } from './features/user-management.js';
+import { init as initSystemLogs, loadSystemLogs } from './features/system-logs-dashboard.js';
 import { init as initNotifications, handleAlert, refreshNotificationPrefsUi } from './features/notifications.js';
+import { setLogActor, createLog, resetLogDedupeState } from './services/system-log.js';
 import { initRouter, pageFromPath, pathFromPage } from './router.js';
 import { showAppToast, showConfirmModal, wireAppDialog } from './ui/modal-ui.js';
 
@@ -72,6 +74,7 @@ const PAGE_TITLES = {
   reports: 'Reports',
   configuration: 'Configuration',
   'user-management': 'User Management',
+  'system-logs': 'System Logs',
   'account-profile': 'Account',
 };
 
@@ -134,6 +137,7 @@ function getPermissions(role) {
       reports:                r === 'admin' || r === 'owner',
       configuration:          r === 'admin' || r === 'owner',
       'user-management':      r === 'admin' || r === 'owner',
+      'system-logs':          r === 'admin' || r === 'owner',
       'account-profile':      true,
     },
     // Fine-grained action permissions
@@ -147,6 +151,8 @@ function getPermissions(role) {
     canDeleteUsers:      r === 'admin',
     canAssignAdminRole:  r === 'admin',
     canViewLogs:         r === 'admin' || r === 'owner',
+    canExportLogs:       r === 'admin' || r === 'owner',
+    canClearLogs:        r === 'admin',
     canManageNotificationPrefs: true,
     isAdmin:             r === 'admin',
     isOwner:             r === 'owner',
@@ -253,6 +259,14 @@ async function ensureUserProfile(user) {
     lastLoginAt: fbServerTimestamp(),
   };
   await fbSetDoc(userRef, next, { merge: true });
+  createLog({
+    eventType: 'user.register',
+    severity: 'info',
+    source: 'user',
+    description: 'New user profile created on first sign-in',
+    userId: user.uid,
+    userName: next.displayName,
+  });
   return next;
 }
 
@@ -385,6 +399,15 @@ function activatePage(page, options = {}) {
   window.dispatchEvent(new CustomEvent('page-activated', { detail: { page: targetPage } }));
 
   if (targetPage === 'user-management') loadUsers();
+  if (targetPage === 'system-logs') loadSystemLogs();
+  if (targetPage === 'dashboard' && !rbacRedirect) {
+    createLog({
+      eventType: 'dashboard.access',
+      severity: 'info',
+      source: 'user',
+      description: 'Dashboard accessed',
+    });
+  }
 
   document.body.classList.remove('sidebar-open');
 
@@ -663,6 +686,12 @@ function setupAccountMenu() {
         }
         populateProfilePage();
         refreshNotificationPrefsUi().catch(() => {/* ignore */});
+        createLog({
+          eventType: 'user.profile_update',
+          severity: 'info',
+          source: 'user',
+          description: 'User updated account settings',
+        });
         showAppToast('Profile updated successfully.', 'success');
         close();
       } catch (e) {
@@ -749,6 +778,12 @@ function setupAccountMenu() {
       await fbUpdatePassword(newPw);
       resetPasswordPage();
       if (okEl) okEl.style.display = 'block';
+      createLog({
+        eventType: 'user.password_change',
+        severity: 'info',
+        source: 'user',
+        description: 'User changed account password',
+      });
       showAppToast('Password updated successfully.', 'success');
     } catch (e) {
       let msg = e?.message || 'Password update failed.';
@@ -789,6 +824,25 @@ function init() {
   window.navigateTo = (page) => activatePage(page);
 
   // Re-evaluate sensor badges whenever thresholds change
+  window.addEventListener('error', (e) => {
+    createLog({
+      eventType: 'error.unhandled',
+      severity: 'error',
+      source: 'error',
+      description: e?.message || 'Unexpected application error',
+      metadata: { filename: e?.filename, lineno: e?.lineno },
+    });
+  });
+  window.addEventListener('unhandledrejection', (e) => {
+    const msg = e?.reason?.message || String(e?.reason || 'Unhandled promise rejection');
+    createLog({
+      eventType: 'error.unhandled',
+      severity: 'error',
+      source: 'error',
+      description: msg,
+    });
+  });
+
   window.addEventListener('thresholds-changed', () => {
     for (const key of ['ph', 'do', 'turb', 'temp']) {
       const el = document.getElementById('v-' + key);
@@ -808,6 +862,12 @@ function init() {
       variant: 'warning',
       onConfirm: async () => {
         try {
+          createLog({
+            eventType: 'user.logout',
+            severity: 'info',
+            source: 'user',
+            description: 'User logged out',
+          });
           await fbSignOut();
           showAppToast('Signed out successfully.', 'success');
         } catch (e) {
@@ -830,6 +890,7 @@ function init() {
     initConfiguration();
     initConfigManagement();
     initUserManagement();
+    initSystemLogs();
     setStatus('OFFLINE', false);
 
     // Wire sign-in AFTER Firebase is initialized
@@ -847,6 +908,13 @@ function init() {
       try {
         await fbSignIn(email, password);
       } catch (e) {
+        createLog({
+          eventType: 'user.login',
+          severity: 'warning',
+          source: 'user',
+          description: 'User login attempt failed',
+          metadata: { email },
+        });
         console.error('[Auth] Sign-in error:', e);
         let msg;
         const code = e?.code || '';
@@ -888,6 +956,8 @@ function init() {
         setFirebaseConnected(false);
         unloadAlertsOnSignOut();
         setActivityLogUser(null);
+        setLogActor(null);
+        resetLogDedupeState();
         clearActivityLog();
         return;
       }
@@ -898,6 +968,13 @@ function init() {
         currentProfile = await ensureUserProfile(user);
         currentProfile.role = normalizeRole(currentProfile.role);
         setActivityLogUser(user.uid);
+        setLogActor({ uid: user.uid, displayName: currentProfile.displayName, email: currentProfile.email || user.email });
+        createLog({
+          eventType: 'user.login',
+          severity: 'info',
+          source: 'user',
+          description: 'User logged in successfully',
+        });
         renderSidebarUser(currentProfile);
         applyRoleGuards(currentProfile.role);
         syncPageFromUrl({ replace: true });

@@ -19,6 +19,7 @@ import {
   fbGet,
 } from '../firebase-client.js';
 import { log } from '../utils.js';
+import { createLog } from '../services/system-log.js';
 import {
   FEED_DISPENSE_AMOUNT_LABEL,
   dedupeDispensesBySecond,
@@ -49,6 +50,7 @@ let _logEntries        = [];     // [{ ts, type, amountDisplay }] sorted descend
 let _feedChart         = null;   // Chart.js instance
 let _feedWeekOffset    = 0;      // 0 = current week, -1 = previous, etc.
 let _manualFeedTimeout = null;   // 10-second timeout handle
+let _lastManualFeedVal = null;   // RTDB manualFeed — avoid duplicate complete logs
 let _editingIndex      = null;   // schedule index being edited (null = new)
 let _formSnapshot      = null;   // { time, days, holdMs } when add/edit form is open
 let _holdMs            = null;   // global feed duration from RTDB (ms)
@@ -309,6 +311,7 @@ function _teardown() {
   // Clear timeout
   if (_manualFeedTimeout) { clearTimeout(_manualFeedTimeout); _manualFeedTimeout = null; }
   _dispensing = false;
+  _lastManualFeedVal = null;
 
   // Reset UI
   const schedList = document.getElementById('feed-schedule-list');
@@ -703,6 +706,13 @@ async function _saveSchedule() {
         isEdit ? `Schedule updated: ${summary}.` : `Schedule added: ${summary}.`,
         'success',
       );
+      createLog({
+        eventType: isEdit ? 'feeding.schedule_update' : 'feeding.schedule_create',
+        severity: 'info',
+        source: 'feeding',
+        description: isEdit ? 'Feeding schedule modified' : 'Feeding schedule created',
+        metadata: { time: timeVal, days },
+      });
     },
   });
 }
@@ -781,8 +791,22 @@ async function _saveDashboardSchedules() {
         : 'All feeding schedules cleared.',
       'success',
     );
+    createLog({
+      eventType: 'feeding.schedule_update',
+      severity: 'info',
+      source: 'feeding',
+      description: count ? 'Feeding schedule configured' : 'All feeding schedules cleared',
+      metadata: { count },
+    });
   } catch (err) {
     showAppToast('Save error: ' + (err?.message || String(err)), 'error');
+    createLog({
+      eventType: 'feeding.failure',
+      severity: 'error',
+      source: 'feeding',
+      description: 'Failed to save feeding schedules',
+      metadata: { error: err?.message },
+    });
   }
 }
 
@@ -1212,16 +1236,41 @@ export async function triggerManualFeed() {
     const db = fbDatabase();
     await fbSet(fbRef(db, `/devices/${_deviceId}/feeding/manualFeed`), true);
     log('Feed command sent → manualFeed = true ✓', 'feed');
+    createLog({
+      eventType: 'feeding.servo',
+      severity: 'info',
+      source: 'feeding',
+      description: 'Servo motor activated for manual feeding',
+    });
+    createLog({
+      eventType: 'feeding.manual',
+      severity: 'info',
+      source: 'feeding',
+      description: 'Manual feeding executed',
+    });
 
     if (_manualFeedTimeout) clearTimeout(_manualFeedTimeout);
     _manualFeedTimeout = setTimeout(() => {
       _manualFeedTimeout = null;
       resetButtons('Timeout — ESP32 may be offline');
       log('Feed timeout — button unlocked (ESP32 may be offline)', 'warn');
+      createLog({
+        eventType: 'feeding.failure',
+        severity: 'warning',
+        source: 'feeding',
+        description: 'Feeding mechanism timeout — ESP32 may be offline',
+      });
     }, 10000);
   } catch (err) {
     resetButtons('Error: ' + (err?.message || String(err)));
     log('Feed error: ' + (err?.message || String(err)), 'err');
+    createLog({
+      eventType: 'feeding.failure',
+      severity: 'error',
+      source: 'feeding',
+      description: 'Manual feeding failed',
+      metadata: { error: err?.message },
+    });
   }
 }
 
@@ -1252,6 +1301,7 @@ function _syncFeedButton(manualFeedVal) {
   const dashBtn  = document.getElementById('feed-btn');
   const statusEl = document.getElementById('feed-manual-status');
   const feedNote = document.getElementById('feed-note-txt');
+  const wasDispensing = _dispensing || _lastManualFeedVal === true;
 
   if (!manualFeedVal) {
     if (_manualFeedTimeout) {
@@ -1267,8 +1317,18 @@ function _syncFeedButton(manualFeedVal) {
     _applyFeedButtonConnectedState();
     if (statusEl) statusEl.textContent = 'Feed complete ✓';
     if (feedNote && _firebaseConnected) feedNote.textContent = 'ESP32 confirmed feed complete ✓';
-    log('ESP32 confirmed feed complete ✓', 'feed');
+    if (wasDispensing) {
+      log('ESP32 confirmed feed complete ✓', 'feed');
+      createLog({
+        eventType: 'feeding.complete',
+        severity: 'info',
+        source: 'feeding',
+        description: 'Feed dispensing completed',
+      });
+    }
   }
+
+  _lastManualFeedVal = manualFeedVal;
 }
 
 // ── Configuration Display ─────────────────────────────────────────────────────

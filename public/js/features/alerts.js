@@ -15,6 +15,7 @@ import {
   isActiveConfigReady,
 } from '../pond-config.js';
 import { handleAlerts } from './notifications.js';
+import { createLog } from '../services/system-log.js';
 import {
   fbAuth,
   fbFirestore,
@@ -347,6 +348,13 @@ async function updateAlertResolvedInFirestore(alertId) {
     // Update the first matching document (should only be one)
     const docRef = fbDoc(fbFirestore(), 'alerts', querySnapshot.docs[0].id);
     await fbUpdateDoc(docRef, { resolved: true });
+    createLog({
+      eventType: 'alert.resolved',
+      severity: 'info',
+      source: 'alert',
+      description: 'Alert resolved',
+      metadata: { alertId },
+    });
   } catch (err) {
     // Non-blocking - localStorage still works
     console.error('[updateAlertResolvedInFirestore] Failed to update alert in Firestore:', err);
@@ -767,6 +775,25 @@ export function init() {
       saveAlerts(all);
       renderAlertList();
       window.dispatchEvent(new Event('alerts-updated'));
+
+      if (!window._serverDispatchesAlerts) {
+        for (const alert of newAlerts) {
+          createLog({
+            eventType: 'alert.threshold',
+            severity: alert.severity === 'critical' ? 'critical' : 'warning',
+            source: 'alert',
+            description: `${alert.label || alert.key} exceeded threshold`,
+            metadata: { alertId: alert.id, key: alert.key, val: alert.val },
+          });
+          createLog({
+            eventType: 'alert.generated',
+            severity: 'info',
+            source: 'alert',
+            description: 'Alert generated',
+            metadata: { alertId: alert.id },
+          });
+        }
+      }
 
       (async () => {
         if (!window._serverDispatchesAlerts) {

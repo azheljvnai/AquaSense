@@ -34,6 +34,18 @@ export const mockState = {
   authDeleteUser: async () => ({}),
   usersDocSet: async () => ({}),
   notificationPrefsSet: async () => ({}),
+  systemLogsStore: [],
+  systemLogsAdd: async (data) => {
+    const id = `log-${mockState.systemLogsStore.length + 1}`;
+    mockState.systemLogsStore.push({ id, data: { ...data, createdAt: { toMillis: () => Date.now() } } });
+    return { id };
+  },
+  systemLogsQueryGet: async () => ({ docs: [], empty: true, size: 0 }),
+  systemLogsDocGet: async (id) => {
+    const found = mockState.systemLogsStore.find((x) => x.id === id);
+    return found ? { exists: true, id: found.id, data: () => found.data } : { exists: false };
+  },
+  systemLogsBatchCommit: async () => ({}),
 };
 
 const FieldValue = { serverTimestamp: () => ({ _serverTimestamp: true }) };
@@ -134,6 +146,83 @@ function firestore() {
           }),
         };
       }
+      if (name === 'system_logs') {
+        const chainState = { filters: [], orderDir: null, limitN: null, startAfterId: null };
+        const runQuery = () => {
+          let rows = [...mockState.systemLogsStore];
+          for (const f of chainState.filters) {
+            if (f.op === '==') rows = rows.filter((r) => r.data[f.field] === f.value);
+            if (f.op === '>=') {
+              const ms = f.value?.toMillis?.() ?? f.value;
+              rows = rows.filter((r) => (r.data.createdAt?.toMillis?.() ?? 0) >= ms);
+            }
+            if (f.op === '<=') {
+              const ms = f.value?.toMillis?.() ?? f.value;
+              rows = rows.filter((r) => (r.data.createdAt?.toMillis?.() ?? 0) <= ms);
+            }
+          }
+          if (chainState.orderDir === 'desc') {
+            rows.sort((a, b) => (b.data.createdAt?.toMillis?.() ?? 0) - (a.data.createdAt?.toMillis?.() ?? 0));
+          }
+          if (chainState.startAfterId) {
+            const idx = rows.findIndex((r) => r.id === chainState.startAfterId);
+            if (idx >= 0) rows = rows.slice(idx + 1);
+          }
+          const limitN = chainState.limitN ?? rows.length;
+          rows = rows.slice(0, limitN);
+          const docs = rows.map((r) => ({
+            id: r.id,
+            data: () => r.data,
+            ref: { delete: () => { mockState.systemLogsStore = mockState.systemLogsStore.filter((x) => x.id !== r.id); } },
+          }));
+          return { docs, empty: docs.length === 0, size: docs.length };
+        };
+        const chain = {
+          where(field, op, value) {
+            chainState.filters.push({ field, op, value });
+            return chain;
+          },
+          orderBy(_field, dir) {
+            chainState.orderDir = dir;
+            return chain;
+          },
+          limit(n) {
+            chainState.limitN = n;
+            return chain;
+          },
+          startAfter(doc) {
+            chainState.startAfterId = doc?.id ?? doc;
+            return chain;
+          },
+          count() {
+            return {
+              get: () => {
+                const savedLimit = chainState.limitN;
+                chainState.limitN = null;
+                const result = runQuery();
+                chainState.limitN = savedLimit;
+                const count = result.docs.length;
+                return Promise.resolve({ data: () => ({ count }) });
+              },
+            };
+          },
+          get: () => mockState.systemLogsQueryGet?.() ?? runQuery(),
+        };
+        chain.get = () => Promise.resolve(runQuery());
+        return {
+          add: (data) => mockState.systemLogsAdd(data),
+          doc: (id) => ({
+            get: () => mockState.systemLogsDocGet(id),
+            delete: () => {
+              mockState.systemLogsStore = mockState.systemLogsStore.filter((x) => x.id !== id);
+              return Promise.resolve();
+            },
+          }),
+          where: (field, op, value) => chain.where(field, op, value),
+          orderBy: (field, dir) => chain.orderBy(field, dir),
+          limit: (n) => chain.limit(n),
+        };
+      }
       return {};
     },
     doc: (path) => ({
@@ -145,7 +234,12 @@ function firestore() {
         set: (ref, data) => ops.push({ op: 'set', ref, data }),
         update: (ref, data) => ops.push({ op: 'update', ref, data }),
         delete: (ref) => ops.push({ op: 'delete', ref }),
-        commit: async () => ({ ops }),
+        commit: async () => {
+          for (const op of ops) {
+            if (op.op === 'delete' && op.ref?.delete) await op.ref.delete();
+          }
+          return mockState.systemLogsBatchCommit?.() ?? { ops };
+        },
       };
     },
   };

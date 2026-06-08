@@ -18,6 +18,7 @@ import {
 } from '../pond-config.js';
 import { flexModalHtml, escapeHtml } from '../ui/templates.js';
 import { showAppToast, showConfirmModal } from '../ui/modal-ui.js';
+import { createLog } from '../services/system-log.js';
 import {
   thresholdBandsFormHtml,
   fillThresholdForm,
@@ -209,6 +210,13 @@ async function activateConfig(configId) {
     _activeConfigId = configId;
     renderConfigurationSelector();
     showAppToast('Configuration activated successfully', 'success');
+    createLog({
+      eventType: 'system.sync',
+      severity: 'info',
+      source: 'system',
+      description: 'Configuration activated',
+      metadata: { configId },
+    });
     
     // Notify dashboard and other components
     window.dispatchEvent(new CustomEvent('config-changed', {
@@ -233,6 +241,12 @@ async function deactivateConfig() {
       _activeConfigId = null;
       renderConfigurationSelector();
       showAppToast('Configuration deactivated', 'success');
+      createLog({
+        eventType: 'system.sync',
+        severity: 'info',
+        source: 'system',
+        description: 'Configuration deactivated',
+      });
       window.dispatchEvent(new CustomEvent('config-changed', {
         detail: { configId: null, species: null },
       }));
@@ -449,6 +463,13 @@ async function saveNewConfiguration() {
     renderConfigurationSelector();
     closeDialog('create-config-dialog');
     showAppToast('Configuration created successfully', 'success');
+    createLog({
+      eventType: 'system.sync',
+      severity: 'info',
+      source: 'system',
+      description: 'Configuration created',
+      metadata: { name, species },
+    });
   } catch (e) {
     showAppToast(`Failed to create configuration: ${e.message}`, 'error');
   }
@@ -483,7 +504,14 @@ async function saveEditedConfiguration() {
     renderConfigurationSelector();
     closeDialog('edit-config-dialog');
     showAppToast('Configuration updated successfully', 'success');
-    
+    createLog({
+      eventType: 'system.sync',
+      severity: 'info',
+      source: 'system',
+      description: 'Configuration updated',
+      metadata: { configId },
+    });
+
     // If this was the active config, reload from server to stay in sync
     if (configId === _activeConfigId) {
       await loadActiveConfiguration();
@@ -521,6 +549,13 @@ async function deleteConfig(configId) {
         await loadConfigurations();
         renderConfigurationSelector();
         showAppToast('Configuration deleted successfully', 'success');
+        createLog({
+          eventType: 'system.sync',
+          severity: 'info',
+          source: 'system',
+          description: 'Configuration deleted',
+          metadata: { configId },
+        });
         window.dispatchEvent(new CustomEvent('config-changed', {
           detail: { configId: null, species: null },
         }));

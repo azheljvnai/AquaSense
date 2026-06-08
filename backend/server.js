@@ -27,11 +27,26 @@ if (_emailJsAlertEnv.configured) {
 import express, { Router } from 'express';
 import admin from 'firebase-admin';
 import { checkAndSeedPresets, seedSpeciesPresets } from './scripts/seed-presets.js';
+import { ensureEvalUsers } from './scripts/seed-eval-users.js';
 import { sendUniSms } from './lib/unisms.js';
 import { getEmailJsServerEnv } from './lib/emailjs-env.js';
 import { postDispatchAlert } from './notifications/dispatch-alert.js';
 import { startRtdbAlertWatcher } from './notifications/rtdb-alert-watcher.js';
 import { NOTIFY_INTERVAL_MS } from './lib/alert-notify-interval.js';
+import {
+  createSystemLog,
+  buildLogFromReq,
+  querySystemLogs,
+  fetchLogsForExport,
+  summarizeSystemLogs,
+  clearSystemLogs,
+  logsToCsvRows,
+  csvFromRows,
+  xlsxFromRows,
+  isFirestoreIndexError,
+} from './lib/system-log.js';
+import { isRuntimeLogAllowed } from './lib/log-policy.js';
+import { LOG_EVENT_TYPES, LOG_SEVERITIES, LOG_SOURCES } from './lib/log-constants.js';
 
 // Initialise Firebase Admin SDK once
 function initAdmin() {
@@ -323,7 +338,8 @@ app.get('/api/users', verifyToken, requireRole('admin', 'owner'), async (req, re
     for (const doc of snap.docs) {
       const data = doc.data() || {};
       try {
-        await admin.auth().getUser(doc.id);
+        const authUser = await admin.auth().getUser(doc.id);
+        const joinedDate = data.createdAt || data.joinedDate || authUser?.metadata?.creationTime || null;
         users.push({
           id: doc.id,
           email: data.email || '',
@@ -332,7 +348,8 @@ app.get('/api/users', verifyToken, requireRole('admin', 'owner'), async (req, re
           role: data.role || 'farmer',
           status: data.status || 'active',
           farmId: data.farmId || '',
-          createdAt: data.createdAt || null,
+          createdAt: joinedDate,
+          joinedDate,
         });
       } catch (e) {
         if (e.code === 'auth/user-not-found') {
@@ -414,6 +431,14 @@ app.post('/api/users', verifyToken, requireRole('admin', 'owner'), async (req, r
       lastLoginAt: null,
     });
 
+    createSystemLog(buildLogFromReq(req, {
+      eventType: 'user.register',
+      severity: 'info',
+      source: 'user',
+      description: 'User account created by administrator',
+      metadata: { createdUid: userRecord.uid, role: normRole },
+    })).catch(() => {});
+
     return res.status(201).json({ uid: userRecord.uid });
   } catch (e) {
     console.error('[POST /api/users]', e.message);
@@ -451,6 +476,13 @@ app.patch('/api/users/:uid', verifyToken, requireRole('admin', 'owner'), async (
         { status: disabled ? 'inactive' : 'active', updatedAt: admin.firestore.FieldValue.serverTimestamp() },
         { merge: true },
       );
+      createSystemLog(buildLogFromReq(req, {
+        eventType: 'user.profile_update',
+        severity: 'info',
+        source: 'user',
+        description: disabled ? 'User account disabled' : 'User account enabled',
+        metadata: { targetUid: uid },
+      })).catch(() => {});
       return res.status(200).json({ success: true });
     } catch (e) {
       console.error('[PATCH /api/users/:uid]', e.message);
@@ -494,6 +526,13 @@ app.patch('/api/users/:uid', verifyToken, requireRole('admin', 'owner'), async (
     if (farmId !== undefined) update.farmId = String(farmId || '');
 
     await admin.firestore().collection('users').doc(uid).set(update, { merge: true });
+    createSystemLog(buildLogFromReq(req, {
+      eventType: 'user.profile_update',
+      severity: 'info',
+      source: 'user',
+      description: 'User profile updated by administrator',
+      metadata: { targetUid: uid },
+    })).catch(() => {});
     return res.status(200).json({ success: true });
   } catch (e) {
     console.error('[PATCH /api/users/:uid]', e.message);
@@ -529,6 +568,13 @@ app.patch('/api/users/:uid/password', verifyToken, requireRole('admin', 'owner')
 
   try {
     await admin.auth().updateUser(req.params.uid, { password });
+    createSystemLog(buildLogFromReq(req, {
+      eventType: 'user.password_change',
+      severity: 'info',
+      source: 'user',
+      description: 'User password reset by administrator',
+      metadata: { targetUid: req.params.uid },
+    })).catch(() => {});
     return res.status(200).json({ success: true });
   } catch (e) {
     console.error('[PATCH /api/users/:uid/password]', e.message);
@@ -554,6 +600,13 @@ app.delete('/api/users/:uid', verifyToken, requireRole('admin'), async (req, res
       if (e.code !== 'auth/user-not-found') throw e;
     }
     await admin.firestore().collection('users').doc(req.params.uid).delete();
+    createSystemLog(buildLogFromReq(req, {
+      eventType: 'user.profile_update',
+      severity: 'warning',
+      source: 'user',
+      description: 'User account deleted by administrator',
+      metadata: { targetUid: req.params.uid },
+    })).catch(() => {});
     return res.status(200).json({ success: true });
   } catch (e) {
     console.error('[DELETE /api/users]', e.message);
@@ -1106,6 +1159,157 @@ app.post('/api/configurations/:id/deactivate', verifyToken, requireRole('admin',
   }
 });
 
+  function parseLogFilters(query) {
+    return {
+      severity: query.severity || '',
+      eventType: query.eventType || '',
+      source: query.source || '',
+      userId: query.userId || '',
+      q: query.q || '',
+      from: query.from || '',
+      to: query.to || '',
+    };
+  }
+
+  /**
+   * POST /api/system-logs — create a log entry (any authenticated user).
+   */
+  app.post('/api/system-logs', verifyToken, async (req, res) => {
+    try {
+      const body = req.body || {};
+      if (!LOG_EVENT_TYPES.has(body.eventType)) {
+        return res.status(400).json({ error: 'Invalid eventType.' });
+      }
+      if (!LOG_SEVERITIES.has(body.severity)) {
+        return res.status(400).json({ error: 'Invalid severity.' });
+      }
+      if (!LOG_SOURCES.has(body.source)) {
+        return res.status(400).json({ error: 'Invalid source.' });
+      }
+
+      let userName = body.userName || null;
+      if (!userName && req.auth.uid) {
+        const snap = await admin.firestore().collection('users').doc(req.auth.uid).get();
+        userName = snap.exists ? (snap.data()?.displayName || snap.data()?.email || null) : null;
+      }
+
+      const id = await createSystemLog(buildLogFromReq(req, {
+        eventType: body.eventType,
+        severity: body.severity,
+        source: body.source,
+        description: body.description,
+        userName,
+        metadata: body.metadata,
+      }));
+
+      if (!id) {
+        if (!isRuntimeLogAllowed(body.eventType)) {
+          return res.status(204).end();
+        }
+        return res.status(503).json({ error: 'Failed to write log.' });
+      }
+      return res.status(201).json({ id });
+    } catch (e) {
+      console.error('[POST /api/system-logs]', e.message);
+      return res.status(500).json({ error: e.message });
+    }
+  });
+
+  /**
+   * GET /api/system-logs — paginated list (admin/owner).
+   */
+  app.get('/api/system-logs', verifyToken, requireRole('admin', 'owner'), async (req, res) => {
+    try {
+      const filters = parseLogFilters(req.query);
+      const pageSize = req.query.pageSize;
+      const cursor = req.query.cursor || null;
+      const includeCount =
+        !cursor && (req.query.includeCount === '1' || req.query.includeCount === 'true');
+      const result = await querySystemLogs(filters, { pageSize, cursor, includeCount });
+      if (result.indexFallback) {
+        res.setHeader('X-System-Logs-Index-Fallback', '1');
+      }
+      return res.json(result);
+    } catch (e) {
+      console.error('[GET /api/system-logs]', e.message);
+      if (isFirestoreIndexError(e)) {
+        return res.status(503).json({
+          error: 'Firestore indexes are still building. Wait a few minutes and click Refresh.',
+          code: 'INDEX_BUILDING',
+        });
+      }
+      return res.status(500).json({ error: e.message });
+    }
+  });
+
+  /**
+   * GET /api/system-logs/summary — aggregate counters (admin/owner).
+   */
+  app.get('/api/system-logs/summary', verifyToken, requireRole('admin', 'owner'), async (req, res) => {
+    try {
+      const filters = parseLogFilters(req.query);
+      const summary = await summarizeSystemLogs(filters);
+      return res.json(summary);
+    } catch (e) {
+      console.error('[GET /api/system-logs/summary]', e.message);
+      if (isFirestoreIndexError(e)) {
+        return res.status(503).json({
+          error: 'Firestore indexes are still building. Wait a few minutes and click Refresh.',
+          code: 'INDEX_BUILDING',
+        });
+      }
+      return res.status(500).json({ error: e.message });
+    }
+  });
+
+  /**
+   * GET /api/system-logs/export — CSV or Excel (admin/owner).
+   */
+  app.get('/api/system-logs/export', verifyToken, requireRole('admin', 'owner'), async (req, res) => {
+    try {
+      const filters = parseLogFilters(req.query);
+      const format = String(req.query.format || 'csv').toLowerCase();
+      const items = await fetchLogsForExport(filters);
+      const rows = logsToCsvRows(items);
+
+      if (format === 'xlsx' || format === 'xls' || format === 'excel') {
+        const xml = xlsxFromRows(rows);
+        res.setHeader('Content-Type', 'application/vnd.ms-excel');
+        res.setHeader('Content-Disposition', 'attachment; filename="system-logs.xls"');
+        return res.send(xml);
+      }
+
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', 'attachment; filename="system-logs.csv"');
+      return res.send(csvFromRows(rows));
+    } catch (e) {
+      console.error('[GET /api/system-logs/export]', e.message);
+      return res.status(500).json({ error: e.message });
+    }
+  });
+
+  /**
+   * DELETE /api/system-logs — clear logs matching filters (admin only).
+   */
+  app.delete('/api/system-logs', verifyToken, requireRole('admin'), async (req, res) => {
+    try {
+      const filters = parseLogFilters(req.query);
+      let userName = null;
+      const snap = await admin.firestore().collection('users').doc(req.auth.uid).get();
+      if (snap.exists) {
+        userName = snap.data()?.displayName || snap.data()?.email || null;
+      }
+      const deletedCount = await clearSystemLogs(filters, {
+        userId: req.auth.uid,
+        userName,
+      });
+      return res.json({ deletedCount });
+    } catch (e) {
+      console.error('[DELETE /api/system-logs]', e.message);
+      return res.status(500).json({ error: e.message });
+    }
+  });
+
   // Static files — registered after API routes so /api/* is never intercepted
   app.use(express.static(frontendPath, { etag: false, lastModified: false, maxAge: 0 }));
   // Also serve frontend assets (css, js, etc.)
@@ -1132,14 +1336,24 @@ export async function startServer({ port } = {}) {
         console.warn('FIREBASE_DATABASE_URL not set in .env — client will need to enter it manually.');
       }
 
-      // Seed species presets on startup
+      // Seed species presets and evaluation users on startup
       try {
         await checkAndSeedPresets();
+        await ensureEvalUsers();
       } catch (e) {
-        console.error('[Server] Failed to seed presets:', e.message);
+        console.error('[Server] Failed to seed presets/eval users:', e.message);
       }
 
       startRtdbAlertWatcher({ deviceId: process.env.DEVICE_ID || 'device001' });
+
+      createSystemLog({
+        eventType: 'system.startup',
+        severity: 'info',
+        source: 'system',
+        description: 'AquaSense backend started successfully',
+        metadata: { port: PORT },
+      }).catch(() => {});
+
       resolve(server);
     });
   });
